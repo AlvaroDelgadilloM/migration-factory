@@ -1,0 +1,76 @@
+{
+  "runtime": "unknown",
+  "java": "11",
+  "camel": "3.20.6",
+  "findings": {
+    "JAVA_LEGACY": 1,
+    "JMS": 1,
+    "UNMAPPED_COMPONENT": 1
+  },
+  "actions": {
+    "JAVA_LEGACY": "rewrite",
+    "JMS": "manual-review",
+    "UNMAPPED_COMPONENT": "manual-review"
+  },
+  "integrations": {
+    "JMS": 1,
+    "SCHEDULING": 1
+  },
+  "graph": {
+    "routes": 1,
+    "endpoints": 2,
+    "channels": []
+  },
+  "plan": [
+    [
+      "baseline",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "camel-3-to-4",
+      "AUTO_TEST",
+      "ready"
+    ],
+    [
+      "camel4-compat-mapping",
+      "AUTO_TEST",
+      "ready"
+    ],
+    [
+      "runtime-spring",
+      "REVIEW",
+      "blocked"
+    ],
+    [
+      "behavior-review",
+      "REVIEW",
+      "pending"
+    ],
+    [
+      "compile",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "test",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "secret-scan",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "equivalence",
+      "MANUAL",
+      "ready"
+    ],
+    [
+      "diff-review",
+      "MANUAL",
+      "ready"
+    ]
+  ]
+}

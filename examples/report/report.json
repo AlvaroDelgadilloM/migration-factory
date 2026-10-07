@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "target": "spring",
+  "analysis": "static-approximate",
+  "modules": [
+    {
+      "file": "pom.xml",
+      "artifactId": "orders-legacy",
+      "packaging": "war",
+      "javaObserved": "1.8",
+      "dependenciesObserved": [
+        {
+          "groupId": "org.apache.camel",
+          "artifactId": "camel-jms",
+          "version": "2.24.3",
+          "scope": ""
+        }
+      ],
+      "resolution": "local-only"
+    }
+  ],
+  "routes": [
+    {
+      "file": "OrdersRoute.java",
+      "line": 6,
+      "dsl": "java",
+      "count": "approximate"
+    },
+    {
+      "file": "routes.xml",
+      "dsl": "xml",
+      "routeId": "other",
+      "count": "observed-xml"
+    }
+  ],
+  "components": [
+    "activemq",
+    "direct",
+    "jdbc",
+    "vm"
+  ],
+  "findings": [
+    {
+      "id": "JAKARTA",
+      "file": "OrdersRoute.java",
+      "line": 1,
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "recommendation": "Seleccionar receta específica Jakarta y dependencias compatibles; no reemplazar todo javax.",
+      "ruleId": "JAKARTA",
+      "status": "open"
+    },
+    {
+      "id": "JMS",
+      "file": "OrdersRoute.java",
+      "line": 1,
+      "severity": "medium",
+      "classification": "REVIEW",
+      "recommendation": "Validar cliente/broker, ack, retry, DLQ, orden y transacciones.",
+      "ruleId": "JMS",
+      "status": "open"
+    },
+    {
+      "id": "JMS",
+      "file": "OrdersRoute.java",
+      "line": 6,
+      "severity": "medium",
+      "classification": "REVIEW",
+      "recommendation": "Validar cliente/broker, ack, retry, DLQ, orden y transacciones.",
+      "ruleId": "JMS",
+      "status": "open"
+    },
+    {
+      "id": "CAMEL_VM",
+      "file": "routes.xml",
+      "line": 1,
+      "severity": "high",
+      "classification": "MANUAL",
+      "recommendation": "Revisar comunicación entre CamelContext; no sustituir por seda automáticamente.",
+      "ruleId": "CAMEL_VM",
+      "status": "open"
+    }
+  ],
+  "errors": [],
+  "summary": {
+    "modules": 1,
+    "routesApproximate": 2,
+    "findings": 4,
+    "errors": 0
+  }
+}

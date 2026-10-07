@@ -1,0 +1,242 @@
+{
+  "version": "2026.10.3",
+  "description": "Reglas declarativas de transformación (improvements/03). Cada regla: origen, destino, condiciones, acciones, nivel de confianza (sin porcentajes: AUTO | AUTO_TEST | REVIEW | MANUAL) y rollback. Las versiones de destino se verificaron contra org.apache.camel:camel-bom:4.14.0.",
+  "levels": {
+    "AUTO": "auto-apply: regla determinística con versión exacta conocida",
+    "AUTO_TEST": "auto-apply con warning: se aplica y se verifica compilando y probando",
+    "REVIEW": "requiere aprobación: el resultado depende de configuración o comportamiento del runtime",
+    "MANUAL": "revisión manual: no se aplica automáticamente"
+  },
+  "rules": [
+    {
+      "id": "CAMEL_HTTP4_TO_HTTP",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-http4",
+        "schemes": [
+          "http4",
+          "https4"
+        ]
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-http",
+        "schemes": [
+          "http",
+          "https"
+        ]
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency",
+        "rewriteEndpointScheme",
+        "externalizeUrl"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-http4 no existe en Camel 4; camel-http es su sucesor directo en el mismo BOM."
+    },
+    {
+      "id": "CAMEL_QUARTZ2_TO_QUARTZ",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-quartz2",
+        "schemes": [
+          "quartz2"
+        ]
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-quartz",
+        "schemes": [
+          "quartz"
+        ]
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency",
+        "rewriteEndpointScheme"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-quartz2 se renombró a camel-quartz en Camel 3."
+    },
+    {
+      "id": "CAMEL_CDI_REMOVE",
+      "type": "dependency",
+      "priority": 20,
+      "source": {
+        "artifact": "org.apache.camel:camel-cdi"
+      },
+      "target": null,
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true,
+        "unusedInCode": "org.apache.camel.cdi"
+      },
+      "actions": [
+        "removeDependency"
+      ],
+      "level": "AUTO_TEST",
+      "rollback": true,
+      "rationale": "DI del runtime (Spring o Quarkus ArC); @Inject se conserva vía jakarta.inject. Si el código usa org.apache.camel.cdi, la regla no aplica y queda como rediseño manual."
+    },
+    {
+      "id": "CAMEL_NETTY4_TO_NETTY",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-netty4",
+        "schemes": [
+          "netty4"
+        ]
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-netty",
+        "schemes": [
+          "netty"
+        ]
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency",
+        "rewriteEndpointScheme"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-netty4 se renombró a camel-netty en Camel 3 (presente en camel-bom 4.14.0 y 4.22.0)."
+    },
+    {
+      "id": "CAMEL_NETTY4_HTTP_TO_NETTY_HTTP",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-netty4-http",
+        "schemes": [
+          "netty4-http"
+        ]
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-netty-http",
+        "schemes": [
+          "netty-http"
+        ]
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency",
+        "rewriteEndpointScheme"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-netty4-http se renombró a camel-netty-http en Camel 3 (presente en camel-bom 4.14.0 y 4.22.0)."
+    },
+    {
+      "id": "CAMEL_MINA2_TO_MINA",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-mina2",
+        "schemes": [
+          "mina2"
+        ]
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-mina",
+        "schemes": [
+          "mina"
+        ]
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency",
+        "rewriteEndpointScheme"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-mina2 se renombró a camel-mina en Camel 3 (presente en camel-bom 4.14.0 y 4.22.0)."
+    },
+    {
+      "id": "CAMEL_MONGODB3_TO_MONGODB",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-mongodb3",
+        "schemes": [
+          "mongodb3"
+        ]
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-mongodb",
+        "schemes": [
+          "mongodb"
+        ]
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency",
+        "rewriteEndpointScheme"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-mongodb3 se renombró a camel-mongodb en Camel 3 (presente en camel-bom 4.14.0 y 4.22.0)."
+    },
+    {
+      "id": "CAMEL_JETTY9_TO_JETTY",
+      "type": "dependency",
+      "priority": 10,
+      "source": {
+        "artifact": "org.apache.camel:camel-jetty9"
+      },
+      "target": {
+        "artifact": "org.apache.camel:camel-jetty"
+      },
+      "conditions": {
+        "targetCamel": ">=4",
+        "artifactPresent": true
+      },
+      "actions": [
+        "replaceDependency"
+      ],
+      "level": "AUTO",
+      "rollback": true,
+      "rationale": "camel-jetty9 se renombró a camel-jetty en Camel 3 (presente en camel-bom 4.14.0 y 4.22.0)."
+    }
+  ],
+  "findingActions": {
+    "_default": {
+      "AUTO": "rewrite",
+      "AUTO_TEST": "rewrite",
+      "REVIEW": "manual-review",
+      "MANUAL": "manual-review"
+    },
+    "HTTP4": "replace",
+    "QUARTZ2": "replace",
+    "CXF": "replace",
+    "CAMEL_CDI": "remove",
+    "HARDCODED_SECRET": "replace",
+    "HARDCODED_URL": "replace",
+    "SPRING_XML": "copy",
+    "PACKAGING_WAR": "rewrite",
+    "MAVEN_UNRESOLVED": "manual-review",
+    "MONEY_DOUBLE": "copy"
+  }
+}

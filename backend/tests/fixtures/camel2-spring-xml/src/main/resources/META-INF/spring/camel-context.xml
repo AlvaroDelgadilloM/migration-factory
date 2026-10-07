@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+  <bean id="invoiceProcessor" class="demo.files.InvoiceProcessor"/>
+  <camelContext xmlns="http://camel.apache.org/schema/spring">
+    <route id="invoices-in">
+      <from uri="sftp://partner.example.com:22/outbox?username=edi&amp;delay=60000"/>
+      <process ref="invoiceProcessor"/>
+      <to uri="direct:publish"/>
+    </route>
+    <route id="invoices-publish">
+      <from uri="direct:publish"/>
+      <to uri="http4://erp.internal:8080/api/invoices"/>
+    </route>
+  </camelContext>
+</beans>

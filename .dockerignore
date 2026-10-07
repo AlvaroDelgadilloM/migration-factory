@@ -1,0 +1,9 @@
+.venv
+**/__pycache__
+**/node_modules
+frontend/dist
+frontend/.angular
+**/target
+.env
+backend/mf-dev.db
+.git

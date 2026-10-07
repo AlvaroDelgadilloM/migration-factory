@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>demo</groupId>
+  <artifactId>boot-camel3</artifactId>
+  <version>1.0</version>
+  <properties>
+    <java.version>11</java.version>
+    <maven.compiler.release>11</maven.compiler.release>
+  </properties>
+  <dependencies>
+    <dependency><groupId>org.apache.camel.springboot</groupId><artifactId>camel-spring-boot-starter</artifactId><version>3.20.6</version></dependency>
+    <dependency><groupId>org.apache.camel.springboot</groupId><artifactId>camel-jms-starter</artifactId><version>3.20.6</version></dependency>
+    <dependency><groupId>org.apache.camel</groupId><artifactId>camel-test-spring-junit5</artifactId><version>3.20.6</version><scope>test</scope></dependency>
+  </dependencies>
+</project>

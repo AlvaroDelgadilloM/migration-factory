@@ -1,0 +1,87 @@
+{
+  "runtime": "servlet-container",
+  "java": "1.8",
+  "camel": "2.24.3",
+  "findings": {
+    "CAMEL2_VERSION": 1,
+    "CXF": 2,
+    "HARDCODED_URL": 1,
+    "JAVA_LEGACY": 1,
+    "PACKAGING_WAR": 1,
+    "SPRING_XML": 1
+  },
+  "actions": {
+    "CAMEL2_VERSION": "manual-review",
+    "CXF": "replace",
+    "HARDCODED_URL": "replace",
+    "JAVA_LEGACY": "rewrite",
+    "PACKAGING_WAR": "rewrite",
+    "SPRING_XML": "copy"
+  },
+  "integrations": {
+    "DB": 1,
+    "SOAP": 1
+  },
+  "graph": {
+    "routes": 1,
+    "endpoints": 2,
+    "channels": []
+  },
+  "plan": [
+    [
+      "baseline",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "camel-2-to-3",
+      "REVIEW",
+      "cleared"
+    ],
+    [
+      "camel-3-to-4",
+      "AUTO_TEST",
+      "ready"
+    ],
+    [
+      "camel4-compat-mapping",
+      "AUTO_TEST",
+      "ready"
+    ],
+    [
+      "runtime-spring",
+      "REVIEW",
+      "ready"
+    ],
+    [
+      "behavior-review",
+      "REVIEW",
+      "pending"
+    ],
+    [
+      "compile",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "test",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "secret-scan",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "equivalence",
+      "MANUAL",
+      "ready"
+    ],
+    [
+      "diff-review",
+      "MANUAL",
+      "ready"
+    ]
+  ]
+}

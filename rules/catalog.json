@@ -1,0 +1,789 @@
+{
+  "catalogVersion": "2026.10.6",
+  "description": "Reglas de diagnóstico estático. Son indicios revisables, no una matriz completa de compatibilidad Camel.",
+  "rules": [
+    {
+      "id": "CAMEL2_VERSION",
+      "version": 1,
+      "detector": "maven",
+      "severity": "high",
+      "classification": "REVIEW",
+      "blocking": true,
+      "recommendation": "Camel 2.x detectado. No existe receta OpenRewrite verificada para 2→3: revisar la guía 2→3 manualmente antes de aplicar recetas 3→4.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "PACKAGING_EAR",
+      "version": 1,
+      "detector": "maven",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "EAR: separar módulos y dependencias provistas por el servidor antes de migrar.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "PACKAGING_WAR",
+      "version": 1,
+      "detector": "maven",
+      "severity": "low",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "WAR desplegado en JBoss: decidir empaquetado del runtime objetivo y si se necesita servidor HTTP embebido.",
+      "source": "https://camel.apache.org/camel-spring-boot/latest/",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "MAVEN_UNRESOLVED",
+      "version": 1,
+      "detector": "maven",
+      "severity": "info",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Parent o BOM no disponible localmente: la versión se resolverá con Maven en el entorno aislado o quedará marcada como no resuelta.",
+      "source": "https://maven.apache.org/guides/introduction/introduction-to-the-pom.html",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "BUILD_MODEL"
+    },
+    {
+      "id": "UNMAPPED_COMPONENT",
+      "version": 1,
+      "detector": "plan",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Dependencia Camel sin starter/extensión verificada en el perfil objetivo: elegir reemplazo con evidencia; el paso de runtime queda bloqueado.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "DEPENDENCY"
+    },
+    {
+      "id": "JBOSS",
+      "version": 2,
+      "detector": "text",
+      "pattern": "org\\.jboss\\.(?!security\\.)",
+      "severity": "high",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Identificar servicio provisto por JBoss y alternativa equivalente.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "import org.jboss.logging.Logger;"
+        ],
+        "negative": [
+          "import org.slf4j.Logger;",
+          "import org.jboss.security.SecurityContext;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JBOSS_SECURITY",
+      "version": 1,
+      "detector": "text",
+      "pattern": "org\\.jboss\\.security\\.|<security-domain>|@SecurityDomain\\b",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Mapear realms/roles JBoss al mecanismo del runtime objetivo y probar permisos.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "<security-domain>other</security-domain>"
+        ],
+        "negative": [
+          "<domain>x</domain>"
+        ]
+      },
+      "category": "SECURITY"
+    },
+    {
+      "id": "JBOSS_DEPLOYMENT",
+      "version": 1,
+      "detector": "text",
+      "pattern": "<jboss-deployment-structure\\b|<jboss-web\\b",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Revisar módulos y dependencias implícitas del servidor declaradas en descriptores JBoss.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "<jboss-deployment-structure>"
+        ],
+        "negative": [
+          "<web-app>"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "EJB",
+      "version": 1,
+      "detector": "text",
+      "pattern": "@(?:Stateless|Stateful|Singleton|EJB|MessageDriven)\\b|javax\\.ejb\\.|jakarta\\.ejb\\.",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Revisar EJB, lifecycle, timers, seguridad y transacciones; no sustituir mecánicamente.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "@Stateless",
+          "import javax.ejb.EJB;"
+        ],
+        "negative": [
+          "@Service"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JTA",
+      "version": 2,
+      "detector": "text",
+      "pattern": "UserTransaction|TransactionManager\\b|javax\\.transaction\\.(?!xa\\.)|jakarta\\.transaction\\.|XADataSource|XAConnectionFactory",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Validar atomicidad/XA real antes de elegir gestor transaccional o compensación.",
+      "source": "https://camel.apache.org/manual/transactional-client.html",
+      "examples": {
+        "positive": [
+          "import javax.transaction.UserTransaction;"
+        ],
+        "negative": [
+          "import javax.transaction.xa.XAResource;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JNDI",
+      "version": 2,
+      "detector": "text",
+      "pattern": "InitialContext|java:(?:jboss|comp|global|app|module)/",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Resolver recurso JNDI y externalizar configuración sin cambiar identidad ni semántica del bean.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "ctx.lookup(\"java:jboss/datasources/X\")"
+        ],
+        "negative": [
+          "dataSource.getConnection()"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JAKARTA_JMS",
+      "version": 1,
+      "detector": "text",
+      "pattern": "javax\\.jms\\.",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxJmsToJakartaJms",
+      "recommendation": "Aplicar receta Jakarta JMS específica con dependencias compatibles y compilar/probar.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.jms.ConnectionFactory;"
+        ],
+        "negative": [
+          "import jakarta.jms.ConnectionFactory;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JAKARTA_PERSISTENCE",
+      "version": 1,
+      "detector": "text",
+      "pattern": "javax\\.persistence\\.",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxPersistenceToJakartaPersistence",
+      "recommendation": "Receta Jakarta Persistence; verificar proveedor JPA y propiedades javax.persistence.* en configuración.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.persistence.Entity;"
+        ],
+        "negative": [
+          "import javax.sql.DataSource;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JAKARTA_SERVLET",
+      "version": 1,
+      "detector": "text",
+      "pattern": "javax\\.servlet\\.",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxServletToJakartaServlet",
+      "recommendation": "Receta Jakarta Servlet; confirmar si el runtime objetivo necesita servidor HTTP.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.servlet.http.HttpServlet;"
+        ],
+        "negative": [
+          "import javax.net.ssl.SSLContext;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JAKARTA_XMLBIND",
+      "version": 1,
+      "detector": "text",
+      "pattern": "javax\\.xml\\.bind\\.",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxXmlBindMigrationToJakartaXmlBind",
+      "recommendation": "Receta Jakarta XML Binding y runtime JAXB compatible.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.xml.bind.JAXBContext;"
+        ],
+        "negative": [
+          "import javax.xml.parsers.DocumentBuilder;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JAKARTA_VALIDATION",
+      "version": 1,
+      "detector": "text",
+      "pattern": "javax\\.validation\\.",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxValidationMigrationToJakartaValidation",
+      "recommendation": "Receta Jakarta Validation y proveedor compatible.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.validation.constraints.NotNull;"
+        ],
+        "negative": [
+          "import javax.crypto.Cipher;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL_VM",
+      "version": 1,
+      "detector": "text",
+      "pattern": "[\"'](?:vm|direct-vm):",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Revisar comunicación entre CamelContext; no sustituir por seda automáticamente.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "<to uri=\"vm:shared\"/>",
+          "to(\"direct-vm:x\")"
+        ],
+        "negative": [
+          "to(\"direct:x\")",
+          "to(\"seda:x\")"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JMS",
+      "version": 2,
+      "detector": "text",
+      "pattern": "[\"'](?:activemq|jms|sjms2?|amqp|hornetq):|@MessageDriven\\b",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Validar cliente/broker, ack, retry, DLQ, orden y transacciones. No cambiar broker sin razón validada.",
+      "source": "https://camel.apache.org/components/latest/jms-component.html",
+      "examples": {
+        "positive": [
+          "from(\"activemq:queue:ORDERS\")"
+        ],
+        "negative": [
+          "// texto activemq sin endpoint"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "HTTP4",
+      "version": 2,
+      "detector": "text",
+      "pattern": "[\"'](?:http4|https4):",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Revisar transición a http/https y cambios de opciones del cliente.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "to(\"http4:host/x\")"
+        ],
+        "negative": [
+          "to(\"http:host/x\")"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL_CDI",
+      "version": 1,
+      "detector": "text",
+      "pattern": "org\\.apache\\.camel\\.cdi\\.|camel-cdi",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Elegir DI del runtime objetivo y adaptar lifecycle de CamelContext.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "import org.apache.camel.cdi.ContextName;"
+        ],
+        "negative": [
+          "import org.apache.camel.CamelContext;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL_MOVED_API",
+      "version": 1,
+      "detector": "text",
+      "pattern": "org\\.apache\\.camel\\.impl\\.(?:JndiRegistry|SimpleRegistry|PropertyPlaceholderDelegateRegistry|ExplicitCamelContextNameStrategy)\\b",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Clase movida o retirada en Camel 3; ajustar según guía 2→3.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "import org.apache.camel.impl.JndiRegistry;"
+        ],
+        "negative": [
+          "import org.apache.camel.impl.DefaultCamelContext;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "SPRING_XML",
+      "version": 1,
+      "detector": "text",
+      "pattern": "http://www\\.springframework\\.org/schema/beans",
+      "severity": "low",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Evaluar loader y beans soportados por el runtime; convertir solo con justificación.",
+      "source": "https://camel.apache.org/camel-spring-boot/latest/spring-boot.html",
+      "examples": {
+        "positive": [
+          "xmlns=\"http://www.springframework.org/schema/beans\""
+        ],
+        "negative": [
+          "xmlns=\"http://camel.apache.org/schema/spring\""
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "QUARTZ2",
+      "version": 1,
+      "detector": "text",
+      "pattern": "[\"']quartz2:",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recommendation": "camel-quartz2 se unificó en camel-quartz: cambiar el esquema quartz2: por quartz: y verificar cron/opciones.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "from(\"quartz2://t?cron=0+0+*+*+*+?\")"
+        ],
+        "negative": [
+          "from(\"quartz://t\")"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "HARDCODED_SECRET",
+      "version": 2,
+      "detector": "text",
+      "pattern": "(?i)\\b(password|passwd|pwd|secret|token|api[_-]?key)\\s*[=:]\\s*(?![\\s\"']*(?:\\$\\{|\\{\\{|RAW\\(\\{\\{))[\"']?[^\\s\"'${}<]{3,}",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": false,
+      "recommendation": "Secreto en el código o configuración: sustituir por variable de entorno o referencia a un gestor de secretos y rotarlo.",
+      "source": "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/",
+      "examples": {
+        "positive": [
+          "db.password=Sup3rS3cret",
+          "apiKey: abc123def"
+        ],
+        "negative": [
+          "db.password=${DB_PASSWORD}",
+          "password: ${DB_PASSWORD:}",
+          "from(\"sftp://u@h/in?password=RAW({{secrets.h.password}})&delay=1\")",
+          "token={{secrets.api.token}}"
+        ]
+      },
+      "category": "SECURITY"
+    },
+    {
+      "id": "JAKARTA_INJECT",
+      "version": 1,
+      "detector": "text",
+      "pattern": "javax\\.inject\\.",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxInjectMigrationToJakartaInject",
+      "recommendation": "Receta Jakarta Inject: Spring reconoce @Inject/@Named de jakarta.inject. La conversión a inyección por constructor es opcional y se revisa manualmente.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.inject.Inject;"
+        ],
+        "negative": [
+          "import jakarta.inject.Inject;"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CDI_SCOPE",
+      "version": 2,
+      "detector": "text",
+      "pattern": "javax\\.enterprise\\.|@(?:ApplicationScoped|RequestScoped|SessionScoped|Dependent)\\b",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "Bean CDI: Spring no descubre ámbitos CDI; registrar como @Component/@Bean y revisar productores y ciclo de vida.",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "@ApplicationScoped",
+          "import javax.enterprise.inject.Produces;"
+        ],
+        "negative": [
+          "@Component",
+          "@Produces(MediaType.APPLICATION_JSON)"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CXF",
+      "version": 1,
+      "detector": "text",
+      "pattern": "[\"'](?:cxf|cxfrs):|<cxf:(?:cxfEndpoint|rsServer|rsClient)\\b",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "blocking": false,
+      "recommendation": "SOAP/REST con CXF: camel-cxf se divide en cxf-soap y cxf-rest en Camel 4; revisar definiciones cxfEndpoint, WSDL, interceptores y seguridad WS.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [
+          "from(\"cxf:bean:orderService\")",
+          "<cxf:cxfEndpoint id=\"x\""
+        ],
+        "negative": [
+          "from(\"http:host\")"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "JAVA_LEGACY",
+      "detector": "maven",
+      "severity": "high",
+      "classification": "AUTO_TEST",
+      "category": "MIGRATION",
+      "recommendation": "Java anterior a 17: Camel 4 y Spring Boot 3 requieren Java 17 o superior; la receta de Java del plan lo actualiza y debe compilarse/probarse.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "version": 1,
+      "blocking": false,
+      "examples": {
+        "positive": [],
+        "negative": []
+      }
+    },
+    {
+      "id": "TEST_COVERAGE",
+      "detector": "maven",
+      "severity": "high",
+      "classification": "MANUAL",
+      "category": "TEST",
+      "recommendation": "Menos clases de prueba que RouteBuilder (o ninguna): añadir pruebas unitarias/integración antes de migrar para poder comparar comportamiento.",
+      "source": "docs/16_EQUIVALENCIA.md",
+      "version": 1,
+      "blocking": false,
+      "examples": {
+        "positive": [],
+        "negative": []
+      }
+    },
+    {
+      "id": "JAKARTA_WS",
+      "detector": "text",
+      "pattern": "javax\\.ws\\.rs\\.",
+      "severity": "high",
+      "classification": "REVIEW",
+      "category": "MIGRATION",
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxWsToJakartaWs",
+      "recommendation": "JAX-RS: la receta cambia a jakarta.ws.rs, pero Spring Boot no incluye implementación JAX-RS; migrar a REST DSL/Spring MVC o añadir Jersey/RESTEasy con revisión.",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.ws.rs.GET;"
+        ],
+        "negative": [
+          "import jakarta.ws.rs.GET;"
+        ]
+      },
+      "version": 1,
+      "blocking": false
+    },
+    {
+      "id": "JAKARTA_ANNOTATION",
+      "detector": "text",
+      "pattern": "javax\\.annotation\\.(?:PostConstruct|PreDestroy|Resources?|Priority)\\b",
+      "severity": "low",
+      "classification": "AUTO_TEST",
+      "category": "MIGRATION",
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxAnnotationMigrationToJakartaAnnotation",
+      "recommendation": "Receta Jakarta Annotation (javax.annotation.processing permanece: es Java SE).",
+      "source": "https://docs.openrewrite.org/recipes/java/migrate/jakarta",
+      "examples": {
+        "positive": [
+          "import javax.annotation.PostConstruct;"
+        ],
+        "negative": [
+          "import javax.annotation.processing.Generated;"
+        ]
+      },
+      "version": 1,
+      "blocking": false
+    },
+    {
+      "id": "CAMEL_SERVLET",
+      "detector": "text",
+      "pattern": "component\\(\\s*\"servlet\"\\s*\\)|[\"']servlet:|camel-servlet|CamelHttpTransportServlet",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "category": "MIGRATION",
+      "recommendation": "REST con camel-servlet: en Spring Boot usar camel-servlet-starter y mapear camel.servlet.mapping.context-path al contextPath del REST DSL; validar paths públicos.",
+      "source": "https://camel.apache.org/camel-spring-boot/latest/servlet-starter.html",
+      "examples": {
+        "positive": [
+          ".component(\"servlet\")",
+          "<servlet-class>org.apache.camel.component.servlet.CamelHttpTransportServlet</servlet-class>"
+        ],
+        "negative": [
+          ".component(\"platform-http\")"
+        ]
+      },
+      "version": 1,
+      "blocking": false
+    },
+    {
+      "id": "HARDCODED_URL",
+      "detector": "text",
+      "pattern": "[\"'](?:https?4?|wss?)://(?!\\{\\{|\\$\\{)[\\w.\\-]+(?::\\d+)?",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "category": "MIGRATION",
+      "recommendation": "URL fija en código/configuración: externalizar a propiedades por entorno (las http4 literales se externalizan automáticamente a services.*.url).",
+      "source": "camel-migration-tool-docs/06-TRANSFORMACIONES.md",
+      "examples": {
+        "positive": [
+          ".to(\"http4://localhost:8080/x\")",
+          "\"https://api.example.com\""
+        ],
+        "negative": [
+          ".to(\"{{services.api.url}}\")",
+          "\"direct:x\"",
+          "<beans xmlns=\"http://www.springframework.org/schema/beans\"",
+          "xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0\""
+        ]
+      },
+      "version": 1,
+      "blocking": false,
+      "excludeLine": "xmlns|schemaLocation|<!DOCTYPE|xsi:"
+    },
+    {
+      "id": "DYNAMIC_HTTP",
+      "detector": "text",
+      "pattern": "\\.toD\\s*\\(\\s*\"(?:https?4?):",
+      "severity": "medium",
+      "classification": "REVIEW",
+      "category": "SECURITY",
+      "recommendation": "toD con URL HTTP dinámica: validar los valores que componen la URL (SSRF/inyección) y externalizar el host.",
+      "source": "https://camel.apache.org/components/latest/eips/toD-eip.html",
+      "examples": {
+        "positive": [
+          ".toD(\"http4://h/orders/${header.id}\")"
+        ],
+        "negative": [
+          ".to(\"http://h/x\")"
+        ]
+      },
+      "version": 1,
+      "blocking": false
+    },
+    {
+      "id": "CAMEL_HTTP_HEADERS",
+      "detector": "text",
+      "pattern": "Exchange\\.HTTP_\\w+",
+      "severity": "low",
+      "classification": "REVIEW",
+      "category": "MIGRATION",
+      "recommendation": "Acoplamiento a cabeceras HTTP de Camel: verificar nombres/valores con el componente HTTP de Camel 4 y en pruebas de contrato.",
+      "source": "https://camel.apache.org/components/latest/http-component.html",
+      "examples": {
+        "positive": [
+          "setHeader(Exchange.HTTP_METHOD, constant(\"GET\"))"
+        ],
+        "negative": [
+          "setHeader(\"x\", constant(1))"
+        ]
+      },
+      "version": 1,
+      "blocking": false
+    },
+    {
+      "id": "MONEY_DOUBLE",
+      "detector": "text",
+      "pattern": "\\.doubleValue\\(\\)|\\bdouble\\s+\\w*(?:amount|price|total|importe|monto)\\w*",
+      "severity": "low",
+      "classification": "REVIEW",
+      "category": "SOURCE",
+      "recommendation": "Importes con double: riesgo de redondeo; usar BigDecimal (preexistente en el legacy, no lo introduce la migración).",
+      "source": "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/math/BigDecimal.html",
+      "examples": {
+        "positive": [
+          "order.getAmount().doubleValue() > 1000",
+          "double totalAmount = 0;"
+        ],
+        "negative": [
+          "BigDecimal amount"
+        ]
+      },
+      "version": 1,
+      "blocking": false
+    },
+    {
+      "id": "OSGI_BUNDLE",
+      "version": 2,
+      "detector": "text",
+      "pattern": "<packaging>\\s*bundle\\s*</packaging>|maven-bundle-plugin|Bundle-SymbolicName|<Import-Package>|<Export-Package>",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Proyecto OSGi (bundle): no hay runtime OSGi en el destino; convertir a jar, quitar maven-bundle-plugin e Import/Export-Package, y migrar servicios OSGi a beans del runtime.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [
+          "<packaging>bundle</packaging>",
+          "<artifactId>maven-bundle-plugin</artifactId>",
+          "<Export-Package>com.acme.*</Export-Package>"
+        ],
+        "negative": [
+          "<packaging>jar</packaging>"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "BLUEPRINT",
+      "version": 1,
+      "detector": "text",
+      "pattern": "osgi\\.org/xmlns/blueprint",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Blueprint XML: convertir beans, CamelContext y referencias de servicios OSGi al runtime destino (ARCHITECTURAL_MIGRATION); no se sube camel-blueprint de versión.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [
+          "<blueprint xmlns=\"http://www.osgi.org/xmlns/blueprint/v1.0.0\">"
+        ],
+        "negative": [
+          "<beans xmlns=\"http://www.springframework.org/schema/beans\">"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL_COMPONENT_COMPAT",
+      "version": 1,
+      "detector": "plan",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "Componente Camel sin destino válido en Camel 4 (removido, reemplazado o arquitectónico): ver camel-component-migration-report.md; ninguna dependencia se escribe sin pasar el registro de compatibilidad y la validación de artefactos.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "DEPENDENCY"
+    },
+    {
+      "id": "TARGET_RUNTIME_MIGRATION_REQUIRED",
+      "version": 1,
+      "detector": "maven",
+      "severity": "high",
+      "classification": "MANUAL",
+      "blocking": true,
+      "recommendation": "El proyecto corre en OSGi/Karaf (bundle/Blueprint): además de Camel 2/3→4 requiere migrar el runtime: bundle → jar, beans y CamelContext de Blueprint → configuración del runtime destino, referencias de servicios OSGi → beans, quitar maven-bundle-plugin y metadatos MANIFEST.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [],
+        "negative": []
+      },
+      "category": "MIGRATION"
+    }
+  ]
+}

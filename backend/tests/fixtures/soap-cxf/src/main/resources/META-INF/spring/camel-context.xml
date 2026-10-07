@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" xmlns:cxf="http://camel.apache.org/schema/cxf">
+  <cxf:cxfEndpoint id="customerEndpoint" address="/customers" serviceClass="demo.soap.CustomerService"/>
+  <camelContext xmlns="http://camel.apache.org/schema/spring">
+    <route id="customer-soap">
+      <from uri="cxf:bean:customerEndpoint"/>
+      <to uri="sql:select * from customer where id = :#${body}?dataSource=#customerDS"/>
+    </route>
+  </camelContext>
+</beans>
