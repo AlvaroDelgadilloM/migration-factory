@@ -1,0 +1,1 @@
+<routes xmlns="http://camel.apache.org/schema/spring"><route id="other"><from uri="direct:other"/><to uri="vm:shared"/></route></routes>

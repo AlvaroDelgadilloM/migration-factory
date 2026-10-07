@@ -1,0 +1,338 @@
+{
+  "version": "2026.10.3",
+  "description": "CamelComponentCompatibilityRegistry v2 (19 + camel-cxf-evidence-corrections 33-39). Decisiones semánticas, no mapeos por nombre: cada componente declara su estado, su destino (o resolver por uso), la evidencia específica que lo correlaciona con el código y la semántica de SUPPORTED (artefacto vs código vs runtime). Los renombres 1:1 están en rules/migration-rules.json. Todo destino se verifica contra rules/camel/boms/camel-bom-<versión>.json antes de escribirse en un POM.",
+  "statuses": [
+    "SUPPORTED",
+    "RENAMED",
+    "REPLACED",
+    "REMOVED",
+    "ARCHITECTURAL_MAPPING",
+    "ARCHITECTURAL_MIGRATION",
+    "MANUAL_REVIEW"
+  ],
+  "usageTokens": [
+    "<jaxb",
+    "@WebService",
+    "@XmlRootElement",
+    "CXFServlet",
+    "CamelHttpTransportServlet",
+    "JAXBContext",
+    "JAXRSClientFactoryBean",
+    "JAXRSServerFactoryBean",
+    "JaxWsProxyFactoryBean",
+    "JaxWsServerFactoryBean",
+    "Marshaller",
+    "OSGI-INF/blueprint",
+    "Swagger2Feature",
+    "SwaggerFeature",
+    "apiContextPath",
+    "apiProperty",
+    "cxf:",
+    "cxf://",
+    "cxf:bean:",
+    "cxf:cxfEndpoint",
+    "cxf:rsClient",
+    "cxf:rsServer",
+    "cxfrs:",
+    "jakarta.jws",
+    "jakarta.ws.rs",
+    "jakarta.xml.bind",
+    "javax.jws",
+    "javax.ws.rs",
+    "javax.xml.bind",
+    "org.apache.camel.cdi",
+    "osgi.org/xmlns/blueprint",
+    "rest-swagger:",
+    "restConfiguration",
+    "servlet:",
+    "springframework.org/schema/beans"
+  ],
+  "components": {
+    "camel-ahc": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-http",
+        "camel-vertx-http"
+      ],
+      "confidence": "HIGH",
+      "reason": "Async Http Client se eliminó: elegir camel-http o camel-vertx-http y adaptar los endpoints."
+    },
+    "camel-blueprint": {
+      "status": "ARCHITECTURAL_MIGRATION",
+      "artifactTarget": null,
+      "runtimeMigrationRequired": true,
+      "confidence": "HIGH",
+      "runtimeOptions": [
+        "Spring Boot 3",
+        "Quarkus 3",
+        "Camel Main"
+      ],
+      "evidence": [
+        "OSGI-INF/blueprint",
+        "osgi.org/xmlns/blueprint"
+      ],
+      "actions": [
+        "convertir beans de Blueprint",
+        "convertir el CamelContext de Blueprint",
+        "convertir referencias/servicios OSGi",
+        "quitar camel-blueprint",
+        "retirar metadata OSGi cuando aplique",
+        "bundle → jar si el runtime destino lo requiere"
+      ],
+      "reason": "OSGi Blueprint no existe en Camel 4: es una migración de runtime, no de artefacto."
+    },
+    "camel-cdi": {
+      "status": "ARCHITECTURAL_MIGRATION",
+      "confidence": "HIGH",
+      "ifUnused": {
+        "tokens": [
+          "org.apache.camel.cdi"
+        ],
+        "action": "REMOVE"
+      },
+      "reason": "Camel CDI no existe en Camel 4: la DI la da el runtime (Spring o Quarkus ArC). Si el código usa org.apache.camel.cdi hay que rediseñar el arranque.",
+      "runtimeOptions": [
+        "Spring Boot 3",
+        "Quarkus 3"
+      ],
+      "artifactTarget": null,
+      "evidence": [
+        "org.apache.camel.cdi"
+      ]
+    },
+    "camel-core": {
+      "status": "SUPPORTED",
+      "artifactTarget": "camel-core",
+      "confidence": "HIGH",
+      "sourceCompatibility": "REQUIRES_VALIDATION",
+      "evidence": [
+        "uri:direct",
+        "uri:seda",
+        "uri:vm",
+        "uri:direct-vm",
+        "uri:log",
+        "uri:bean",
+        "uri:timer",
+        "uri:mock",
+        "uri:file",
+        "uri:language"
+      ],
+      "reason": "El artefacto existe en Camel 4, pero la API Java cambió entre 2.x/3.x y 4.x: el código fuente requiere validación (compilación y pruebas)."
+    },
+    "camel-cxf": {
+      "status": "ARCHITECTURAL_MAPPING",
+      "resolver": "CxfUsageAnalyzer",
+      "confidence": "MEDIUM",
+      "targets": {
+        "SOAP": {
+          "plain": "camel-cxf-soap",
+          "spring_xml": "camel-cxf-spring-soap"
+        },
+        "REST": {
+          "plain": "camel-cxf-rest",
+          "spring_xml": "camel-cxf-spring-rest"
+        }
+      },
+      "evidence": [
+        "uri:cxf",
+        "uri:cxfrs",
+        "cxf:bean:",
+        "cxf://",
+        "cxfrs:",
+        "cxf:cxfEndpoint",
+        "cxf:rsServer",
+        "cxf:rsClient",
+        "javax.jws",
+        "jakarta.jws",
+        "@WebService",
+        "JaxWsProxyFactoryBean",
+        "JaxWsServerFactoryBean",
+        "javax.ws.rs",
+        "jakarta.ws.rs",
+        "JAXRSServerFactoryBean",
+        "JAXRSClientFactoryBean",
+        "CXFServlet"
+      ],
+      "reason": "camel-cxf se dividió en Camel 4 (SOAP/REST, plano o Spring XML): el destino se decide por el uso detectado, nunca solo por el artifactId."
+    },
+    "camel-dozer": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-mapstruct"
+      ],
+      "confidence": "HIGH",
+      "reason": "Dozer se eliminó."
+    },
+    "camel-elasticsearch-rest": {
+      "status": "REPLACED",
+      "target": "camel-elasticsearch",
+      "confidence": "MEDIUM",
+      "auto": false,
+      "reason": "Nuevo cliente Java de Elasticsearch: cambian opciones del endpoint."
+    },
+    "camel-hystrix": {
+      "status": "REPLACED",
+      "target": "camel-resilience4j",
+      "confidence": "MEDIUM",
+      "auto": false,
+      "reason": "Hystrix se eliminó; circuitBreaker() con Resilience4j tiene otra configuración (umbrales, timeouts)."
+    },
+    "camel-jaxb": {
+      "status": "SUPPORTED",
+      "artifactTarget": "camel-jaxb",
+      "confidence": "HIGH",
+      "sourceMigration": "CONDITIONAL",
+      "prerequisites": [
+        "migración Jakarta JAXB (javax.xml.bind → jakarta.xml.bind)",
+        "runtime compatible con Jakarta",
+        "validación de compilación"
+      ],
+      "evidence": [
+        "javax.xml.bind",
+        "jakarta.xml.bind",
+        "@XmlRootElement",
+        "JAXBContext",
+        "Marshaller",
+        "<jaxb"
+      ],
+      "reason": "El artefacto existe en Camel 4; el código JAXB depende de la migración a Jakarta."
+    },
+    "camel-mqtt": {
+      "status": "REPLACED",
+      "target": "camel-paho-mqtt5",
+      "confidence": "MEDIUM",
+      "auto": false,
+      "reason": "camel-mqtt se eliminó; Paho (MQTT 3/5) tiene otra configuración."
+    },
+    "camel-opentracing": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-opentelemetry"
+      ],
+      "confidence": "HIGH",
+      "reason": "Trazas: usar OpenTelemetry."
+    },
+    "camel-rabbitmq": {
+      "status": "REPLACED",
+      "target": "camel-spring-rabbitmq",
+      "confidence": "MEDIUM",
+      "auto": false,
+      "reason": "camel-rabbitmq se eliminó; camel-spring-rabbitmq usa Spring AMQP y otras opciones de endpoint."
+    },
+    "camel-rest-swagger": {
+      "status": "REPLACED",
+      "target": "camel-rest-openapi",
+      "confidence": "MEDIUM",
+      "auto": false,
+      "reason": "El esquema rest-swagger: pasa a rest-openapi: con especificación OpenAPI: revisar el contrato antes de reemplazar.",
+      "evidence": [
+        "rest-swagger:"
+      ]
+    },
+    "camel-script": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-groovy",
+        "camel-joor"
+      ],
+      "confidence": "HIGH",
+      "reason": "Lenguajes JSR-223 (javascript, etc.) eliminados."
+    },
+    "camel-servlet": {
+      "status": "SUPPORTED",
+      "artifactTarget": "camel-servlet",
+      "confidence": "HIGH",
+      "runtimeConfigMigration": "CONDITIONAL",
+      "evidence": [
+        "uri:servlet",
+        "servlet:",
+        "CamelHttpTransportServlet"
+      ],
+      "reason": "El artefacto existe en Camel 4; el registro del servlet cambia según el runtime (web.xml → configuración Spring Boot/Quarkus)."
+    },
+    "camel-spring-javaconfig": {
+      "status": "REMOVED",
+      "alternatives": [
+        "Spring Boot (@Configuration)"
+      ],
+      "confidence": "HIGH",
+      "reason": "La configuración Java de Spring la cubre Spring Boot."
+    },
+    "camel-swagger": {
+      "status": "MANUAL_REVIEW",
+      "action": "inspect_usage",
+      "alternatives": [
+        "camel-openapi-java"
+      ],
+      "confidence": "MEDIUM",
+      "reason": "camel-swagger (servlet de Swagger 2 de Camel 2) no tiene reemplazo 1:1: revisar cómo se expone la documentación de la API antes de elegir camel-openapi-java."
+    },
+    "camel-swagger-java": {
+      "status": "REPLACED",
+      "target": "camel-openapi-java",
+      "confidence": "HIGH",
+      "auto": true,
+      "usage": {
+        "any": [
+          "restConfiguration",
+          "apiContextPath",
+          "apiProperty"
+        ],
+        "none": [
+          "SwaggerFeature",
+          "Swagger2Feature"
+        ]
+      },
+      "reason": "Swagger 2 se reemplazó por OpenAPI. Automático solo si se usa desde Rest DSL (restConfiguration/apiContextPath) y no desde CXF.",
+      "evidence": [
+        "restConfiguration",
+        "apiContextPath",
+        "apiProperty",
+        "Swagger2Feature",
+        "SwaggerFeature"
+      ]
+    },
+    "camel-test-spring": {
+      "status": "REPLACED",
+      "target": "camel-test-spring-junit5",
+      "confidence": "MEDIUM",
+      "auto": false,
+      "reason": "Camel 4 solo soporta JUnit 5: las pruebas JUnit 4 deben migrarse."
+    },
+    "camel-websocket": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-vertx-websocket"
+      ],
+      "confidence": "HIGH",
+      "reason": "camel-websocket (Jetty) se eliminó."
+    },
+    "camel-xmljson": {
+      "status": "MANUAL_REVIEW",
+      "action": "inspect_usage",
+      "alternatives": [
+        "camel-jackson",
+        "camel-jacksonxml"
+      ],
+      "confidence": "LOW",
+      "reason": "Sin equivalente en Camel 4 (eliminado en Camel 3): la conversión XML↔JSON debe reimplementarse según su uso."
+    },
+    "camel-xstream": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-jackson",
+        "camel-jaxb"
+      ],
+      "confidence": "HIGH",
+      "reason": "XStream se eliminó: elegir otro data format y verificar el formato serializado."
+    },
+    "camel-zipkin": {
+      "status": "REMOVED",
+      "alternatives": [
+        "camel-opentelemetry"
+      ],
+      "confidence": "HIGH",
+      "reason": "Trazas: usar OpenTelemetry."
+    }
+  }
+}

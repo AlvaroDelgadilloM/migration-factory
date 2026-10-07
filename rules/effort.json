@@ -1,0 +1,27 @@
+{
+  "version": "2026.10.1",
+  "description": "Horas por unidad de trabajo. null = sin calibrar: la estimación muestra unidades pero no inventa horas. Complete con datos de su organización o use la calibración por mediana de tiempos registrados.",
+  "categories": {
+    "cdi-bean":            {"label": "Beans CDI → Spring/Quarkus", "unit": "clase",       "rules": ["CDI_SCOPE", "CAMEL_CDI"], "hours": null},
+    "http-review":         {"label": "Llamadas HTTP (http4, URLs, cabeceras, toD)", "unit": "archivo", "rules": ["HTTP4", "HARDCODED_URL", "CAMEL_HTTP_HEADERS", "DYNAMIC_HTTP"], "hours": null},
+    "rest-exposure":       {"label": "Exposición REST (servlet, JAX-RS)", "unit": "archivo", "rules": ["CAMEL_SERVLET", "JAKARTA_WS"], "hours": null},
+    "soap":                {"label": "SOAP / CXF", "unit": "archivo", "rules": ["CXF"], "hours": null},
+    "datasource-config":   {"label": "JNDI / DataSource", "unit": "archivo", "rules": ["JNDI"], "hours": null},
+    "spring-xml":          {"label": "Spring XML", "unit": "archivo", "rules": ["SPRING_XML"], "hours": null},
+    "jboss-config":        {"label": "Descriptores y APIs JBoss", "unit": "archivo", "rules": ["JBOSS", "JBOSS_DEPLOYMENT", "JBOSS_SECURITY", "PACKAGING_EAR"], "hours": null},
+    "ejb-jta":             {"label": "EJB / JTA / XA", "unit": "archivo", "rules": ["EJB", "JTA"], "hours": null},
+    "inter-context":       {"label": "vm:/direct-vm: entre contextos", "unit": "archivo", "rules": ["CAMEL_VM"], "hours": null},
+    "secrets":             {"label": "Secretos (alta de variables y rotación)", "unit": "ocurrencia", "rules": ["HARDCODED_SECRET"], "hours": null},
+    "unmapped-dependency": {"label": "Dependencias sin equivalente", "unit": "ocurrencia", "rules": ["UNMAPPED_COMPONENT"], "hours": null},
+    "source-quality":      {"label": "Calidad del código legacy (double en importes)", "unit": "archivo", "rules": ["MONEY_DOUBLE"], "hours": null},
+    "test-coverage":       {"label": "Pruebas faltantes antes de migrar", "unit": "RouteBuilder sin prueba", "rules": ["TEST_COVERAGE"], "hours": null},
+    "camel2-review":       {"label": "Revisión Camel 2→3", "unit": "módulo", "rules": ["CAMEL2_VERSION", "CAMEL_MOVED_API"], "hours": null}
+  },
+  "equivalence": {
+    "label": "Pruebas de equivalencia por integración (docs/16_EQUIVALENCIA.md)",
+    "unit": "integración",
+    "hoursByType": {"JMS": null, "REST/HTTP": null, "REST_CXF": null, "SOAP": null, "DB": null, "FILES": null, "SCHEDULING": null, "MAIL": null, "MESSAGING": null, "INTER_CONTEXT": null}
+  },
+  "diffReview": {"label": "Revisión del diff", "unit": "archivo modificado", "hours": null},
+  "fixed": {"label": "Costos fijos del proyecto (entorno, CI/CD, configuración, despliegue)", "unit": "proyecto", "hours": null}
+}

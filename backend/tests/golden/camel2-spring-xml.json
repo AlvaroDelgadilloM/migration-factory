@@ -1,0 +1,96 @@
+{
+  "runtime": "servlet-container",
+  "java": "1.8",
+  "camel": "2.25.4",
+  "findings": {
+    "CAMEL2_VERSION": 1,
+    "HARDCODED_URL": 1,
+    "HTTP4": 1,
+    "JAVA_LEGACY": 1,
+    "MONEY_DOUBLE": 1,
+    "PACKAGING_WAR": 1,
+    "SPRING_XML": 2
+  },
+  "actions": {
+    "CAMEL2_VERSION": "manual-review",
+    "HARDCODED_URL": "replace",
+    "HTTP4": "replace",
+    "JAVA_LEGACY": "rewrite",
+    "MONEY_DOUBLE": "copy",
+    "PACKAGING_WAR": "rewrite",
+    "SPRING_XML": "copy"
+  },
+  "integrations": {
+    "FILES": 1,
+    "REST/HTTP": 1
+  },
+  "graph": {
+    "routes": 2,
+    "endpoints": 4,
+    "channels": [
+      "direct:publish"
+    ]
+  },
+  "plan": [
+    [
+      "baseline",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "camel-2-to-3",
+      "REVIEW",
+      "cleared"
+    ],
+    [
+      "camel-3-to-4",
+      "AUTO_TEST",
+      "ready"
+    ],
+    [
+      "camel4-compat-mapping",
+      "AUTO_TEST",
+      "ready"
+    ],
+    [
+      "runtime-spring",
+      "REVIEW",
+      "ready"
+    ],
+    [
+      "endpoints-config",
+      "REVIEW",
+      "ready"
+    ],
+    [
+      "behavior-review",
+      "REVIEW",
+      "pending"
+    ],
+    [
+      "compile",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "test",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "secret-scan",
+      "AUTO",
+      "ready"
+    ],
+    [
+      "equivalence",
+      "MANUAL",
+      "ready"
+    ],
+    [
+      "diff-review",
+      "MANUAL",
+      "ready"
+    ]
+  ]
+}
