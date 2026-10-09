@@ -87,6 +87,12 @@ métricas Prometheus, contrato de plugins y golden tests. `migrate.py modernize`
 refactors SAFE/REFACTOR con build + pruebas por lote y rollback automático; ARCHITECTURE solo se propone.
 Ver `docs/18_MEJORAS_V2_Y_MODERNIZACION.md`.
 
+## Fuse/Karaf → Tomcat WAR (perfil `tomcat-war`)
+
+Para bundles OSGi + Blueprint que deben pasar a Camel 4 sin rediseño: un WAR con Spring XML y una capa de compatibilidad
+(`direct-vm`, `xmljson`, servicios OSGi). Solo CLI: `python migrate.py migrate <workspace> --target tomcat-war --output <salida>`.
+Ver `docs/19_TOMCAT_WAR.md`.
+
 ## Documentación
 
 `docs/01`–`docs/14` (especificación original actualizada), `docs/15_IMPLEMENTACION.md` (arquitectura implementada,

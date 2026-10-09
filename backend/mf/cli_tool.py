@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 EXIT_OK, EXIT_ERROR, EXIT_BUILD, EXIT_CRITICAL, EXIT_INPUT = 0, 1, 2, 3, 4
-TARGETS = {'springboot': 'spring', 'spring': 'spring', 'quarkus': 'quarkus'}
+TARGETS = {'springboot': 'spring', 'spring': 'spring', 'quarkus': 'quarkus', 'tomcat-war': 'tomcat-war'}
 ACTION = {'AUTO': 'AUTOMATIC', 'AUTO_TEST': 'AUTOMATIC_WITH_REVIEW', 'REVIEW': 'AUTOMATIC_WITH_REVIEW', 'MANUAL': 'MANUAL'}
 JAKARTA_FIX = {  # compile error "package javax.X does not exist" -> verified Jakarta recipe
     'javax.jms': 'org.openrewrite.java.migrate.jakarta.JavaxJmsToJakartaJms',
@@ -1164,6 +1164,55 @@ def migrate_workspace(source: Path, out: Path, target, java, accepted, *, log, r
 
 
 # --- entry point --------------------------------------------------------------------------------
+def verify_cmd(args, log) -> int:
+    """Equivalence evidence for the tomcat-war profile (docs/19_TOMCAT_WAR.md). Exit: 0 PASS / accepted, 3 differences or
+    not comparable (needs review), 4 invalid input."""
+    import subprocess
+    from .tomcat_war import pipeline as tw, verify
+    out = Path(args.output).resolve()
+    try:
+        if args.check == 'baseline-server':
+            cmd, env = verify.baseline_command(Path(args.project), out, [m.strip() for m in args.modules.split(',') if m.strip()], args.servlets,
+                                          Path(args.etc), args.port, [c for c in args.classpath.split(os.pathsep) if c], log)
+            log(f'línea base en http://localhost:{args.port} (Ctrl+C para detener)')
+            return subprocess.run(cmd, env=env).returncode
+        if args.check == 'routes':
+            res = verify.routes(Path(args.project), Path(args.migrated), out, Path(args.config).resolve() if args.config else None, log)
+            print(verify.routes_markdown(res))
+        else:
+            res = verify.responses(args.old, args.new, Path(args.cases), out, args.timeout, log)
+            print(verify.responses_markdown(res).split('## Detalle de las diferencias')[0])
+    except tw.InvalidInput as e:
+        raise InvalidInput(str(e)) from None
+    return EXIT_OK if res['status'] in ('PASS', 'PASS_WITH_ACCEPTED') else EXIT_CRITICAL
+
+
+def tomcat_war(source: Path, args, log) -> int:
+    """Profile tomcat-war (docs/19_TOMCAT_WAR.md): the whole workspace becomes one WAR; `plan` only writes the reports."""
+    from .tomcat_war import pipeline as tw
+    out = Path(args.output or 'migration-output').resolve()
+    try:
+        res = tw.migrate(source, out, Path(args.config).resolve() if args.config else None, log=log)
+    except tw.InvalidInput as e:
+        raise InvalidInput(str(e)) from None
+    ws = out / 'migrated-workspace'
+    code = EXIT_OK
+    if args.cmd == 'plan':
+        shutil.rmtree(ws, ignore_errors=True)  # plan: what would change, without leaving a candidate
+    else:
+        if args.build:
+            res['build'] = tw.build(ws, log)
+            write_json(out / 'reports' / 'tomcat-war-report.json', res)
+            code = EXIT_OK if res['build']['status'] == 'PASS' else EXIT_BUILD
+        shutil.make_archive(str(out / 'migrated-workspace'), 'zip', ws)
+    print((out / 'reports' / 'tomcat-war-report.md').read_text(encoding='utf-8').split('## Detalle por módulo')[0])
+    if 'build' in res:
+        print('\n'.join([f"Build: {res['build']['status']}"] + [f'  {e}' for e in res['build'].get('errors', [])]))
+    if code == EXIT_OK and args.fail_on_critical and res['status'] != 'SUCCEEDED':
+        return EXIT_CRITICAL
+    return code
+
+
 def main(argv=None):
     _env_for_cli()
     ap = argparse.ArgumentParser(prog='migrate.py', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1184,6 +1233,8 @@ def main(argv=None):
                        help='decisión explícita sobre un hallazgo bloqueante, p. ej. CAMEL2_VERSION="revisado contra guía 2→3"')
         p.add_argument('--output')
         p.add_argument('--project', dest='project_name', help='un proyecto del workspace (nombre o carpeta)')
+        p.add_argument('--config', help='--target tomcat-war: JSON con las decisiones del cliente (groupId, contenedores, parches, overlay)')
+        p.add_argument('--build', action='store_true', help='--target tomcat-war: compilar el workspace migrado (mvn package)')
         if name == 'migrate':
             p.add_argument('--workspace', action='store_true', help='migrar todos los proyectos del workspace por oleadas')
             p.add_argument('--resume', action='store_true', help='--workspace: reanudar sobre la misma salida (no repite los exitosos)')
@@ -1206,9 +1257,25 @@ def main(argv=None):
     mo.add_argument('project'); mo.add_argument('--output'); mo.add_argument('--target', choices=sorted(TARGETS))
     mo.add_argument('--approve', action='append', default=[], metavar='REGLA', help='aprobar un refactor que cambia contratos, p. ej. MOD_FIELD_INJECTION')
     mo.add_argument('--auto-apply-up-to', choices=['AUTO', 'AUTO_TEST', 'REVIEW'], default='AUTO_TEST')
+    ve = sub.add_parser('verify', help='tomcat-war: evidencia de equivalencia contra el código original (gate G4)')
+    vsub = ve.add_subparsers(dest='check', required=True)
+    vr = vsub.add_parser('routes', help='estructura de las rutas: original (Camel 2) contra migrado')
+    vr.add_argument('project'); vr.add_argument('--migrated', required=True, help='migrated-workspace ya compilado (migrate --build)')
+    vr.add_argument('--config'); vr.add_argument('--output', required=True)
+    vb = vsub.add_parser('baseline-server', help='levanta el código ORIGINAL sobre Camel 2 + Jetty (primer plano)')
+    vb.add_argument('project'); vb.add_argument('--modules', required=True, help='artifactId separados por coma')
+    vb.add_argument('--servlets', required=True, help='Nombre=/alias,... (los que registraba OsgiServletRegisterer)')
+    vb.add_argument('--etc', required=True, help='carpeta de configuración (file:etc/... del origen)')
+    vb.add_argument('--port', type=int, default=18081); vb.add_argument('--classpath', default='', help=f'entradas extra separadas por {os.pathsep!r}')
+    vb.add_argument('--output', required=True)
+    vp = vsub.add_parser('responses', help='misma petición al original y al migrado; compara código, Content-Type y cuerpo')
+    vp.add_argument('--old', required=True); vp.add_argument('--new', required=True); vp.add_argument('--cases', required=True)
+    vp.add_argument('--output', required=True); vp.add_argument('--timeout', type=int, default=60)
     args = ap.parse_args(argv)
     log = (lambda m: print(f'[mf] {m}', file=sys.stderr))
     try:
+        if args.cmd == 'verify':
+            return verify_cmd(args, log)
         if args.cmd == 'plugins':
             from .plugins import PLUGINS
             print(json.dumps(PLUGINS, ensure_ascii=False, indent=2))
@@ -1271,6 +1338,8 @@ def main(argv=None):
             print(json.dumps({'overview': report['overview'], 'summary': report['summary']}, ensure_ascii=False, indent=2))
             critical = any(f['blocking'] for f in report['findings'])
             return EXIT_CRITICAL if args.fail_on_critical and critical else EXIT_OK
+        if args.cmd in ('plan', 'migrate') and args.target == 'tomcat-war':
+            return tomcat_war(source, args, log)
         accepted = {}
         for item in args.accept:
             rule, _, why = item.partition('=')
