@@ -1,0 +1,116 @@
+{
+  "version": "2026.10.1",
+  "description": "Equivalencias al comparar la estructura de las rutas (original Camel 2 contra migrado Camel 4). Se aplican a AMBOS volcados para llevarlos a una forma comun: lo que el motor cambia a proposito y lo que cada version solo imprime distinto. Lo que siga distinto despues de esto es un cambio real de estructura. Sintaxis de Python re.",
+  "equivalences": [
+    {
+      "pattern": "\\{\\{([\\w\\.\\-]+)\\}\\}",
+      "replace": "@\\1@",
+      "reason": "placeholders: Camel 2 los resuelve al definir la ruta y Camel 4 al arrancar"
+    },
+    {
+      "pattern": "\\$\\{property\\.",
+      "replace": "${exchangeProperty.",
+      "reason": "regla SIMPLE_PROPERTY"
+    },
+    {
+      "pattern": "org\\.apache\\.camel\\.processor\\.validation\\.PredicateValidationException",
+      "replace": "org.apache.camel.support.processor.PredicateValidationException",
+      "reason": "regla IMPORT_PredicateValidationException"
+    },
+    {
+      "pattern": "org\\.apache\\.camel\\.processor\\.validation\\.SchemaValidationException",
+      "replace": "org.apache.camel.support.processor.validation.SchemaValidationException",
+      "reason": "regla IMPORT_SchemaValidationException"
+    },
+    {
+      "pattern": "org\\.apache\\.camel\\.(http\\.common|component\\.http4?)\\.HttpOperationFailedException",
+      "replace": "org.apache.camel.http.base.HttpOperationFailedException",
+      "reason": "regla IMPORT_HttpOperationFailedException"
+    },
+    {
+      "pattern": "([}'\\w]) and (\\$\\{)",
+      "replace": "\\1 && \\2",
+      "reason": "regla SIMPLE_AND"
+    },
+    {
+      "pattern": "([}'\\w]) or (\\$\\{)",
+      "replace": "\\1 || \\2",
+      "reason": "regla SIMPLE_OR"
+    },
+    {
+      "pattern": "quartz2:",
+      "replace": "quartz:",
+      "reason": "regla SCHEME_QUARTZ2"
+    },
+    {
+      "pattern": "&synchronous=(true|false)",
+      "replace": "",
+      "reason": "regla URI_OPTION_synchronous"
+    },
+    {
+      "pattern": "&throwExceptionOnConnectFailed(?=&|$| )",
+      "replace": "",
+      "reason": "regla URI_VALUELESS_throwExceptionOnConnectFailed"
+    },
+    {
+      "pattern": "(=[\\w\\.]+) +(?=&)",
+      "replace": "\\1",
+      "reason": "regla URI_STRAY_SPACE"
+    },
+    {
+      "pattern": "(\\{simple:\\$\\{[\\w\\.]+)\\}$",
+      "replace": "\\1}}",
+      "reason": "regla SIMPLE_UNCLOSED_BRACE"
+    },
+    {
+      "pattern": "^(\\s*)to uri=language:constant:(.*)$",
+      "replace": "\\1setBody {constant:\\2}",
+      "reason": "regla REST_INLINE_CONSTANT_ROUTE"
+    },
+    {
+      "pattern": "XPath: ((?:[^()]|\\([^()]*\\))*)",
+      "replace": "xpath{\\1}",
+      "reason": "misma expresion: cada version la imprime distinto"
+    },
+    {
+      "pattern": "Simple: ([^\\]\\)]*)",
+      "replace": "simple{\\1}",
+      "reason": "misma expresion: cada version la imprime distinto"
+    },
+    {
+      "pattern": "\\{simple:body\\}",
+      "replace": "{simple:${body}}",
+      "reason": "body() impreso distinto"
+    },
+    {
+      "pattern": "tokenize\\{body\\(\\) using",
+      "replace": "tokenize{body using",
+      "reason": "body() impreso distinto"
+    },
+    {
+      "pattern": "ref=json-jackson",
+      "replace": "ref=jackson",
+      "reason": "nombre interno del dataformat Jackson"
+    },
+    {
+      "pattern": "ref=jacksonxml$",
+      "replace": "ref=jacksonXml",
+      "reason": "nombre interno del dataformat Jackson XML"
+    },
+    {
+      "pattern": "\\{simple\\{(null)?\\}\\}",
+      "replace": "{simple{null}}",
+      "reason": "simple(null) impreso distinto"
+    },
+    {
+      "pattern": "(\\{bean:[\\w\\.]+)\\?method=[^}]*(\\}\\))?\\}",
+      "replace": "\\1}",
+      "reason": "Camel 2 no expone el metodo de una llamada a bean en el modelo: se compara solo el bean"
+    },
+    {
+      "pattern": "(\\{constant:)[A-Za-z0-9+/]{22}==(\\})",
+      "replace": "\\1<aleatorio>\\2",
+      "reason": "valor aleatorio generado al crear la clase (cambia en cada ejecucion)"
+    }
+  ]
+}

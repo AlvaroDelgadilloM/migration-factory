@@ -1,0 +1,348 @@
+{
+  "version": "2026.10.1",
+  "description": "Perfil tomcat-war: Fuse/Karaf (Camel 2.x + Blueprint/OSGi) a Camel 4 + Spring XML en un WAR para Tomcat, con capa de compatibilidad. Las rutas no se redisenan: cada regla es un cambio mecanico de una linea, verificado con el repositorio piloto (36 bundles). pattern/replace usan sintaxis de Python re. @COMPAT@ = paquete de la capa de compatibilidad.",
+  "profile": {
+    "key": "tomcat-war-camel-4.18",
+    "runtime": "tomcat-war",
+    "name": "Tomcat 10.1 WAR + Spring 6.2 + Camel 4.18.4 (LTS)",
+    "javaRelease": "17",
+    "camelVersion": "4.18.4",
+    "springVersion": "6.2.19",
+    "cxfVersion": "4.1.5",
+    "slf4jVersion": "2.0.18",
+    "tomcatVersion": "10.1.60",
+    "activemqVersion": "6.2.4",
+    "camelBom": "org.apache.camel:camel-bom:4.18.4",
+    "sources": [
+      "https://repo1.maven.org/maven2/org/apache/camel/camel-parent/4.18.4/camel-parent-4.18.4.pom"
+    ]
+  },
+  "compatPackage": "org.migrationfactory.compat",
+  "compatArtifact": "mf-camel4-compat",
+  "baseDependencies": [
+    "org.apache.camel:camel-core",
+    "org.apache.camel:camel-spring-xml",
+    "@GROUP_ID@:mf-camel4-compat",
+    "org.slf4j:slf4j-api",
+    "ch.qos.reload4j:reload4j"
+  ],
+  "javaRules": [
+    {
+      "id": "IMPORT_PredicateValidationException",
+      "pattern": "org\\.apache\\.camel\\.processor\\.validation\\.PredicateValidationException",
+      "replace": "org.apache.camel.support.processor.PredicateValidationException",
+      "level": "AUTO"
+    },
+    {
+      "id": "IMPORT_SchemaValidationException",
+      "pattern": "org\\.apache\\.camel\\.processor\\.validation\\.SchemaValidationException",
+      "replace": "org.apache.camel.support.processor.validation.SchemaValidationException",
+      "level": "AUTO"
+    },
+    {
+      "id": "IMPORT_AggregationStrategy",
+      "pattern": "org\\.apache\\.camel\\.processor\\.aggregate\\.AggregationStrategy",
+      "replace": "org.apache.camel.AggregationStrategy",
+      "level": "AUTO"
+    },
+    {
+      "id": "IMPORT_XPath",
+      "pattern": "org\\.apache\\.camel\\.language\\.XPath\\b",
+      "replace": "org.apache.camel.language.xpath.XPath",
+      "level": "AUTO"
+    },
+    {
+      "id": "IMPORT_HttpOperationFailedException",
+      "pattern": "org\\.apache\\.camel\\.(http\\.common|component\\.http4?)\\.HttpOperationFailedException",
+      "replace": "org.apache.camel.http.base.HttpOperationFailedException",
+      "level": "AUTO"
+    },
+    {
+      "id": "SIMPLE_AND",
+      "pattern": "([}'\\w]) and (\\$\\{)",
+      "replace": "\\1 && \\2",
+      "level": "AUTO_TEST",
+      "note": "Camel 2 aceptaba and/or en simple; Camel 4 solo && y ||"
+    },
+    {
+      "id": "SIMPLE_OR",
+      "pattern": "([}'\\w]) or (\\$\\{)",
+      "replace": "\\1 || \\2",
+      "level": "AUTO_TEST"
+    },
+    {
+      "id": "SIMPLE_UNCLOSED_BRACE",
+      "pattern": "(\\$\\{[\\w\\.]+)\"\\)",
+      "replace": "\\1}\")",
+      "level": "AUTO_TEST",
+      "note": "expresion simple sin llave de cierre: Camel 2 lo toleraba"
+    },
+    {
+      "id": "URI_STRAY_SPACE",
+      "pattern": "(\"[a-z][\\w-]*:[^\"\\s]*\\?[^\"]*?=[\\w\\.]+) +(?=[&\"])",
+      "replace": "\\1",
+      "level": "AUTO_TEST",
+      "note": "espacio suelto en una opcion de la URI"
+    },
+    {
+      "id": "URI_VALUELESS_throwExceptionOnConnectFailed",
+      "pattern": "&throwExceptionOnConnectFailed(?=[&\"])",
+      "replace": "",
+      "level": "REVIEW",
+      "note": "opcion sin valor: Camel 2 la tomaba como false; se quita para conservarlo. REVISAR: probablemente querian =true"
+    },
+    {
+      "id": "URI_OPTION_synchronous",
+      "pattern": "&synchronous=(true|false)",
+      "replace": "",
+      "level": "AUTO_TEST",
+      "note": "opcion eliminada en Camel 4"
+    },
+    {
+      "id": "REST_DESCRIPTION_AMPERSAND",
+      "pattern": "(\\.description\\(\"[^\"]*?) & ([^\"]*\"\\))",
+      "replace": "\\1 y \\2",
+      "level": "AUTO_TEST",
+      "note": "el ampersand en la descripcion rompe la URI del endpoint rest"
+    },
+    {
+      "id": "JAVAX_XML_BIND",
+      "pattern": "\\bjavax\\.xml\\.bind\\b",
+      "replace": "jakarta.xml.bind",
+      "level": "AUTO"
+    },
+    {
+      "id": "JAVAX_TO_JAKARTA",
+      "pattern": "\\bjavax\\.(jws|xml\\.ws|xml\\.soap|mail|servlet|jms|activation|annotation\\.(PostConstruct|PreDestroy|Resource))\\b",
+      "replace": "jakarta.\\1",
+      "level": "AUTO"
+    },
+    {
+      "id": "SIMPLE_PROPERTY",
+      "pattern": "\\$\\{property\\.",
+      "replace": "${exchangeProperty.",
+      "level": "AUTO"
+    },
+    {
+      "id": "SIMPLE_IN_HEADER",
+      "pattern": "\\$\\{in\\.(header|headers|body)\\b",
+      "replace": "${\\1",
+      "level": "AUTO"
+    },
+    {
+      "id": "REST_INLINE_CONSTANT_ROUTE",
+      "pattern": "\\.route\\(\\)(?:\\s*\\.routeId\\(\"[^\"]*\"\\))?\\s*\\.setBody\\(\\)\\s*\\.constant\\(\"([^\"]*)\"\\)",
+      "replace": ".to(\"language:constant:\\1\")",
+      "level": "AUTO_TEST",
+      "note": "rest().route() embebido ya no existe"
+    },
+    {
+      "id": "SET_FAULT_BODY",
+      "pattern": "\\.setFaultBody\\(exchangeProperty\\(\"([^\"]+)\"\\)\\)",
+      "replace": ".process(new @COMPAT@.cxf.ThrowFaultProperty(\"\\1\"))",
+      "level": "REVIEW",
+      "note": "setFaultBody ya no existe: el fault SOAP se devuelve lanzandolo"
+    },
+    {
+      "id": "REST_apiContextListing",
+      "pattern": "\\s*\\.apiContextListing\\((true|false)\\)",
+      "replace": "",
+      "level": "AUTO_TEST",
+      "note": "opcion eliminada"
+    },
+    {
+      "id": "SCHEME_QUARTZ2",
+      "pattern": "\"quartz2:",
+      "replace": "\"quartz:",
+      "level": "AUTO"
+    },
+    {
+      "id": "aggregationStrategyRef",
+      "pattern": "\\.aggregationStrategyRef\\(",
+      "replace": ".aggregationStrategy(",
+      "level": "AUTO"
+    },
+    {
+      "id": "XPATH_booleanResult",
+      "pattern": "(\\bxpath\\((?:[^()\"]|\"(?:[^\"\\\\]|\\\\.)*\")*)\\)\\.booleanResult\\(\\)",
+      "replace": "\\1, Boolean.class)",
+      "level": "AUTO_TEST"
+    },
+    {
+      "id": "XPATH_nodeResult",
+      "pattern": "(\\bxpath\\((?:[^()\"]|\"(?:[^\"\\\\]|\\\\.)*\")*)\\)\\.nodeResult\\(\\)",
+      "replace": "\\1, org.w3c.dom.Node.class)",
+      "level": "AUTO_TEST"
+    },
+    {
+      "id": "SIMPLE_resultType",
+      "pattern": "(\\bsimple\\((?:[^()\"]|\"(?:[^\"\\\\]|\\\\.)*\")*)\\)\\.resultType\\(([\\w\\.]+\\.class)\\)",
+      "replace": "\\1, \\2)",
+      "level": "AUTO_TEST"
+    },
+    {
+      "id": "jacksonxml",
+      "pattern": "\\.jacksonxml\\(",
+      "replace": ".jacksonXml(",
+      "level": "AUTO"
+    },
+    {
+      "id": "Exchange_SOAP_ACTION",
+      "pattern": "\\bExchange\\.SOAP_ACTION\\b",
+      "replace": "\"CamelSoapAction\"",
+      "level": "REVIEW",
+      "note": "la constante desaparecio; se conserva su valor literal de Camel 2"
+    }
+  ],
+  "manualPatterns": [
+    {
+      "id": "REST_INLINE_ROUTE",
+      "pattern": "\\.route\\(\\)",
+      "description": "rest().route() embebido: pasar a .to(\"direct:...\")"
+    },
+    {
+      "id": "FAULT_API",
+      "pattern": "\\.setFaultBody\\(|\\.isFault\\(\\)|\\.setFault\\(|\\.handleFault\\(\\)",
+      "description": "API de fault eliminada"
+    },
+    {
+      "id": "CAMEL_WEBSOCKET",
+      "pattern": "\"websocket:",
+      "description": "camel-websocket eliminado: usar camel-vertx-websocket"
+    },
+    {
+      "id": "GET_OUT",
+      "pattern": "\\.getOut\\(\\)",
+      "description": "getOut() esta deprecado (sigue compilando)"
+    },
+    {
+      "id": "SOAP_ACTION_HEADER",
+      "pattern": "\"CamelSoapAction\"",
+      "description": "verificar que el header siga teniendo efecto"
+    }
+  ],
+  "dependencyRules": [
+    {
+      "pattern": "schema/cxf/jaxws|\"cxf:|org\\.apache\\.cxf\\.",
+      "dependency": "org.apache.camel:camel-cxf-spring-soap"
+    },
+    {
+      "pattern": "restConfiguration\\(\\)",
+      "dependency": "org.apache.camel:camel-servlet"
+    },
+    {
+      "pattern": "apiContextPath\\(",
+      "dependency": "org.apache.camel:camel-openapi-java"
+    },
+    {
+      "pattern": "component\\.sql\\.|\"sql:",
+      "dependency": "org.apache.camel:camel-sql"
+    },
+    {
+      "pattern": "org\\.springframework\\.jdbc",
+      "dependency": "org.springframework:spring-jdbc"
+    },
+    {
+      "pattern": "\\.(to|toD|toF|enrich|pollEnrich|from)\\(\\s*\"https?4?:",
+      "dependency": "org.apache.camel:camel-http"
+    },
+    {
+      "pattern": "\"(smtp|smtps|imap|imaps|pop3):",
+      "dependency": "org.apache.camel:camel-mail"
+    },
+    {
+      "pattern": "\"s?ftps?:",
+      "dependency": "org.apache.camel:camel-ftp"
+    },
+    {
+      "pattern": "\"quartz:",
+      "dependency": "org.apache.camel:camel-quartz"
+    },
+    {
+      "pattern": "dataformat\\.bindy",
+      "dependency": "org.apache.camel:camel-bindy"
+    },
+    {
+      "pattern": "dataformat\\.csv",
+      "dependency": "org.apache.camel:camel-csv"
+    },
+    {
+      "pattern": "component\\.jackson|JsonLibrary\\.Jackson|library=\"Jackson\"",
+      "dependency": "org.apache.camel:camel-jackson"
+    },
+    {
+      "pattern": "converter\\.jaxb|<jaxb\\b",
+      "dependency": "org.apache.camel:camel-jaxb"
+    },
+    {
+      "pattern": "\\.jacksonXml\\(",
+      "dependency": "org.apache.camel:camel-jacksonxml"
+    },
+    {
+      "pattern": "\\.base64\\(",
+      "dependency": "org.apache.camel:camel-base64"
+    },
+    {
+      "pattern": "BarcodeDataFormat|\\.barcode\\(",
+      "dependency": "org.apache.camel:camel-barcode"
+    },
+    {
+      "pattern": "\"validator:",
+      "dependency": "org.apache.camel:camel-validator"
+    },
+    {
+      "pattern": "\"exec:",
+      "dependency": "org.apache.camel:camel-exec"
+    },
+    {
+      "pattern": "\"seda:",
+      "dependency": "org.apache.camel:camel-seda"
+    },
+    {
+      "pattern": "component\\.activemq|\"activemq:",
+      "dependency": "org.apache.camel:camel-activemq"
+    },
+    {
+      "pattern": "component\\.jms\\.",
+      "dependency": "org.apache.camel:camel-jms"
+    },
+    {
+      "pattern": "org\\.apache\\.activemq\\.ActiveMQConnectionFactory",
+      "dependency": "org.apache.activemq:activemq-client"
+    },
+    {
+      "pattern": "org\\.apache\\.activemq\\.pool\\.",
+      "dependency": "org.apache.activemq:activemq-pool"
+    },
+    {
+      "pattern": "\"vertx-websocket:",
+      "dependency": "org.apache.camel:camel-vertx-websocket"
+    },
+    {
+      "pattern": "\"(scheduler|timer):",
+      "dependency": "org.apache.camel:camel-timer"
+    },
+    {
+      "pattern": "\"ehcache:",
+      "dependency": "org.apache.camel:camel-ehcache"
+    },
+    {
+      "pattern": "\"quartz:|quartz://|scheduler=quartz",
+      "dependency": "org.apache.camel:camel-quartz"
+    },
+    {
+      "pattern": "com\\.mchange\\.v2\\.c3p0",
+      "dependency": "com.mchange:c3p0"
+    },
+    {
+      "pattern": "io\\.swagger\\.annotations",
+      "dependency": "io.swagger:swagger-annotations"
+    },
+    {
+      "pattern": "jakarta\\.xml\\.bind",
+      "dependency": "jakarta.xml.bind:jakarta.xml.bind-api"
+    }
+  ],
+  "dropOriginalDependencies": "^(org\\.apache\\.camel|org\\.slf4j|log4j|javax\\.xml\\.bind|com\\.sun\\.xml\\.bind|org\\.apache\\.felix|org\\.osgi|org\\.apache\\.activemq|com\\.mchange|org\\.springframework|org\\.jboss|com\\.oracle)",
+  "ignoredSourceFiles": "\\.(back|bk|orig)$"
+}

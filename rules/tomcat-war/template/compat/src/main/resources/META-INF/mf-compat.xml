@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!--
+		Componentes de compatibilidad con las URIs de Camel 2. Se importan en el contexto raiz
+		del WAR. Son prototype porque cada modulo tiene su propio CamelContext y cada uno
+		necesita su propia instancia.
+	-->
+
+	<!-- "xslt:...?saxon=true" -->
+	<bean id="xslt" class="org.migrationfactory.compat.xslt.LegacyXsltComponent" scope="prototype" />
+
+	<!--
+		.marshal("xmljson") sin un <xmljson id="xmljson"/> declarado: Camel 2 creaba el dataformat
+		con sus valores por omision. Los modulos que si lo declaran usan el suyo.
+	-->
+	<bean id="xmljson" class="org.migrationfactory.compat.xmljson.XmlJsonDataFormat" scope="prototype" />
+
+	<!--
+		Errores no controlados (HTTP 500): Camel 2 devolvia la traza de la excepcion en el cuerpo;
+		Camel 4 devuelve el cuerpo vacio. Se conserva el comportamiento actual. Para dejar de
+		exponer trazas (recomendable) basta con cambiar muteException a true.
+	-->
+	<bean id="servlet" class="org.apache.camel.component.servlet.ServletComponent" scope="prototype">
+		<property name="muteException" value="false" />
+	</bean>
+
+	<!-- "http4:" y "https4:" pasaron a llamarse "http:" y "https:" -->
+	<bean id="http4" class="org.apache.camel.component.http.HttpComponent" scope="prototype" />
+	<bean id="https4" class="org.apache.camel.component.http.HttpComponent" scope="prototype" />
+
+</beans>

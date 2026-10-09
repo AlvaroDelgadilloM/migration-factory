@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GENERADO por Migration Factory (perfil tomcat-war). Empaqueta todos los modulos migrados en un WAR. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>@GROUP_ID@</groupId>
+		<artifactId>migrated-parent</artifactId>
+		<version>@VERSION@</version>
+	</parent>
+
+	<artifactId>migrated-war</artifactId>
+	<packaging>war</packaging>
+	<name>WAR para Tomcat</name>
+
+	<properties>
+		<mf.http.port>18080</mf.http.port>
+		<!-- carpeta de configuracion externa (equivale a etc/ de Karaf) y contenedor a levantar con el perfil "run" -->
+		<mf.etc>${project.basedir}/../etc</mf.etc>
+		<mf.container></mf.container>
+	</properties>
+
+	<dependencies>
+		<!-- Todos los modulos migrados (antes bundles OSGi) -->
+		<dependency>
+			<groupId>@GROUP_ID@</groupId>
+			<artifactId>migrated-modules-all</artifactId>
+			<version>${project.version}</version>
+			<type>pom</type>
+		</dependency>
+
+		<dependency>
+			<groupId>@GROUP_ID@</groupId>
+			<artifactId>mf-camel4-compat</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.camel</groupId>
+			<artifactId>camel-servlet</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.camel</groupId>
+			<artifactId>camel-http</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework</groupId>
+			<artifactId>spring-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-reload4j</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>jakarta.servlet</groupId>
+			<artifactId>jakarta.servlet-api</artifactId>
+			<scope>provided</scope>
+		</dependency>
+@EXTRA_WAR_DEPENDENCIES@	</dependencies>
+
+	<build>
+		<finalName>ROOT</finalName>
+		<plugins>
+			<!-- Tomcat real (distribucion oficial desde Maven Central); ver el perfil "run" -->
+			<plugin>
+				<groupId>org.codehaus.cargo</groupId>
+				<artifactId>cargo-maven3-plugin</artifactId>
+				<version>1.10.29</version>
+				<configuration>
+					<container>
+						<containerId>tomcat10x</containerId>
+						<artifactInstaller>
+							<groupId>org.apache.tomcat</groupId>
+							<artifactId>tomcat</artifactId>
+							<version>${tomcat.version}</version>
+							<type>zip</type>
+						</artifactInstaller>
+						<timeout>240000</timeout>
+						<systemProperties>
+							<mf.etc>${mf.etc}</mf.etc>
+							<!-- contenedor de origen a reproducir; vacio = todos los modulos -->
+							<mf.container>${mf.container}</mf.container>
+						</systemProperties>
+					</container>
+					<configuration>
+						<properties>
+							<cargo.servlet.port>${mf.http.port}</cargo.servlet.port>
+							<cargo.tomcat.ajp.port>18009</cargo.tomcat.ajp.port>
+							<cargo.rmi.port>18205</cargo.rmi.port>
+						</properties>
+					</configuration>
+					<deployables>
+						<deployable>
+							<type>war</type>
+							<location>${project.build.directory}/ROOT.war</location>
+							<properties>
+								<context>ROOT</context>
+							</properties>
+						</deployable>
+					</deployables>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+	<profiles>
+		<!-- mvn -Prun -DskipTests verify  (desde la raiz): compila todo y deja Tomcat corriendo -->
+		<profile>
+			<id>run</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.codehaus.cargo</groupId>
+						<artifactId>cargo-maven3-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>run-tomcat</id>
+								<phase>integration-test</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+</project>

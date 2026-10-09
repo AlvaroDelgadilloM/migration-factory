@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0">
+	<reference id="httpService" interface="org.osgi.service.http.HttpService" />
+	<bean id="ordersServlet" class="org.apache.camel.component.servlet.CamelHttpTransportServlet" />
+	<bean id="ordersOsgiServlet" class="org.apache.camel.component.servlet.osgi.OsgiServletRegisterer"
+		init-method="register" destroy-method="unregister">
+		<property name="alias" value="/orders" />
+		<property name="httpService" ref="httpService" />
+		<property name="servlet" ref="ordersServlet" />
+		<property name="servletName" value="OrdersCamelServlet" />
+	</bean>
+</blueprint>

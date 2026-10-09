@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+	xmlns:ext="http://aries.apache.org/blueprint/xmlns/blueprint-ext/v1.0.0">
+
+	<ext:property-placeholder>
+		<ext:location>file:etc/demo/common.properties</ext:location>
+	</ext:property-placeholder>
+
+	<bean id="normalizer" class="demo.common.Normalizer" />
+	<bean id="commonRoute" class="demo.common.CommonRoute" />
+
+	<service id="normalizerService" ref="normalizer" interface="demo.common.Normalizer" />
+
+	<camelContext id="CommonContext" xmlns="http://camel.apache.org/schema/blueprint">
+		<routeBuilder ref="commonRoute" />
+	</camelContext>
+</blueprint>

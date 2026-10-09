@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GENERADO por Migration Factory (perfil tomcat-war) -->
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
+	version="6.0">
+
+	<display-name>Camel 4 + Spring sobre Tomcat (workspace migrado)</display-name>
+
+	<!-- Contexto raiz: bus de CXF y componentes de compatibilidad -->
+	<context-param>
+		<param-name>contextConfigLocation</param-name>
+		<param-value>/WEB-INF/applicationContext.xml</param-value>
+	</context-param>
+	<listener>
+		<listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+	</listener>
+	<!-- Un contexto hijo por modulo (equivalente a cada bundle de Karaf) -->
+	<listener>
+		<listener-class>org.migrationfactory.compat.spring.ModuleContextLoaderListener</listener-class>
+	</listener>
+
+	<!-- Tomcat pone los nombres de headers en minusculas; se restauran como los esperan las rutas -->
+	<filter>
+		<filter-name>HeaderCaseFilter</filter-name>
+		<filter-class>org.migrationfactory.compat.servlet.HeaderCaseFilter</filter-class>
+	</filter>
+	<filter-mapping>
+		<filter-name>HeaderCaseFilter</filter-name>
+		<url-pattern>/*</url-pattern>
+	</filter-mapping>
+
+	<!-- SOAP: mismo path /cxf que publica Karaf por omision -->
+	<servlet>
+		<servlet-name>CXFServlet</servlet-name>
+		<servlet-class>org.apache.cxf.transport.servlet.CXFServlet</servlet-class>
+		<load-on-startup>1</load-on-startup>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>CXFServlet</servlet-name>
+		<url-pattern>/cxf/*</url-pattern>
+	</servlet-mapping>
+
+	<!--
+		REST: los servlets que el origen registraba con OsgiServletRegisterer se declaran en el
+		web-fragment.xml generado dentro del jar del modulo que los registraba, con el mismo
+		nombre y alias. Tomcat los carga al encontrar el jar en WEB-INF/lib.
+	-->
+
+</web-app>

@@ -352,3 +352,43 @@ la migración de workspace con Camel 2 sin decisión (`409 DECISION_REQUIRED`); 
   por opensaml, que no está en Central: problema conocido con remediación documentada). Fuse real con Maven: BOM de Red Hat no
   resoluble en Central → BASELINE_BLOCKED_PLATFORM_BOM, reparación PARTIAL (2 Camel recuperadas, slf4j-api sin versión).
   Docker reconstruido.
+
+## Perfil `tomcat-war`: Fuse/Karaf (Blueprint) → WAR para Tomcat — 2026-10-08
+
+Detalle en `docs/19_TOMCAT_WAR.md`. Cubre el caso que hasta ahora quedaba bloqueado (OSGI_BUNDLE, BLUEPRINT,
+TARGET_RUNTIME_MIGRATION_REQUIRED, CAMEL_VM, CAMEL2_VERSION, camel-xmljson) sin rediseñar las rutas.
+
+Implementado:
+- `backend/mf/tomcat_war` (stdlib): `blueprint.py` (Blueprint → Spring XML, servicios OSGi, web-fragment de servlets) y
+  `pipeline.py` (reglas Java, parches del cliente, POM por módulo verificado contra el BOM, workspace multi-módulo, reportes).
+- `rules/tomcat-war/camel2-to-4.json` (26 reglas Java, 30 de dependencias, versiones del perfil) y `template/` (POM padre,
+  capa de compatibilidad de 13 clases, WAR). Snapshot `rules/camel/boms/camel-bom-4.18.4.json` (516 artefactos).
+- CLI: `migrate.py plan|migrate <workspace> --target tomcat-war [--config] [--build]`; plugins `migration.fuse-blueprint-to-tomcat-war`
+  y `target.tomcat-war`. Fixture sintética `examples/fuse-blueprint`.
+
+Verificado:
+- `backend/tests/test_tomcat_war.py`: 24/24 (Windows, Python 3.13).
+- Repositorio piloto real (36 bundles): salida idéntica archivo por archivo a la prueba de concepto ya validada (1,382
+  archivos), `--build` PASS (Maven real), Tomcat 10.1.60 con 28/28 módulos del contenedor probado, 18/18 healthz y 12/12
+  pruebas de humo.
+
+No verificado / pendiente:
+- La suite existente del backend no se ejecutó tras el cambio: en Windows no corre (`mf/worker/runner.py` importa `resource`)
+  y no había Docker disponible. El cambio en código existente se limita a `cli_tool.py` (destino nuevo y dos opciones) y `plugins.py`.
+- Sin integración en la plataforma (perfil en BD, job, UI). Sin evidencia G4 automática (comparación de estructura de rutas y
+  prueba diferencial). Sin reporte de claves de configuración faltantes. Sin pruebas unitarias de la capa de compatibilidad.
+
+### Evidencia de equivalencia para el perfil `tomcat-war` (gate G4) — 2026-10-08
+
+- `backend/mf/tomcat_war/verify.py` y `migrate.py verify routes | baseline-server | responses` (docs/19_TOMCAT_WAR.md).
+  Herramientas Java en `rules/tomcat-war/verify/` (volcador de rutas por reflexión para Camel 2 y 4, servidor de línea base
+  Camel 2 + Jetty, POM de librerías); equivalencias declarativas en `rules/tomcat-war/route-equivalences.json` (22, con motivo).
+  `blueprint.convert(camel2=True)` convierte solo el cableado para la línea base. Resumen en `reports/equivalence-evidence.json`.
+- Verificado: `test_tomcat_war_verify.py` 11/11 (comparación, grafo de módulos, línea base, prueba diferencial contra dos
+  servidores locales, evidencia G4, códigos de salida). Piloto real con JDK 21 y Maven: `verify routes` PASS (752 idénticas,
+  10 por parche documentado, 0 sin explicación, 36 módulos comparados); línea base de 3 módulos arrancada con el comando y
+  `verify responses` 45 casos → 25 idénticos, 20 distintos (FAIL; diferencias en errores y encabezados, sin aceptar).
+- Errores encontrados en la corrida real y corregidos: `javac` no expande `dir/*` dentro de un @argfile (el classpath va en
+  CLASSPATH); `urllib` reescribía los nombres de los headers (ahora `http.client`); la línea base quedaba viva ocupando el
+  puerto si fallaba su arranque.
+- No verificado: la suite existente del backend sigue sin ejecutarse tras estos cambios (no corre en Windows).
