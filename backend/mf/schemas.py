@@ -530,11 +530,19 @@ class ModernizationOut(Dto):
 
 
 class WorkspaceMigrationIn(Dto):
-    profile_id: uuid.UUID
+    # target 'profile' = Spring Boot / Quarkus by waves (profile_id required); 'tomcat-war' = Fuse/Karaf bundles -> one WAR (docs/19)
+    target: Literal['profile', 'tomcat-war'] = 'profile'
+    profile_id: uuid.UUID | None = None
     java: Literal['17', '21'] = '21'
     # architect decisions on blocking findings, applied to every project of the workspace (recorded in the audit)
     accept: dict[Annotated[str, Field(pattern=r'^[A-Z0-9_]{2,60}$')], Annotated[str, Field(min_length=10, max_length=500)]] = Field(default_factory=dict)
     approve: list[Annotated[str, Field(pattern=r'^[a-z0-9-]{2,60}$')]] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode='after')
+    def _profile_or_tomcat(self):
+        if self.target == 'profile' and self.profile_id is None:
+            raise ValueError('profileId es obligatorio salvo con target tomcat-war')
+        return self
 
 
 class WorkspaceMigrationOut(Dto):
@@ -543,7 +551,8 @@ class WorkspaceMigrationOut(Dto):
     retry: list[str] = []
     project_id: uuid.UUID
     scan_id: uuid.UUID
-    profile_id: uuid.UUID
+    profile_id: uuid.UUID | None = None
+    target: str = 'profile'
     job_id: uuid.UUID | None
     state: str
     java: str

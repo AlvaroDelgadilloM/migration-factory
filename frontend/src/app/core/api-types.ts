@@ -2199,10 +2199,13 @@ export interface components {
         /** WorkspaceMigrationIn */
         WorkspaceMigrationIn: {
             /**
-             * Profileid
-             * Format: uuid
+             * Target
+             * @default profile
+             * @enum {string}
              */
-            profileId: string;
+            target: "profile" | "tomcat-war";
+            /** Profileid */
+            profileId?: string | null;
             /**
              * Java
              * @default 21
@@ -2240,11 +2243,13 @@ export interface components {
              * Format: uuid
              */
             scanId: string;
+            /** Profileid */
+            profileId?: string | null;
             /**
-             * Profileid
-             * Format: uuid
+             * Target
+             * @default profile
              */
-            profileId: string;
+            target: string;
             /** Jobid */
             jobId: string | null;
             /** State */

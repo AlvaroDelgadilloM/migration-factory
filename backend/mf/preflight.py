@@ -193,9 +193,11 @@ def camel_version(module: dict, pom_props: dict) -> str | None:
     return vs.pop() if len(vs) == 1 else None
 
 
-def repair(root: Path, modules: list[dict], findings: list[dict], exists=_artifact_exists) -> list[dict]:
+def repair(root: Path, modules: list[dict], findings: list[dict], *, exists=None) -> list[dict]:
     """Import org.apache.camel:camel-bom:<legacy version> where Camel dependencies have no version.
-    Evidence-based only: the Camel 2 version must be unambiguous and the BOM must exist in the repository."""
+    Evidence-based only: the Camel 2 version must be unambiguous and the BOM must exist in the repository.
+    `exists` is resolved at call time (code-review 43): a default bound at definition time ignored monkeypatching."""
+    artifact_exists = exists if exists is not None else _artifact_exists
     repairs = []
     for m in modules:
         missing = [d for d in m['dependencies'] if d['groupId'] == 'org.apache.camel' and d['versionSource'] == 'unresolved']
@@ -211,7 +213,7 @@ def repair(root: Path, modules: list[dict], findings: list[dict], exists=_artifa
             for f in related:
                 f['fix'] = 'Versión Camel 2 no identificable de forma inequívoca: declarar camel.version manualmente'
             continue
-        if not exists('org.apache.camel', 'camel-bom', version):
+        if not artifact_exists('org.apache.camel', 'camel-bom', version):
             for f in related:
                 f['fix'] = f'org.apache.camel:camel-bom:{version} no verificable en el repositorio: no se repara'
             continue

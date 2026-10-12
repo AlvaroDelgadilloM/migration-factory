@@ -39,20 +39,24 @@ def start(scan_id: uuid.UUID, body: WorkspaceMigrationIn, request: Request, idem
     ws = (scan.summary or {}).get('workspace') or {}
     if scan.status != 'succeeded' or ws.get('repositoryType') != 'MULTI_PROJECT_REPOSITORY' or ws.get('selectedProject'):
         raise ApiError(409, 'INVALID_STATE', 'Se migra por oleadas desde un análisis de workspace terminado (sin proyecto seleccionado)')
-    profile = db.get(TargetProfile, body.profile_id)
-    if profile is None or profile.status != 'validated':
+    tomcat = body.target == 'tomcat-war'
+    profile = db.get(TargetProfile, body.profile_id) if body.profile_id else None
+    if tomcat:
+        profile = None  # the tomcat-war profile is its versioned rules (rules/tomcat-war), not a TargetProfile
+    elif profile is None or profile.status != 'validated':
         raise ApiError(409, 'PROFILE_NOT_VALIDATED', 'Solo se migra con perfiles validados')
     by_project = ((ws.get('shared') or {}).get('findingsByProject') or {})
     camel2 = sorted(n for n, rules in by_project.items() if 'CAMEL2_VERSION' in rules)
-    if camel2 and 'CAMEL2_VERSION' not in body.accept:  # without it no project can pass camel-2-to-3: never run 30 min for nothing
+    # tomcat-war applies declarative, per-line Camel 2 -> 4 rules with REVIEW points (docs/19): no global 2->3 decision is needed
+    if camel2 and 'CAMEL2_VERSION' not in body.accept and not tomcat:  # without it no project can pass camel-2-to-3: never run 30 min for nothing
         raise ApiError(409, 'DECISION_REQUIRED', f'{len(camel2)} proyecto(s) usan Camel 2: sin la decisión del arquitecto sobre CAMEL2_VERSION '
                        'ningún proyecto puede pasar de Camel 2 a 3. Indique CAMEL2_VERSION=<motivo de la revisión contra la guía 2→3>.',
                        {'rule': 'CAMEL2_VERSION', 'projects': camel2})
     if db.scalar(select(WorkspaceMigration.id).where(WorkspaceMigration.project_id == scan.project_id,
                                                      WorkspaceMigration.state.in_(('queued', 'running')))):
         raise ApiError(409, 'INVALID_STATE', 'Ya hay una migración de workspace en curso para este proyecto')
-    wm = WorkspaceMigration(project_id=scan.project_id, scan_id=scan.id, profile_id=profile.id, java=body.java, accepted=body.accept,
-                            approved=sorted(set(body.approve)), created_by=me.subject)
+    wm = WorkspaceMigration(project_id=scan.project_id, scan_id=scan.id, profile_id=profile.id if profile else None, target=body.target,
+                            java=body.java, accepted=body.accept, approved=sorted(set(body.approve)), created_by=me.subject)
     db.add(wm)
     db.flush()
     job = jobs.create_job(db, kind='workspace_migrate', project_id=scan.project_id, subject_id=wm.id, actor=me.subject)
@@ -60,7 +64,7 @@ def start(scan_id: uuid.UUID, body: WorkspaceMigrationIn, request: Request, idem
     result = {'workspaceMigrationId': str(wm.id), 'jobId': str(job.id), 'status': 'queued'}
     jobs.remember(db, me.subject, idempotency_key, endpoint, payload, 202, result)
     audit.record(db, actor=me.subject, action='workspace_migration.request', entity_type='scan', entity_id=scan.id, project_id=scan.project_id,
-                 details={'profile': f'{profile.key}@{profile.version}', 'java': body.java, 'accepted': body.accept, 'approved': wm.approved,
+                 details={'profile': f'{profile.key}@{profile.version}' if profile else 'tomcat-war', 'java': body.java, 'accepted': body.accept, 'approved': wm.approved,
                           'projects': len(ws.get('projects', []))}, request=request)
     db.commit()
     jobs.try_publish(db)
@@ -103,6 +107,8 @@ def retry(wm_id: uuid.UUID, body: WorkspaceRetryIn, request: Request, idempotenc
         return replay
     if prev.state in ('queued', 'running'):
         raise ApiError(409, 'INVALID_STATE', 'La migración de workspace aún está en curso')
+    if prev.target == 'tomcat-war':  # one WAR for the whole workspace: there is no per-project retry, start a new migration
+        raise ApiError(409, 'INVALID_STATE', 'tomcat-war genera un solo WAR para todo el workspace: inicie una migración nueva')
     unknown = sorted(set(body.projects) - set(prev.results or {}))
     if unknown:
         raise ApiError(422, 'VALIDATION_ERROR', 'Proyectos desconocidos en el workspace', {'projects': unknown})

@@ -392,3 +392,38 @@ No verificado / pendiente:
   CLASSPATH); `urllib` reescribía los nombres de los headers (ahora `http.client`); la línea base quedaba viva ocupando el
   puerto si fallaba su arranque.
 - No verificado: la suite existente del backend sigue sin ejecutarse tras estos cambios (no corre en Windows).
+
+## Code review P0/P1 (migration-factory-code-review-fixes 43–50)
+- P0-1 (43): `preflight.repair(..., *, exists=None)` resuelve `_artifact_exists` en tiempo de llamada; el monkeypatch funciona
+  (la prueba anterior pasaba por red real contra Central).
+- P0-2 (44): el plan guarda `decisionContext` (usage, evidencia con línea, endpoints, packaging, plataforma, tests) junto a las
+  decisiones Camel; `CAMEL_COMPONENT_COMPATIBILITY_GATE` valida la decisión del plan (`decisionSource=PLAN`) y solo recalcula
+  artefactos nuevos con el mismo contexto. Un camel-cxf SOAP/Blueprint ya no vuelve a `CXF_USAGE_AMBIGUOUS`.
+- P0-3 (45): con stubs el modelo del candidato es `PASS_WITH_STUBS` (`resolutionMode=DEGRADED_WITH_STUBS`, lista de stubs),
+  aviso `RESOLUTION_DEGRADED_WITH_STUBS`; los stubs se retiran del repositorio (marcador `_migration-factory.stub`) antes de
+  cualquier validación/build. Migración 0008: `validation.status` String(20).
+- P1-1 (46): `mf/dependency/stub_leak_guard.py` antes del build (bloquea compile: `STUB_LEAK_DETECTED`) y antes de empaquetar
+  (no se genera el ZIP). CLI y worker.
+- P1-2 (47): deduplicación semántica (scope, optional, exclusions, systemPath, version); diferencias →
+  `POM_DUPLICATE_SEMANTIC_CONFLICT` (revisión manual, el POM_SANITY_GATE sigue fallando). Única fusión automática con versión
+  distinta: Camel sin versión (gestionado por camel-bom) frente a la versión alineada al destino.
+- P1-3 (48): `mf/validation_state.py` — un único `validationState` (baselineModel … candidateTest, stubMode, primary/secondary)
+  construido igual en CLI, worker y workspace; el estado final sale de él (nunca SUCCEEDED sin resolución real, compile y tests).
+  UI: panel "Estado de validación".
+- Probado: backend 138 (nuevo `tests/test_code_review_fixes.py` con los 6 casos del doc 49), frontend 10. Maven real (ojdbc6
+  runtime): PASS_WITH_STUBS → stubs retirados → STUB_LEAK_GUARD PASS → compile PASS sin stubs → test NOT_EXECUTABLE →
+  PARTIAL_SUCCESS. Docker reconstruido con la migración 0008 aplicada en Postgres.
+
+## Tomcat WAR en la plataforma + recomendación + BLOCKED (2026-10-11)
+- Diagnóstico del repositorio real «develop 2»: 34 bundles OSGi/Blueprint; con Spring Boot todos quedaban en
+  ARCHITECTURAL_MIGRATION_REQUIRED / INVALID_CAMEL_COMPONENT_MAPPING / POM_SANITY_ERROR (por diseño) y se reportaban FAILED.
+- Plataforma: migración de workspace con `target: tomcat-war` (sin TargetProfile; migración 0009: `workspace_migration.target`,
+  `profile_id` opcional). El worker usa el motor `mf.tomcat_war` sobre el snapshot y compila con `mavenops.mvn` (mirror aprobado,
+  repo local aislado, timeout/cancelación del job); guarda ROOT.war, migrated-workspace.zip, reportes y build.log. Sin reintento
+  por proyecto (un WAR). No requiere la decisión CAMEL2_VERSION (reglas declarativas con puntos REVIEW).
+- Recomendación: `shared.recommendedTarget` en el análisis de workspace (mayoría OSGi/Blueprint); la UI lo muestra y preselecciona
+  «Tomcat WAR»; el CLI `--workspace` lo avisa; camel-blueprint lista Tomcat WAR entre sus runtimes destino (registro 2026.10.4).
+- Estado: un candidato que nunca compiló porque un gate previo o un hallazgo bloqueante lo detuvo (sin recetas rotas) es BLOCKED,
+  no FAILED (regla común `aggregate_status`); una oleada donde todos quedaron así es WAVE_BLOCKED.
+- Probado: backend 174 (nuevo `tests/test_tomcat_war_platform.py`), frontend 10. Plataforma real (Docker, Maven real) con «develop 2»:
+  recomendación 33/33 → tomcat-war → 33 módulos, 61 Blueprint convertidos, build PASS, ROOT.war, PARTIAL_SUCCESS (2 revisiones manuales).

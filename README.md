@@ -14,7 +14,7 @@ hacia Camel 4 con Spring Boot o Quarkus. Estado real y pruebas: **[ESTADO_IMPLEM
 
 ## Arranque local (Docker)
 
-Requisitos: Docker con Compose v2. Puertos: UI `127.0.0.1:${MF_UI_PORT:-8080}`, API `127.0.0.1:8000`.
+Requisitos: Docker con Compose v2. Puertos: UI `127.0.0.1:${MF_UI_PORT:-3240}`, API `127.0.0.1:${MF_API_PORT:-3241}`.
 
 ```bash
 cp .env.example .env
@@ -24,7 +24,7 @@ docker compose up -d --build
 docker compose ps            # api healthy, worker y frontend running
 ```
 
-Abrir `http://127.0.0.1:8080` y entrar con un usuario de demostración (modo `dev`, identidades ficticias):
+Abrir `http://127.0.0.1:3240` y entrar con un usuario de demostración (modo `dev`, identidades ficticias):
 `ana.arquitecta` (owner), `diego.dev` (developer), `rosa.revisora` (reviewer), `aldo.auditor` (auditor), `admin`.
 Al arrancar se crea el proyecto **«Demo Orders (fixture sintética)»** como carpeta local `/sources/pilot-orders`.
 
@@ -90,7 +90,7 @@ Ver `docs/18_MEJORAS_V2_Y_MODERNIZACION.md`.
 ## Fuse/Karaf → Tomcat WAR (perfil `tomcat-war`)
 
 Para bundles OSGi + Blueprint que deben pasar a Camel 4 sin rediseño: un WAR con Spring XML y una capa de compatibilidad
-(`direct-vm`, `xmljson`, servicios OSGi). Solo CLI: `python migrate.py migrate <workspace> --target tomcat-war --output <salida>`.
+(`direct-vm`, `xmljson`, servicios OSGi). CLI: `python migrate.py migrate <workspace> --target tomcat-war --output <salida>`; plataforma: Inventario → migración de workspace → destino «Tomcat WAR» (se recomienda sola en workspaces Fuse/Blueprint).
 Ver `docs/19_TOMCAT_WAR.md`.
 
 ## Documentación

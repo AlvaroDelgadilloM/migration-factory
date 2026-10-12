@@ -62,6 +62,14 @@ def test_model_validation_and_bom_repair(legacy):
     assert scan(legacy)['modules'][0]['unresolved']  # BOM is external: static model still cannot resolve it (Maven will)
 
 
+def test_repair_uses_patched_artifact_exists(legacy, monkeypatch):                     # code-review 43
+    seen = []
+    monkeypatch.setattr(preflight, '_artifact_exists', lambda *a: seen.append(a) or False)  # no network: the fake answers
+    report = scan(legacy)
+    model = preflight.validate_model(legacy, report['modules'], report['errors'])
+    assert preflight.repair(legacy, report['modules'], model) == [] and seen == [('org.apache.camel', 'camel-bom', '2.24.3')]
+
+
 def test_repair_requires_evidence(legacy):
     report = scan(legacy)
     model = preflight.validate_model(legacy, report['modules'], report['errors'])

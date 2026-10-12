@@ -116,7 +116,7 @@ def test_migrate_workspace_by_waves_with_isolated_overlays(tmp_path, monkeypatch
                                   'blockedBy': ['common-catalogue']}  # M1: only the dependents, never FAILED when never attempted
     assert state['projects']['common-epay'] == {'analysis': 'ANALYSIS_SUCCEEDED', 'migration': 'BLOCKED', 'result': res['common-epay']}
     mw = json.loads((out / 'workspace' / 'migration-waves.json').read_text())
-    assert [w['status'] for w in mw] == ['WAVE_SUCCEEDED', 'WAVE_FAILED', 'WAVE_BLOCKED']
+    assert [w['status'] for w in mw] == ['WAVE_SUCCEEDED', 'WAVE_BLOCKED', 'WAVE_BLOCKED']   # its only project stopped at the baseline
     assert mw[2]['blocked'] == ['common-epay'] and mw[2]['runnable'] == []
     ws = json.loads((out / 'workspace' / 'workspace.json').read_text())
     assert ws['counts']['projectsAnalyzed'] == 5 and ws['analysisStatus'] == 'ANALYSIS_SUCCEEDED' and ws['migrationStatus'] == 'MIGRATION_PARTIAL_SUCCESS'

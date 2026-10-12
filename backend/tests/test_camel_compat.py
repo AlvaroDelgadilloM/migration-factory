@@ -51,7 +51,7 @@ def test_swagger_without_rest_dsl_usage_is_not_replaced_blindly(tmp_path, monkey
     assert cli_tool.main(['migrate', str(with_dependency(tmp_path, 'camel-swagger-java')), '--output', str(out), '--accept', ACCEPT,
                           '--skip-baseline']) == 2
     rep = json.loads((out / 'reports/migration-report.json').read_text())
-    assert rep['primaryReason'] == 'ARTIFACT_REPLACEMENT_REQUIRED' and rep['status'] == 'FAILED'
+    assert rep['primaryReason'] == 'ARTIFACT_REPLACEMENT_REQUIRED' and rep['status'] == 'BLOCKED'   # never built: a decision is pending
 
 
 def test_blueprint_is_an_architectural_migration(tmp_path, monkeypatch):                          # case 2

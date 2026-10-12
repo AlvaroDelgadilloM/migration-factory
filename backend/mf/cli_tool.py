@@ -512,9 +512,11 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
     base = gitops.init_snapshot_repo(ctx, work)
     validate_model = lambda name: preflight.model_check(lambda p, g, n: mavenops.mvn(ctx, p, g, n), work, name)
     cm = validate_model('candidate-maven-model')
-    result['validations'].append({'target': 'candidate', 'stage': 'CANDIDATE', 'name': 'maven-model',
-                                  'status': 'PASS' if cm['status'] == 'VALID' else 'FAIL', 'errors': cm['errors']})
-    log(f"candidate/maven-model: {'PASS' if cm['status'] == 'VALID' else 'FAIL'}")
+    cm_status = ('PASS_WITH_STUBS' if result.get('degradedStubs') else 'PASS') if cm['status'] == 'VALID' else 'FAIL'  # code-review 45
+    result['validations'].append({'target': 'candidate', 'stage': 'CANDIDATE', 'name': 'maven-model', 'status': cm_status, 'errors': cm['errors'],
+                                  **({'resolutionMode': 'DEGRADED_WITH_STUBS', 'stubbedDependencies': result['degradedStubs']}
+                                     if result.get('degradedStubs') else {})})
+    log(f"candidate/maven-model: {cm_status}")
     if cm['status'] != 'VALID':
         result['steps'] += [{'key': s['key'], 'state': 'BLOCKED_BY_BASELINE', 'reason': 'CANDIDATE_MAVEN_MODEL_INVALID'}
                             for s in plan['steps'] if s['kind'] in ('recipe', 'transform')]
@@ -634,6 +636,23 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
     except Exception as e:  # scanner failure is ERROR, never reported as a finding
         result['security'] = {'status': 'ERROR', 'reason': f'SCANNER_EXECUTION_FAILED: {type(e).__name__}'}
     result['secretScan'] = result['security']['status']
+    # code-review 45/46: the stubs served the recipes; they leave the repositories before any validation/build, then StubLeakGuard
+    leak = None
+    if degraded:
+        from .baseline.stubs import remove_stubs
+        from .dependency import stub_leak_guard
+        stub_head = mavenops.current_overlay()
+        remove_stubs(stub_head, result.get('degradedStubs', []))
+        if result.get('_ownOverlay'):
+            mavenops.use_local_overlay(None)
+            result['_ownOverlay'] = False
+        from .config import get_settings
+        leak = stub_leak_guard.check(work, result.get('degradedStubs', []), [stub_head, get_settings().maven_repo_local],
+                                     overlay_enabled=mavenops.current_overlay() == out / '.m2-degraded')
+        result['stubLeakGuard'] = leak
+        result['validations'].append({'target': 'candidate', 'stage': 'CANDIDATE', 'name': 'stub-leak-guard', 'status': leak['status'],
+                                      'reason': leak['code'], 'evidence': leak['evidence']})
+        log(f"STUB_LEAK_GUARD: {leak['status']}" + (f" ({', '.join(x['kind'] for x in leak['leaks'])})" if leak['leaks'] else ''))
     # CANDIDATE VALIDATE -> COMPILE (+AUTOFIX) -> TEST
     known = {e['fingerprint'] for e in pf['build'].get('errors', [])}
 
@@ -646,7 +665,11 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
                                   'errors': tag(mcheck['errors'])})
     # CANDIDATE PREFLIGHT GATES (docs 22/26/29): no Maven build of a candidate already known to be invalid
     from .dependency import preflight_gates
-    dg = preflight_gates.run(work, tooling['camelRecipeTarget'], usage=report.get('usage', {}), decisions=decisions)
+    camel_step = next((s for s in plan['steps'] if s['key'] == 'camel-3-to-4'), {})
+    dg = preflight_gates.run(work, tooling['camelRecipeTarget'], usage=report.get('usage', {}), decisions=decisions,
+                             context=(camel_step.get('recipe') or {}).get('decisionContext'))
+    if leak and leak['status'] == 'FAIL':  # a build that could pass thanks to a stub is never run
+        dg = dg | {'status': 'FAIL', 'primary': 'STUB_LEAK_DETECTED'}
     result['preflightGates'] = dg['gates']
     if dg['rootCause']:
         result['rootCause'] = dg['rootCause']
@@ -788,14 +811,34 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
                                      'BUILD_BLOCKED_DEPENDENCY' if degraded else 'BUILD_SUCCESS' if cv.get('compile') == 'PASS' and cv.get('test') == 'PASS'
                                      else 'BUILD_FAILED_TEST' if cv.get('compile') == 'PASS' else 'BUILD_FAILED_CODE' if cv.get('compile') == 'FAIL'
                                      else 'BUILD_NOT_EXECUTABLE')
+    from . import validation_state
+    result['validationState'] = validation_state.build(
+        baseline_model=pf.get('modelCheck', {}).get('after', {}).get('status'), baseline_state=state,
+        baseline_compile=(pf['build'].get('stages') or {}).get('compile'), step_states=[s['state'] for s in result['steps']],
+        candidate_model=(cv.get('maven-model') or '').replace('_WITH_STUBS', '') or None, candidate_compile=cv.get('compile'),
+        candidate_test=cv.get('test'), stubbed=result.get('degradedStubs', []), degraded=degraded,
+        validation_confidence=result['validationConfidence']['level'], status=result['status'], primary_reason=result['primaryReason'],
+        reason_codes=result['reasonCodes'])
+    result['status'] = result['validationState']['overall']
     _finish(out, report, plan, result, log)
-    return EXIT_OK if agg['status'] in ('SUCCEEDED', 'PARTIAL_SUCCESS') else EXIT_BUILD
+    return EXIT_OK if result['status'] in ('SUCCEEDED', 'PARTIAL_SUCCESS') else EXIT_BUILD
 
 
 def _finish(out, report, plan, result, log):
     if result.pop('_ownOverlay', False):
         from .worker import mavenops
         mavenops.use_local_overlay(None)
+    leak = False
+    if (out / 'migrated-project').exists():  # code-review 46: the deliverable is checked before reports and packaging
+        from .dependency import stub_leak_guard
+        g = result['stubLeakGuardPackage'] = stub_leak_guard.check(out / 'migrated-project', result.get('degradedStubs', []))
+        leak = g['status'] == 'FAIL'
+        if leak:
+            log(f"STUB_LEAK_DETECTED en el entregable: no se empaqueta ({', '.join(x['kind'] for x in g['leaks'])})")
+            result.update(status='BLOCKED', primaryReason='STUB_LEAK_DETECTED',
+                          reasonCodes=['STUB_LEAK_DETECTED'] + [c for c in result.get('reasonCodes', []) if c != 'STUB_LEAK_DETECTED'])
+            if result.get('validationState'):
+                result['validationState'] |= {'overall': 'BLOCKED', 'primaryReason': 'STUB_LEAK_DETECTED'}
     vals = result['validations']
     cand = {v['name']: v for v in vals if v.get('target') == 'candidate'}
     tests = (cand.get('test') or {}).get('tests')
@@ -888,10 +931,12 @@ def _finish(out, report, plan, result, log):
     reports.write_all(out / 'reports', report, result, est, result.get('sbomComponents'))
     for d in ('meta', 'home', 'tmp', '.work', '.migration-tmp', '.m2-degraded'):  # .m2-degraded: stubs, never delivered
         shutil.rmtree(out / d, ignore_errors=True)
+
     from .security import redact
     for f in (out / 'logs').glob('*.log'):  # git diff / Maven output may echo removed secret values
         f.write_text(redact(f.read_text(errors='replace')))
-    _package(out, plan, result)
+    if not leak:
+        _package(out, plan, result)
     (out / 'reports' / 'checksums.sha256').write_text(sbom.checksums(out))  # last: hashes of everything delivered
 
 
@@ -1092,6 +1137,10 @@ def migrate_workspace(source: Path, out: Path, target, java, accepted, *, log, r
     out.mkdir(parents=True, exist_ok=True)
     # ANALYSIS WAVES (static: the migration of each project runs its own full analysis with Maven)
     orch.analyze_all(ws, lambda p: analyze(p.root, target, None, False, lambda m: None), log=log)
+    from .workspace import recommend_target
+    rec = recommend_target({p.name: {f['ruleId']: 1 for f in p.findings} for p in ws.projects})
+    if rec:  # Fuse/Karaf bundles: Spring Boot/Quarkus will stop them at ARCHITECTURAL_MIGRATION_REQUIRED
+        log(f"RECOMENDACIÓN: {rec['reason']} Use: migrate.py migrate {source} --target tomcat-war --output <salida>")
     legacy, migrated = out / '.m2-legacy', out / '.m2-migrated'
     ctx = engine_context(out / '.ws', 12)
 
@@ -1132,6 +1181,8 @@ def migrate_workspace(source: Path, out: Path, target, java, accepted, *, log, r
             res |= {'migrationMode': 'DEGRADED', 'validationConfidence': (r.get('validationConfidence') or {}).get('level')}
         if r.get('baseline'):
             res['baseline'] = r['baseline']
+        if r.get('validationState'):  # code-review 48: the project's state is the one its migration computed, not re-derived
+            res['validationState'] = r['validationState']
         if not install(p.root, legacy, f'{p.name}-legacy'):
             res['warning'] = 'no se pudo instalar la versión legacy en el overlay (dependientes: baseline sin ella)'
         if res['status'] in mig.OK and not install(pout / 'migrated-project', migrated, f'{p.name}-migrated'):
@@ -1139,6 +1190,10 @@ def migrate_workspace(source: Path, out: Path, target, java, accepted, *, log, r
                 res['artifactAvailable'] = False
             else:
                 res.update(status='FAILED', reason='MIGRATED_ARTIFACT_NOT_INSTALLABLE')
+                if res.get('validationState'):  # same rule everywhere: the overall state follows what actually happened
+                    vs = res['validationState']
+                    res['validationState'] = vs | {'overall': 'FAILED', 'primaryReason': 'MIGRATED_ARTIFACT_NOT_INSTALLABLE',
+                                                   'secondaryReasons': [vs.get('primaryReason')] + vs.get('secondaryReasons', [])}
         plog(f"build {'PASS' if res['status'] in mig.OK else 'FAIL'}")
         return res
     from . import workspace as wsmod

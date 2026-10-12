@@ -1,6 +1,5 @@
 """camel-cxf-evidence-corrections 33-42: CXF semantic mapping, ProjectEvidence vs DependencyEvidence, confidence levels,
 report format, Blueprint, SUPPORTED semantics and Red Hat Fuse / Karaf vendor BOMs (Maven faked)."""
-import functools
 import json
 
 from helpers import FakeMaven, install
@@ -113,7 +112,7 @@ def test_fuse_vendor_bom_blocks_platform_not_analysis(tmp_path, monkeypatch):   
         '<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0">\n<camelContext xmlns="http://camel.apache.org/schema/blueprint">\n'
         '<route id="rates"><from uri="timer:rates"/><to uri="log:rates"/></route>\n</camelContext>\n</blueprint>\n')
     install(monkeypatch, FuseMaven())
-    monkeypatch.setattr(preflight, 'repair', functools.partial(preflight.repair, exists=lambda *a: True))  # camel-bom 2.23.2 "exists"
+    monkeypatch.setattr(preflight, '_artifact_exists', lambda *a: True)  # camel-bom 2.23.2 "exists" (no network)
     out = tmp_path / 'out'
     assert cli_tool.main(['migrate', str(src), '--output', str(out), '--accept', 'CAMEL2_VERSION=revisado contra la guía 2→3']) != 0
     rep = json.loads((out / 'reports/migration-report.json').read_text())

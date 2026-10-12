@@ -17,14 +17,22 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
   imports: [FormsModule, MessageModule, SelectModule, TableModule, TextareaModule, ActionButton, JobLog, StateView, StatusTag],
   template: `
     <h3>Migración por oleadas</h3>
-    <p class="muted">Migra todos los proyectos del workspace en orden de dependencias. Si un proyecto no migra, los que dependen de él
+    <p class="muted">Spring Boot / Quarkus: migra todos los proyectos del workspace en orden de dependencias. Si un proyecto no migra, los que dependen de él
       quedan <code>BLOCKED</code> (DEPENDENCY_MIGRATION_FAILED); el resto continúa. Cada proyecto se construye y prueba contra la versión
       legacy (línea base) o migrada (candidato) de sus dependencias internas.</p>
+    @if (recommended(); as rec) {
+      <p-message severity="info"><span><strong>Recomendado: Tomcat WAR.</strong> {{ rec.reason }}</span></p-message>
+    }
     <div class="form">
-      <span><label for="wsp">Perfil</label>
-        <p-select inputId="wsp" [options]="profiles.data() ?? []" optionLabel="name" optionValue="id" [(ngModel)]="profileId" [style]="{ minWidth: '22rem' }" /></span>
+      <span><label for="wsp">Destino</label>
+        <p-select inputId="wsp" [options]="targets()" optionLabel="name" optionValue="id" [(ngModel)]="profileId" [style]="{ minWidth: '22rem' }" /></span>
       <span><label for="wsj">Java</label><p-select inputId="wsj" [options]="['17', '21']" [(ngModel)]="java" /></span>
     </div>
+    @if (profileId === TOMCAT) {
+      <p class="muted">Tomcat WAR convierte todos los bundles OSGi/Blueprint del workspace en <strong>un solo WAR</strong> con Camel 4.18: las rutas no
+        se rediseñan; Blueprint pasa a Spring XML y una capa de compatibilidad cubre direct-vm, xmljson y servicios OSGi. Compilar prueba los
+        POM y la API; el comportamiento se valida con <code>migrate.py verify</code> (gate G4).</p>
+    }
     <label for="wsa">Decisiones del arquitecto sobre hallazgos bloqueantes, una por línea: <code>REGLA=motivo</code> (se aplican a todos los proyectos y quedan en auditoría)</label>
     <textarea pTextarea id="wsa" rows="2" [(ngModel)]="acceptText" placeholder="CAMEL2_VERSION=Revisado contra la guía 2→3 para todo el workspace"></textarea>
     @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
@@ -50,6 +58,12 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
             </div>
           }
         }
+        @if (m.target === 'tomcat-war' && tw(m).build; as b) {
+          <p>Tomcat WAR · {{ tw(m).counts?.modules }} módulos · build <mf-status [value]="b.status" />
+            · {{ (tw(m).manualActions ?? []).length }} punto(s) de revisión manual</p>
+          @if ((tw(m).manualActions ?? []).length) { <ul>@for (a of tw(m).manualActions; track a) { <li><small>{{ a }}</small></li> }</ul> }
+          @if (tw(m).note) { <p class="muted">{{ tw(m).note }}</p> }
+        }
         @if (m.jobId && ['queued', 'running'].includes(m.state)) { <mf-job-log [jobId]="m.jobId" (finished)="list.reload()" /> }
         @if (m.job?.errorMessage) { <p-message severity="warn">{{ m.job?.errorCode }}: {{ m.job?.errorMessage }}</p-message> }
         @if (rows().length) {
@@ -73,6 +87,11 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
 })
 export class WorkspaceMigrationPanel {
   scanId = input.required<string>();
+  /** shared.recommendedTarget of the workspace scan: a Fuse/Karaf workspace is the tomcat-war profile's case. */
+  recommended = input<{ target: string; reason: string } | null>(null);
+  readonly TOMCAT = 'tomcat-war';
+  targets = computed(() => [...(this.profiles.data() ?? []).map(p => ({ id: p.id, name: p.name })),
+    { id: this.TOMCAT, name: 'Tomcat WAR · Fuse/Karaf (Blueprint) → Camel 4' }]);
   api = inject(Api);
   ctx = inject(ProjectContext);
   profiles = new Loader<Profile[]>();
@@ -95,7 +114,7 @@ export class WorkspaceMigrationPanel {
   constructor() {
     this.profiles.load(async () => {
       const ps = (await this.api.profiles()).filter(p => p.status === 'validated');
-      this.profileId ??= ps.find(p => p.runtime === 'spring')?.id ?? ps[0]?.id ?? null;
+      this.profileId ??= this.recommended()?.target === this.TOMCAT ? this.TOMCAT : ps.find(p => p.runtime === 'spring')?.id ?? ps[0]?.id ?? null;
       return ps;
     });
     effect(() => { const id = this.scanId(); this.list.load(() => this.api.workspaceMigrations(id)); });
@@ -104,10 +123,12 @@ export class WorkspaceMigrationPanel {
   migrationWaves(m: WorkspaceMigration): { wave: string; projects: string[]; status: string }[] {
     return ((m.summary as Record<string, any>)?.['migrationWaves'] ?? []);
   }
+  tw(m: WorkspaceMigration): any { return m.summary ?? {}; }
   r(m: WorkspaceMigration, n: string): any { return ((m.results ?? {}) as Record<string, any>)[n] ?? {}; }
   glyph(s?: string) { return s === 'SUCCEEDED' ? '✓' : s === 'PARTIAL_SUCCESS' ? '⚠' : s === 'BLOCKED' ? '⊘' : s ? '✗' : '·'; }
   cls(s?: string) { return s === 'SUCCEEDED' ? 'ok' : s === 'PARTIAL_SUCCESS' ? 'warn' : s === 'BLOCKED' ? 'blk' : 'bad'; }
   retryable(m: WorkspaceMigration): string[] {
+    if (m.target === this.TOMCAT) return [];  // one WAR for the whole workspace: start a new migration instead
     return Object.entries((m.results ?? {}) as Record<string, any>).filter(([, r]) => r.status === 'FAILED' || r.status === 'BLOCKED').map(([n]) => n);
   }
   async retry(m: WorkspaceMigration, projects: string[]) {
@@ -130,7 +151,8 @@ export class WorkspaceMigrationPanel {
       accept[line.slice(0, i).trim().toUpperCase()] = line.slice(i + 1).trim();
     }
     this.busy.set(true);
-    try { await this.api.startWorkspaceMigration(this.scanId(), { profileId: this.profileId, java: this.java, accept }); this.list.reload(); }
+    const body = this.profileId === this.TOMCAT ? { target: this.TOMCAT, java: this.java, accept } : { target: 'profile', profileId: this.profileId, java: this.java, accept };
+    try { await this.api.startWorkspaceMigration(this.scanId(), body); this.list.reload(); }
     catch (e) { this.error.set(UiError.from(e)); }
     finally { this.busy.set(false); }
   }

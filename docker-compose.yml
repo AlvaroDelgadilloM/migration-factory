@@ -2,7 +2,7 @@
 name: migration-factory
 
 x-backend-env: &backend-env
-  MF_ENV: development
+  MF_ENV: ${MF_ENV:-development}
   MF_DATABASE_URL: postgresql+psycopg://mf:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/mf
   MF_REDIS_URL: redis://:${REDIS_PASSWORD:?set in .env}@redis:6379/0
   MF_AUTH_MODE: ${MF_AUTH_MODE:-dev}
@@ -16,7 +16,7 @@ x-backend-env: &backend-env
   MF_LOCAL_SOURCE_ROOTS: /sources
   MF_MAX_UPLOAD_MB: ${MF_MAX_UPLOAD_MB:-200}
   MF_GIT_ALLOWED_HOSTS: ${MF_GIT_ALLOWED_HOSTS:-github.com,gitlab.com,bitbucket.org}
-  MF_CORS_ORIGINS: http://localhost:8080
+  MF_CORS_ORIGINS: http://localhost:${MF_UI_PORT:-3240},http://127.0.0.1:${MF_UI_PORT:-3240}
 
 services:
   postgres:
@@ -52,7 +52,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
-    ports: ["127.0.0.1:8000:8000"]   # local only: pilot script and API docs
+    ports: ["127.0.0.1:${MF_API_PORT:-3241}:8000"]   # local only: pilot script and API docs
     networks: [data, edge]
     read_only: true
     tmpfs: [/tmp]
@@ -105,7 +105,7 @@ services:
   frontend:
     build: {context: ., dockerfile: docker/frontend.Dockerfile}
     image: migration-factory/frontend:local
-    ports: ["127.0.0.1:${MF_UI_PORT:-8080}:8080"]
+    ports: ["127.0.0.1:${MF_UI_PORT:-3240}:8080"]
     depends_on:
       api: {condition: service_healthy}
     environment:

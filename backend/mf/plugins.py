@@ -22,7 +22,7 @@ PLUGINS = [
      'capabilities': ['blueprint-to-spring-xml', 'osgi-services (ServiceImport/ServiceExport)', 'rules/tomcat-war/camel2-to-4.json',
                       'compat: direct-vm, xmljson, xslt?saxon, header-case', 'web-fragment de OsgiServletRegisterer', 'un WAR por workspace',
                       'verify: route-structure + responses (evidencia G4)'],
-     'dependencies': ['analyzer.maven'], 'notes': 'Solo CLI (migrate --target tomcat-war); no redisena rutas. Ver docs/19_TOMCAT_WAR.md.'},
+     'dependencies': ['analyzer.maven'], 'notes': 'CLI (migrate --target tomcat-war) y plataforma (migración de workspace, target tomcat-war); no redisena rutas. Ver docs/19_TOMCAT_WAR.md.'},
     {'id': 'target.tomcat-war', 'kind': 'target-generator', 'version': 'tomcat-war-camel-4.18 (rules/tomcat-war)', 'supportedSources': ['local'],
      'supportedTargets': ['tomcat-war'], 'capabilities': ['Tomcat 10.1 WAR + Spring 6.2 + Camel 4.18.4 (LTS)', 'Java 17'],
      'dependencies': ['migration.fuse-blueprint-to-tomcat-war']},

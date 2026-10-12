@@ -8,7 +8,7 @@ baseline + candidate compile/test) -> diff review -> gates/PR blockers -> report
 This is a PRODUCT test of Migration Factory on a synthetic fixture. It is NOT evidence that any real
 application was migrated equivalently. Stdlib only.
 
-Usage: python3 scripts/pilot.py [--source local|zip|git] [--runtime spring|quarkus] [--base http://127.0.0.1:8000]
+Usage: python3 scripts/pilot.py [--source local|zip|git] [--runtime spring|quarkus] [--base http://127.0.0.1:3241]
   local: folder /sources/pilot-orders as seen by the worker (default); zip: uploads examples/pilot-orders zipped;
   git: --repo https://host/org/repo.git (an allowed host).
 """
@@ -81,7 +81,7 @@ def wait_job(api, job_id, user, limit=3600):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--base', default='http://127.0.0.1:8000')
+    ap.add_argument('--base', default='http://127.0.0.1:3241')
     ap.add_argument('--out', default='pilot-output')
     ap.add_argument('--runtime', default='spring', choices=['spring', 'quarkus'])
     ap.add_argument('--source', default='local', choices=['local', 'zip', 'git'])

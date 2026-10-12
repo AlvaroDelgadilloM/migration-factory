@@ -81,6 +81,17 @@ export function executionLabel(e: Execution) {
                 @if (pl.runtimeMigration === 'REQUIRED') { <br /><small>Migración de runtime requerida (OSGi/Karaf → Spring Boot 3 / Quarkus 3).</small> }</div>
             </p-message>
           }
+          @if ($any(e.summary['validationState']); as vs) {
+            <h2>Estado de validación</h2>
+            <dl class="kv">
+              <dt>Modelo Maven del candidato</dt><dd><mf-status [value]="vs.candidateModel" /></dd>
+              <dt>Resolución real de dependencias</dt><dd>{{ vs.candidateDependencyResolution }}</dd>
+              <dt>Compilación</dt><dd>{{ vs.candidateCompile }} ({{ vs.candidateCompileValidation === 'VERIFIED' ? 'verificada' : 'no verificada' }})</dd>
+              <dt>Pruebas</dt><dd>{{ vs.candidateTest }}</dd>
+              <dt>Recetas</dt><dd>{{ vs.recipeExecution }}</dd>
+              @if (vs.stubMode !== 'NONE') { <dt>Stubs (solo para recetas)</dt><dd>{{ vs.stubbedDependencies.join(', ') }}</dd> }
+            </dl>
+          }
           @if (e.summary['note']) { <p-message severity="info">{{ e.summary['note'] }}</p-message> }
           @if (e.summary['sourceUnchanged']) { <p class="muted"><i class="pi pi-shield" aria-hidden="true"></i> El origen (carpeta, ZIP o Git) no se modifica: el candidato se entrega como candidate.zip, con candidate.patch y reportes.</p> }
           @if (e.job?.errorMessage) { <p-message severity="error">{{ e.job?.errorCode }}: {{ e.job?.errorMessage }}</p-message> }

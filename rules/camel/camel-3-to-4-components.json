@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.3",
+  "version": "2026.10.4",
   "description": "CamelComponentCompatibilityRegistry v2 (19 + camel-cxf-evidence-corrections 33-39). Decisiones semánticas, no mapeos por nombre: cada componente declara su estado, su destino (o resolver por uso), la evidencia específica que lo correlaciona con el código y la semántica de SUPPORTED (artefacto vs código vs runtime). Los renombres 1:1 están en rules/migration-rules.json. Todo destino se verifica contra rules/camel/boms/camel-bom-<versión>.json antes de escribirse en un POM.",
   "statuses": [
     "SUPPORTED",
@@ -65,7 +65,8 @@
       "runtimeOptions": [
         "Spring Boot 3",
         "Quarkus 3",
-        "Camel Main"
+        "Camel Main",
+        "Tomcat WAR (perfil tomcat-war: conserva rutas y Spring XML)"
       ],
       "evidence": [
         "OSGI-INF/blueprint",
@@ -79,7 +80,7 @@
         "retirar metadata OSGi cuando aplique",
         "bundle → jar si el runtime destino lo requiere"
       ],
-      "reason": "OSGi Blueprint no existe en Camel 4: es una migración de runtime, no de artefacto."
+      "reason": "OSGi Blueprint no existe en Camel 4: es una migración de runtime, no de artefacto. Sin rediseño: perfil tomcat-war (un WAR para Tomcat con Camel 4; migración de workspace con target tomcat-war o migrate.py --target tomcat-war)."
     },
     "camel-cdi": {
       "status": "ARCHITECTURAL_MIGRATION",

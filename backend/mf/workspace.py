@@ -192,11 +192,28 @@ def shared_findings(reports: dict) -> dict:
                'detected': f"{rid} en {len(v['projects'])} proyectos", 'target': v['recommendation']}
               for i, (rid, v) in enumerate(sorted(((k, v) for k, v in by_rule.items() if len(v['projects']) > 1),
                                                  key=lambda kv: (-len(kv[1]['projects']), kv[0])), 1)]
-    return {'projects': n, 'metrics': metrics, 'commonRules': common,
-            'findingsByProject': {name: dict(Counter(f['ruleId'] for f in r['findings'])) for name, r in reports.items()}}
+    by_project = {name: dict(Counter(f['ruleId'] for f in r['findings'])) for name, r in reports.items()}
+    return {'projects': n, 'metrics': metrics, 'commonRules': common, 'findingsByProject': by_project,
+            'recommendedTarget': recommend_target(by_project)}
+
+
+OSGI_RULES = ('BLUEPRINT', 'OSGI_BUNDLE')
+
+
+def recommend_target(by_project: dict) -> dict | None:
+    """A workspace made mostly of OSGi/Blueprint bundles (Fuse/Karaf) is the tomcat-war profile's case: Spring Boot and Quarkus
+    need the runtime redesigned, so they stop at ARCHITECTURAL_MIGRATION_REQUIRED. Evidence = the scan's own findings."""
+    osgi = sorted(n for n, rules in by_project.items() if any(r in rules for r in OSGI_RULES))
+    if not by_project or len(osgi) * 2 < len(by_project):  # ponytail: majority rule; mixed workspaces are a per-project decision
+        return None
+    return {'target': 'tomcat-war', 'projects': osgi, 'count': f'{len(osgi)}/{len(by_project)}',
+            'reason': f'{len(osgi)} de {len(by_project)} proyectos son bundles OSGi/Blueprint (Fuse/Karaf): con Spring Boot o Quarkus '
+                      'quedan en ARCHITECTURAL_MIGRATION_REQUIRED; el perfil tomcat-war los lleva a un WAR con Camel 4 sin rediseñar las rutas.'}
 
 
 if __name__ == '__main__':  # self-check: acceptance cases 1-5 of the document
+    assert recommend_target({'a': {'BLUEPRINT': 1}, 'b': {'OSGI_BUNDLE': 2}, 'c': {}})['count'] == '2/3'
+    assert recommend_target({'a': {'BLUEPRINT': 1}, 'b': {}, 'c': {}}) is None
     assert classify(['project/pom.xml'])['repositoryType'] == SINGLE
     assert classify(['root/pom.xml', 'root/a/pom.xml', 'root/b/pom.xml'], lambda p: ['a', 'b'])['repositoryType'] == MULTI_MODULE
     info = classify(['develop/commons/common-activemq/pom.xml', 'develop/commons/common-catalogue/pom.xml',

@@ -1,0 +1,67 @@
+name: Deploy VPS
+
+# Manual: Actions → "Deploy VPS" → Run workflow. Runs CI first; deploys the exact tested commit.
+# Secrets (Settings → Secrets → Actions, environment "vps"):
+#   VPS_HOST       host or IP            VPS_USER  deploy user (in the docker group, no root)
+#   VPS_SSH_KEY    private key (ed25519) VPS_KNOWN_HOSTS  output of `ssh-keyscan -t ed25519 <host>` (no blind trust)
+#   VPS_PATH       repo path on the VPS, e.g. /opt/migration-factory
+#   VPS_SSH_PASSPHRASE  (optional) passphrase of VPS_SSH_KEY; loaded into ssh-agent, never written to disk
+# The VPS keeps its own .env (never in Git).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: {group: deploy-vps, cancel-in-progress: false}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-24.04
+    environment: vps            # add required reviewers to this environment to approve each deploy
+    timeout-minutes: 30
+    steps:
+      - name: SSH
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+          PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          # the passphrase reaches ssh-add only through SSH_ASKPASS (env var), the key only through stdin
+          printf '#!/bin/sh\nprintf "%%s" "$PASSPHRASE"\n' > ~/.ssh/askpass && chmod 700 ~/.ssh/askpass
+          printf '%s\n' "$KEY" | SSH_ASKPASS=~/.ssh/askpass SSH_ASKPASS_REQUIRE=force DISPLAY=none ssh-add - >/dev/null
+          rm -f ~/.ssh/askpass
+      - name: Desplegar el commit probado
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          DIR: ${{ secrets.VPS_PATH }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh -o StrictHostKeyChecking=yes "$USER@$HOST" bash -s -- "$DIR" "$SHA" <<'EOF'
+          set -euo pipefail
+          cd "$1"
+          test -f .env || { echo "Falta .env en el VPS"; exit 1; }
+          git fetch --quiet origin
+          git checkout --quiet --detach "$2"
+          docker compose up -d --build --remove-orphans
+          for i in $(seq 1 30); do
+            docker compose ps api --format '{{.Status}}' | grep -q healthy && break
+            sleep 5
+          done
+          docker compose ps
+          docker compose ps api --format '{{.Status}}' | grep -q healthy
+          docker image prune -f
+          EOF
+      - name: Cerrar ssh-agent
+        if: always()
+        run: ssh-agent -k >/dev/null 2>&1 || true

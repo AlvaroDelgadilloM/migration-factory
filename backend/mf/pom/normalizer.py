@@ -2,8 +2,9 @@
 
 - apply_mapping (doc 24 phase 2): Camel compatibility decisions (rename / remove) and alignment of every remaining
   org.apache.camel literal version to the target Camel version. Never a blind bump: only SUPPORTED artifacts are aligned.
-- normalize (doc 23): one declaration per dependency key (groupId, artifactId, type, classifier) and per plugin
-  (groupId, artifactId) in each section; ${artifactId}/${groupId}/${version} -> ${project.*} when not user properties.
+- normalize (doc 23, code-review 47): one declaration per dependency key (groupId, artifactId, type, classifier) only when the
+  duplicates are semantically equivalent (scope, optional, exclusions, systemPath, version), else POM_DUPLICATE_SEMANTIC_CONFLICT;
+  one per plugin (groupId, artifactId) in each section; ${artifactId}/${groupId}/${version} -> ${project.*} when not user properties.
 - sanity (doc 23): POM_SANITY_GATE — duplicates, unreadable XML, unresolved placeholders.
 Edits are located on the original text (formatting kept) and never touch exclusions or plugin configuration."""
 from __future__ import annotations
@@ -32,6 +33,28 @@ def dep_key(block: str):
     return (_tag(block, 'groupId'), _tag(block, 'artifactId'), _tag(block, 'type') or 'jar', _tag(block, 'classifier') or '')
 
 
+def dependency_semantic_signature(block: str) -> dict:
+    """code-review 47: what a duplicate must share to be removed without changing Maven semantics."""
+    excl = re.search(r'<exclusions>(.*?)</exclusions>', block, re.S)
+    pairs = re.findall(r'<exclusion>\s*(.*?)</exclusion>', excl[1], re.S) if excl else []
+    return {'scope': _tag(block, 'scope') or 'compile', 'optional': (_tag(block, 'optional') or 'false') == 'true',
+            'systemPath': _tag(block, 'systemPath'), 'version': _tag(block, 'version'),
+            'exclusions': sorted(f"{_tag(x, 'groupId')}:{_tag(x, 'artifactId')}" for x in pairs)}
+
+
+def _merge(first: str, second: str, key) -> tuple[str | None, list[str]]:
+    """Kept declaration for two duplicates, or (None, differing fields) when they are not semantically equivalent."""
+    a, b = dependency_semantic_signature(first), dependency_semantic_signature(second)
+    diff = [k for k in a if a[k] != b[k]]
+    if not diff:
+        return first, []
+    # ponytail: a versionless Camel declaration is managed by the target camel-bom, and the mapping step aligned every literal Camel
+    # version to that target, so the explicit version is redundant. Outside Camel the BOM value is unknown here: manual review.
+    if diff == ['version'] and str(key[0]).startswith('org.apache.camel') and not (a['version'] and b['version']):
+        return (first if not a['version'] else second), []
+    return None, diff
+
+
 def _dedupe(text: str, section: str, item: re.Pattern, key, kind: str, file: str, changes: list, conflicts: list) -> str:
     def fix_section(m):
         body, seen, out, pos = m[1], {}, [], 0
@@ -41,15 +64,17 @@ def _dedupe(text: str, section: str, item: re.Pattern, key, kind: str, file: str
             pos = b.end()
             if k in seen:
                 first = seen[k]
-                if kind == 'dependency' and (_tag(first, 'scope') or 'compile') != (_tag(b[0], 'scope') or 'compile'):
-                    conflicts.append({'file': file, 'kind': 'SCOPE_CONFLICT', 'key': ':'.join(map(str, k[:2])),
-                                      'detail': f"{_tag(first, 'scope') or 'compile'} vs {_tag(b[0], 'scope') or 'compile'}"})
-                if _tag(first, 'version') and not _tag(b[0], 'version'):  # prefer the declaration managed by a BOM
-                    idx = out.index(first) if first in out else None
-                    if idx is not None:
-                        out[idx] = b[0]
-                        seen[k] = b[0]
-                changes.append({'file': file, 'change': f"{kind} duplicado eliminado: {':'.join(str(x) for x in k[:2])}"})
+                if kind == 'dependency':
+                    kept, diff = _merge(first, b[0], k)
+                    if kept is None:  # different scope/optional/exclusions/systemPath/version: never removed automatically
+                        conflicts.append({'file': file, 'kind': 'POM_DUPLICATE_SEMANTIC_CONFLICT', 'key': ':'.join(map(str, k[:2])),
+                                          'fields': diff, 'resolution': 'MANUAL_REVIEW'})
+                        out.append(b[0])
+                        continue
+                    if kept is not first and first in out:
+                        out[out.index(first)] = kept
+                        seen[k] = kept
+                changes.append({'file': file, 'change': f"{kind} duplicado eliminado: {':'.join(str(x) for x in k[:2])} (AUTO_DEDUP)"})
                 continue
             seen[k] = b[0]
             out.append(b[0])
@@ -177,4 +202,20 @@ if __name__ == '__main__':  # self-check: the member-phygital shape (doc 31)
         assert sanity(root)['status'] == 'PASS'
         (root / 'pom.xml').write_text(t.replace('${camel.version}', '${camel.version.typo}'))
         assert sanity(root)['warnings'][0]['detail'] == 'camel.version.typo'
+        # code-review 47: duplicates that differ in exclusions/scope/optional are reported, never silently merged
+        dup = ('<project><dependencies>\n<dependency><groupId>g</groupId><artifactId>a</artifactId><version>1</version>'
+               '<exclusions><exclusion><groupId>x</groupId><artifactId>y</artifactId></exclusion></exclusions></dependency>\n'
+               '<dependency><groupId>g</groupId><artifactId>a</artifactId><version>1</version></dependency>\n'
+               '<dependency><groupId>g</groupId><artifactId>b</artifactId><scope>test</scope></dependency>\n'
+               '<dependency><groupId>g</groupId><artifactId>b</artifactId><scope>test</scope></dependency>\n'
+               '<dependency><groupId>g</groupId><artifactId>c</artifactId><version>1</version></dependency>\n'
+               '<dependency><groupId>g</groupId><artifactId>c</artifactId><optional>true</optional><version>1</version></dependency>\n'
+               '</dependencies></project>\n')
+        (root / 'pom.xml').write_text(dup)
+        n = normalize(root)
+        t = (root / 'pom.xml').read_text()
+        assert t.count('<artifactId>a</artifactId>') == 2 and '<artifactId>y</artifactId>' in t   # exclusions never lost
+        assert t.count('<artifactId>b</artifactId>') == 1 and t.count('<artifactId>c</artifactId>') == 2
+        assert [(c['key'], c['fields']) for c in n['conflicts']] == [('g:a', ['exclusions']), ('g:c', ['optional'])]
+        assert sanity(root)['status'] == 'FAIL'                                      # left for manual review (POM_SANITY_GATE)
     print('ok')

@@ -573,12 +573,18 @@ def do_execution(job: Job, ctx: Context):
             _report(db, ex, plan, profile, ctx)
             return ('blocked', decision['code'], decision['reason'])
         degraded = decision['migration'] == 'DEGRADED'
+        stubbed = []
         if degraded:  # stubs of the missing low-criticality artifacts only so OpenRewrite can parse and run the recipes
             from ..baseline.stubs import install_stubs
             head = ctx.workdir / '.m2-degraded'
             mavenops.use_local_overlay(head)
-            install_stubs(head, [i['artifact'] for i in issues])
-            ctx.emit('warn', 'baseline', f"Modo DEGRADADO: {decision['reason']}")
+            stubbed = install_stubs(head, [i['artifact'] for i in issues])
+            ctx.emit('warn', 'baseline', f"Modo DEGRADADO: {decision['reason']}; stubs solo para las recetas: {', '.join(stubbed)}")
+            mv = db.scalar(select(Validation).where(Validation.execution_id == ex.id, Validation.suite == 'maven-model',
+                                                    Validation.target == 'candidate'))
+            if mv is not None and mv.status == 'PASS':  # code-review 45: never a plain PASS while stubs back the model
+                mv.status, mv.detail = 'PASS_WITH_STUBS', f"resolutionMode=DEGRADED_WITH_STUBS; stubs: {', '.join(stubbed)}"
+                db.commit()
 
         failed = set()
         total = len([s for s in steps if s['state'] == 'pending'])
@@ -667,7 +673,9 @@ def do_execution(job: Job, ctx: Context):
             _store(db, ex.project_id, 'report-md', 'camel-component-migration-report.md', camel_compat.report_markdown(decisions),
                    'text/markdown; charset=utf-8', ctx, execution_id=ex.id, commit=False)
         from ..dependency import preflight_gates
-        dg = preflight_gates.run(src, profile.tooling['camelRecipeTarget'], usage=(scan.summary or {}).get('usage') or {}, decisions=decisions)
+        ctx_step = next((s for s in evaluated if s['key'] == 'camel-3-to-4'), {})
+        dg = preflight_gates.run(src, profile.tooling['camelRecipeTarget'], usage=(scan.summary or {}).get('usage') or {}, decisions=decisions,
+                                 context=(ctx_step.get('recipe') or {}).get('decisionContext'))
         suites = {'POM_SANITY_GATE': 'pom-sanity', 'CAMEL_COMPONENT_COMPATIBILITY_GATE': 'camel-compatibility',
                   'CAMEL_VERSION_CONSISTENCY_GATE': 'camel-version', 'ARTIFACT_AVAILABILITY_GATE': 'artifact-availability',
                   'DEPENDENCY_VALIDATION_GATE': 'dependency-validation'}
@@ -684,6 +692,18 @@ def do_execution(job: Job, ctx: Context):
             _validation(db, ex, ctx, suites[g['name']], 'candidate', 'G1', None, status=g['status'], detail=(detail or g['status'])[:4000])
             ctx.emit('info' if g['status'] == 'PASS' else 'warn', 'preflight-gates', f"{g['name']}: {g['status']} {g.get('code') or ''}")
         set_phase(ctx, 'candidate-build', 80)
+        if degraded:  # code-review 45/46: stubs leave the repositories before any build, then StubLeakGuard
+            from ..baseline.stubs import remove_stubs
+            from ..config import get_settings
+            from ..dependency import stub_leak_guard
+            remove_stubs(ctx.workdir / '.m2-degraded', stubbed)
+            mavenops.use_local_overlay(None)
+            leak = stub_leak_guard.check(src, stubbed, [ctx.workdir / '.m2-degraded', get_settings().maven_repo_local],
+                                         overlay_enabled=mavenops.current_overlay() is not None)
+            _validation(db, ex, ctx, 'stub-leak-guard', 'candidate', 'G1', None, status=leak['status'],
+                        detail=json.dumps(leak['evidence'] | {'leaks': leak['leaks'][:10]})[:4000])
+            if leak['status'] == 'FAIL':
+                dg = dg | {'status': 'FAIL', 'primary': 'STUB_LEAK_DETECTED'}
         if dg['status'] == 'FAIL':  # docs 22/29: never wait minutes for Maven to fail on a candidate known to be invalid
             for suite, gate_id in (('compile', 'G2'), ('test', 'G3')):
                 _validation(db, ex, ctx, suite, 'candidate', gate_id, None, status='SKIPPED',
@@ -730,8 +750,27 @@ def do_execution(job: Job, ctx: Context):
             'filesChanged': db.query(DiffFile).filter(DiffFile.execution_id == ex.id).count(), 'sourceUnchanged': True,
             'changesRecorded': n_changes,
             'note': 'Compilar y pasar pruebas unitarias no demuestra equivalencia funcional (ver gate G4).'}
+        from .. import validation_state  # code-review 48: same state model and rules as the CLI
+        vstate = validation_state.build(
+            baseline_model='VALID', baseline_state=baseline_state if ex.mode == 'apply' else None,
+            baseline_compile=getattr(bvals.get(('compile', 'baseline')), 'status', None) if ex.mode == 'apply' else None,
+            step_states=[s['state'] for s in steps if s.get('kind') in ('recipe', 'transform')],
+            candidate_model=vals.get(('maven-model', 'candidate'), '').replace('_WITH_STUBS', '') or None,
+            candidate_compile=vals.get(('compile', 'candidate')), candidate_test=vals.get(('test', 'candidate')), stubbed=stubbed,
+            degraded=ex.mode == 'apply' and degraded, validation_confidence=ex.summary.get('validationConfidence'), status=agg['status'],
+            primary_reason=agg['primaryReason'], reason_codes=agg['reasonCodes'])
+        agg['status'] = vstate['overall']
+        ex.summary = {**ex.summary, 'validationState': vstate, 'status': vstate['overall']}  # new dict: JSON column change is tracked
+        from ..dependency import stub_leak_guard
+        pkg = stub_leak_guard.check(src, stubbed)  # code-review 46: never package a candidate carrying stubs
         db.commit()
         set_phase(ctx, 'package', 92)
+        if pkg['status'] == 'FAIL':
+            ex.summary = {**ex.summary, 'status': 'BLOCKED', 'primaryReason': 'STUB_LEAK_DETECTED', 'stubLeakGuard': pkg,
+                          'reasonCodes': ['STUB_LEAK_DETECTED'] + agg['reasonCodes']}
+            db.commit()
+            _report(db, ex, plan, profile, ctx)
+            return ('blocked', 'STUB_LEAK_DETECTED', ', '.join(x['kind'] for x in pkg['leaks']))
         _package_result(db, ex, ctx, src, repo, profile, plan, evaluated, redact(patch, ctx.secrets))
         set_phase(ctx, 'report', 95)
         _report(db, ex, plan, profile, ctx)
@@ -879,6 +918,71 @@ def _restore_previous(db, prev, out: Path):
     shutil.rmtree(out / '.prev', ignore_errors=True)
 
 
+def _workspace_tomcat_war(db, wm, scan, src, ctx):
+    """Profile tomcat-war on the platform: the engine of `migrate.py migrate --target tomcat-war`, then `mvn -DskipTests package`
+    through mavenops (approved mirror, isolated local repository, timeout and cancellation of this job). Compiling proves the POMs
+    and the Camel 4 API; behaviour is G4 (`migrate.py verify`)."""
+    import re as _re
+    from ..tomcat_war import pipeline as tw
+    out = ctx.workdir / 'tw-out'
+    set_phase(ctx, 'tomcat-war', 10)
+    try:
+        res = tw.migrate(src, out, None, log=lambda m: ctx.emit('info', 'tomcat-war', m))
+    except tw.InvalidInput as e:
+        raise StepFailure('WORKSPACE_INVALID', str(e)) from None
+    ws_dir = out / 'migrated-workspace'
+    set_phase(ctx, 'build', 55)
+    r = mavenops.mvn(ctx, ws_dir, ['-DskipTests', 'package'], 'tomcat-war-package', timeout=get_settings().workspace_timeout_seconds)
+    text = r.log_path.read_text(errors='replace')
+    errors = [line for line in text.splitlines() if line.startswith('[ERROR]')][:20]
+    build = {'status': 'PASS' if r.exit_code == 0 else 'FAIL', 'exitCode': r.exit_code, 'errors': errors}
+    if build['status'] == 'PASS':
+        status, reason = res['status'], ('MANUAL_ACTIONS_PENDING' if res['status'] == 'PARTIAL_SUCCESS' else None)
+    else:
+        status = 'FAILED'
+        reason = 'DEPENDENCY_RESOLUTION_ERROR' if any(_re.search(r'Could not (resolve|transfer|find)', e) for e in errors) else 'CANDIDATE_COMPILE_FAILED'
+    res['build'] = build
+    (out / 'reports' / 'tomcat-war-report.json').write_text(json.dumps(res, ensure_ascii=False, indent=2))
+    set_phase(ctx, 'artifacts', 90)
+    tag, arts = str(wm.id)[:8], {}
+
+    def keep(path, name, kind, ctype, text=True):
+        if path.exists():
+            data = redact(path.read_text(errors='replace'), ctx.secrets) if text else path.read_bytes()
+            arts[name] = str(_store(db, wm.project_id, kind, name, data, ctype, ctx if text else None, scan_id=scan.id, commit=False).id)
+    war = next(iter(sorted(ws_dir.glob('webapp/target/*.war'))), None)
+    if war is not None:
+        keep(war, f'ws-{tag}.{war.name}', 'candidate-zip', 'application/zip', text=False)
+    for t in ws_dir.rglob('target'):  # the deliverable is the source workspace; the WAR is its own download
+        if t.is_dir():
+            shutil.rmtree(t, ignore_errors=True)
+    shutil.make_archive(str(out / 'migrated-workspace'), 'zip', ws_dir)
+    keep(out / 'migrated-workspace.zip', f'ws-{tag}.migrated-workspace.zip', 'candidate-zip', 'application/zip', text=False)
+    keep(out / 'reports' / 'tomcat-war-report.md', f'ws-{tag}.tomcat-war-report.md', 'report-md', 'text/markdown; charset=utf-8')
+    keep(out / 'reports' / 'tomcat-war-report.json', f'ws-{tag}.tomcat-war-report.json', 'report-json', 'application/json')
+    keep(r.log_path, f'ws-{tag}.build.log', 'log', 'text/plain; charset=utf-8')
+    results = {}
+    for m in res['modules']:
+        st = 'FAILED' if build['status'] != 'PASS' else ('PARTIAL_SUCCESS' if m.get('manual') else 'SUCCEEDED')
+        results[m['source']] = {'project': m['source'], 'status': st, 'artifactId': m['artifactId'], 'manual': m.get('manual', []),
+                                'reason': reason if st == 'FAILED' else ('MANUAL_REVIEW' if m.get('manual') else ''), 'artifacts': {}}
+    ws_scan = (scan.summary or {}).get('workspace') or {}
+    wave_status = {'SUCCEEDED': 'WAVE_SUCCEEDED', 'PARTIAL_SUCCESS': 'WAVE_PARTIAL_SUCCESS'}.get(status, 'WAVE_FAILED')
+    wm.results = results
+    wm.summary = {'target': 'tomcat-war', 'profile': res['profile'], 'rulesVersion': res['rulesVersion'], 'workspaceStatus': status,
+                  'primaryReason': reason, 'analysisStatus': ws_scan.get('analysisStatus'),
+                  'migrationStatus': f"MIGRATION_{status}", 'counts': res['totals'], 'build': build,
+                  'manualActions': res['manualActions'], 'unresolvedServices': res['unresolvedServices'],
+                  'migrationWaves': [{'wave': 'WAR', 'projects': sorted(results), 'status': wave_status}], 'artifacts': arts,
+                  'exitCode': 0 if status in ('SUCCEEDED', 'PARTIAL_SUCCESS') else 2,
+                  'note': 'Compilar prueba los POM y la API de Camel 4; la equivalencia funcional es el gate G4 (migrate.py verify).'}
+    db.commit()
+    ctx.emit('info' if status == 'SUCCEEDED' else 'warn', 'status',
+             f"tomcat-war: {status} · {res['totals']['modules']} módulos · build {build['status']}" + (f' · {reason}' if reason else ''))
+    return None if status == 'SUCCEEDED' else (WS_STATE.get(status, 'failed'), reason or f'MIGRATION_{status}',
+                                              f"build {build['status']}; {len(res['manualActions'])} punto(s) de revisión manual")
+
+
 def do_workspace_migrate(job: Job, ctx: Context):
     """Every project of a workspace by analysis waves then migration waves (doc 20), with the same engine as
     `migrate.py migrate --workspace`, on a copy of the workspace scan's snapshot. Inherits this job's deadline,
@@ -904,6 +1008,8 @@ def do_workspace_migrate(job: Job, ctx: Context):
         if prev is not None:
             set_phase(ctx, 'restore-previous', 4)
             _restore_previous(db, prev, out)
+        if wm.target == 'tomcat-war':  # Fuse/Karaf bundles -> one WAR (docs/19_TOMCAT_WAR.md), same snapshot, same job controls
+            return _workspace_tomcat_war(db, wm, scan, src, ctx)
         set_phase(ctx, 'waves', 5)
         cli_tool._PARENT['ctx'] = ctx
         try:
@@ -967,7 +1073,7 @@ MANDATORY_KINDS = ('recipe',)  # migration recipes; located edits (transform) ar
 
 
 # camel-correcciones-compatibilidad 30: root-cause priority (a warning never displaces a technical cause)
-ROOT_CAUSE_ORDER = ('ORCHESTRATION_ERROR', 'CAMEL_2_TO_3_DECISION_REQUIRED', 'POM_SANITY_ERROR', 'CAMEL_VERSION_CONFLICT',
+ROOT_CAUSE_ORDER = ('ORCHESTRATION_ERROR', 'STUB_LEAK_DETECTED', 'CAMEL_2_TO_3_DECISION_REQUIRED', 'POM_SANITY_ERROR', 'CAMEL_VERSION_CONFLICT',
                     'ARCHITECTURAL_MIGRATION_REQUIRED', 'INVALID_CAMEL_COMPONENT_MAPPING', 'REMOVED_CAMEL_COMPONENT', 'ARTIFACT_REPLACEMENT_REQUIRED',
                     'UNSUPPORTED_TARGET_ARTIFACT', 'DEPENDENCY_VALIDATION_FAILED', 'DEPENDENCY_RESOLUTION_ERROR', 'JAVA_COMPILATION_ERROR',
                     'TEST_FAILURE')
@@ -994,7 +1100,7 @@ def aggregate_status(steps, vals, plan_blocked=(), manual_actions=0, leading=(),
     rank = {c: i for i, c in enumerate(ROOT_CAUSE_ORDER)}
     leading = sorted(dict.fromkeys(leading), key=lambda c: rank.get(c, len(rank)))
     codes = list(leading)
-    if vals.get(('maven-model', 'candidate')) not in (None, 'PASS'):
+    if vals.get(('maven-model', 'candidate')) not in (None, 'PASS', 'PASS_WITH_STUBS'):
         codes.append('CANDIDATE_MAVEN_MODEL_INVALID')
     mandatory_failed = [s['key'] for s in steps if s.get('kind') in MANDATORY_KINDS and s['state'] in ('failed-rolled-back', 'blocked-by-baseline')]
     mandatory_missing = [s['key'] for s in steps if s.get('kind') in MANDATORY_KINDS and s['state'] == 'skipped']
@@ -1014,6 +1120,8 @@ def aggregate_status(steps, vals, plan_blocked=(), manual_actions=0, leading=(),
             codes.append('SKIPPED_DUE_TO_COMPILE_FAILURE')
         elif test != 'PASS':
             codes.append('REQUIRED_TESTS_FAILED')
+    if vals.get(('maven-model', 'candidate')) == 'PASS_WITH_STUBS':  # code-review 45: structural model only, resolution not proven
+        warnings.append('RESOLUTION_DEGRADED_WITH_STUBS')
     if vals.get(('secret-scan', 'candidate')) == 'FINDINGS':
         warnings.append('SECRET_FINDINGS')
     if vals.get(('secret-scan', 'candidate')) == 'ERROR':
@@ -1024,7 +1132,14 @@ def aggregate_status(steps, vals, plan_blocked=(), manual_actions=0, leading=(),
         warnings.append('MANUAL_ACTIONS_PENDING')
     order = list(dict.fromkeys(leading)) + ['CANDIDATE_MAVEN_MODEL_INVALID', 'MANDATORY_RECIPE_FAILED', 'MANDATORY_RECIPE_NOT_APPLIED', 'CANDIDATE_COMPILE_FAILED',
              'REQUIRED_TESTS_FAILED', 'SKIPPED_DUE_TO_COMPILE_FAILURE']
-    if codes:
+    # a candidate whose build never ran because a pre-compile gate or an unresolved blocking finding stopped it, and where no
+    # recipe broke, did not FAIL: it is BLOCKED until a decision is taken (target, accepted finding, POM fix)
+    blocked = bool(leading) and compile_v in ('SKIPPED', None) and not mandatory_failed
+    if blocked:
+        codes = [c for c in codes if c not in ('CANDIDATE_COMPILE_FAILED', 'SKIPPED_DUE_TO_COMPILE_FAILURE')]
+    if blocked:
+        status = 'BLOCKED'
+    elif codes:
         status = 'FAILED'
     elif warnings:
         status = 'PARTIAL_SUCCESS'

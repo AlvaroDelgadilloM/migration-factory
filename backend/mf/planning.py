@@ -341,10 +341,13 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
         usage.update({f'{c}:': ['(componentes del análisis)'] for c in (scan.components or []) if c in ('cxf', 'cxfrs')})
     # doc 19: every Camel artifact is classified and its target verified against the target camel-bom before any POM write
     summary = scan.summary or {}
-    packagings = sorted({m.packaging for m in modules if m.packaging})
-    decisions = [camel_compat.decide(a, usage, camel_target, evidence=summary.get('usageEvidence'), endpoints=endpoints, packagings=packagings,
-                                     platform=(summary.get('platform') or {}).get('platform'), tests=summary.get('testClasses'))
-                 for a in sorted(present)]
+    # code-review 44: the exact context of the semantic decision is persisted with the plan, so the candidate gates validate
+    # these decisions (or recompute new artifacts with the same context) instead of deciding again with less evidence
+    decision_context = {'usage': usage, 'evidence': summary.get('usageEvidence') or {},
+                        'endpoints': [{k: e.get(k) for k in ('component', 'file', 'line')} for e in endpoints or ()],
+                        'packagings': sorted({m.packaging for m in modules if m.packaging}),
+                        'platform': (summary.get('platform') or {}).get('platform'), 'tests': summary.get('testClasses')}
+    decisions = [camel_compat.decide(a, camel_target=camel_target, **decision_context) for a in sorted(present)]
     art_notes, art_rules = [], []
     camel_pre = list(base_pre)
     for d in decisions:
@@ -360,7 +363,7 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
                               'ok': bool(decided) and all(f.status in CLOSED for f in decided), 'detail': d['reason']})
     # doc 24: PHASE 1 official Camel recipe alone; PHASE 2 compatibility mapping as a separate step (own snapshot, diff
     # and rollback). Phase 2 is a located POM edit, so it never needs OpenRewrite to resolve artifacts that do not exist.
-    camel_recipe = {'activeRecipes': [tooling['camelRecipe']], 'compat': decisions,
+    camel_recipe = {'activeRecipes': [tooling['camelRecipe']], 'compat': decisions, 'decisionContext': decision_context,
                     'contract': {'writes': ['pom.properties', 'pom.dependencies', 'java.sources'], 'reads': ['camel.version']}}
     add('camel-3-to-4', f'Recetas Camel Upgrade hasta {camel_target} (receta oficial)', 'recipe', 'AUTO_TEST',
         recipe=camel_recipe, preconditions=camel_pre, depends_on=[camel_dep] if camel_dep else [], finding_ids=ids(['CAMEL_COMPONENT_COMPAT']),

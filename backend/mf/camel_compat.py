@@ -141,11 +141,12 @@ def confidences(d: dict, dep_evidence: list, project: dict, verified: bool | Non
             'confidenceFactors': factors}
 
 
-def decide(artifact: str, usage: dict, target_camel: str, *, evidence: dict | None = None, endpoints=(), packagings=(),
-           platform: str | None = None, tests: int | None = None) -> dict:
+def decide(artifact: str, usage: dict | None = None, target_camel: str | None = None, *, evidence: dict | None = None, endpoints=(),
+           packagings=(), platform: str | None = None, tests: int | None = None, camel_target: str | None = None) -> dict:
     """artifact: org.apache.camel artifactId; usage: token -> files (scanner); target_camel: version the Camel recipe targets.
     evidence/endpoints/packagings/platform/tests: optional context (doc 34-35); without them the decision is the same, with
     less evidence (and therefore lower usage/migration confidence)."""
+    usage, target_camel = usage or {}, target_camel or camel_target
     idx = evidence_index(usage, evidence, endpoints)
     project = project_context(idx, packagings, platform, tests)
     dep_ev = dependency_evidence(artifact, idx)
@@ -312,7 +313,7 @@ if __name__ == '__main__':  # self-check: doc 19 part A + doc 40 regression case
     # test 5: Blueprint reports runtimes, not artifacts
     d = decide('camel-blueprint', {}, '4.14.0')
     assert d['action'] == 'BLOCK' and d['code'] == 'ARCHITECTURAL_MIGRATION_REQUIRED' and d['alternatives'] == []
-    assert d['runtimeOptions'] == ['Spring Boot 3', 'Quarkus 3', 'Camel Main'] and d['runtimeMigration'] == 'REQUIRED' and d['autoMigration'] == 'NO'
+    assert d['runtimeOptions'][:3] == ['Spring Boot 3', 'Quarkus 3', 'Camel Main'] and 'tomcat-war' in d['runtimeOptions'][3] and d['runtimeMigration'] == 'REQUIRED' and d['autoMigration'] == 'NO'
     md = report_markdown([d])
     assert 'Artifact target:\nN/A' in md and 'no verificado' not in md and 'Code usage found' not in md
     # test 6: ambiguous CXF never becomes camel-cxf-soap

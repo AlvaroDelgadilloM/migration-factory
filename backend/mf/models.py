@@ -309,7 +309,7 @@ class Validation(Entity, Base):
     suite: Mapped[str] = mapped_column(String(30))            # compile | test | secret-scan | equivalence | contracts
     target: Mapped[str] = mapped_column(String(10))           # baseline | candidate
     gate: Mapped[str | None] = mapped_column(String(5))
-    status: Mapped[str] = mapped_column(String(10))           # PASS | FAIL | ERROR | SKIPPED | NOT_RUN
+    status: Mapped[str] = mapped_column(String(20))           # PASS | PASS_WITH_STUBS | FAIL | ERROR | SKIPPED | NOT_RUN | BLOCKED
     exit_code: Mapped[int | None] = mapped_column(Integer)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     tests: Mapped[dict | None] = mapped_column(Json)
@@ -400,7 +400,8 @@ class WorkspaceMigration(Entity, Base):
     __tablename__ = 'workspace_migration'
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
     scan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('scan.id', ondelete='CASCADE'), index=True)
-    profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('target_profile.id'))
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('target_profile.id'), nullable=True)  # None for target tomcat-war
+    target: Mapped[str] = mapped_column(String(20), default='profile', server_default='profile')     # profile | tomcat-war
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     state: Mapped[str] = mapped_column(String(20), default='queued')
     java: Mapped[str] = mapped_column(String(5))

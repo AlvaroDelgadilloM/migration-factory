@@ -10,7 +10,7 @@ rediseñar**. Los perfiles Spring Boot y Quarkus reescriben el arranque y la con
 | Rutas, procesadores, XSLT, WSDL, SQL | se adaptan | **no se tocan** |
 | `direct-vm`, `xmljson`, OSGi services | bloqueo manual | capa de compatibilidad |
 | Camel 2 → 4 | decisión manual + receta 3→4 | reglas declarativas (cambios de una línea) |
-| Dónde corre | CLI y plataforma | **solo CLI** (ver «Pendiente») |
+| Dónde corre | CLI y plataforma | CLI y plataforma (migración de workspace con destino «Tomcat WAR») |
 
 ## Uso
 
@@ -126,11 +126,11 @@ Estas comprobaciones no sustituyen las pruebas con los sistemas reales del clien
 
 ## Pendiente
 
-- **Plataforma**: no hay perfil en la base de datos, ni job, ni pantallas. Hoy es solo CLI; la evidencia G4 queda en archivos
-  y no se registra sola en `POST /executions/{id}/validations`.
+- **Plataforma**: ya corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war"}`,
+  pantalla Inventario → destino «Tomcat WAR»); el análisis de workspace lo recomienda cuando la mayoría de los proyectos son
+  OSGi/Blueprint. Falta: `--config` del cliente y `verify` (G4) desde la plataforma; la evidencia G4 sigue en archivos.
 - **Casos de la prueba de respuestas**: los escribe quien conoce el servicio. No se generan desde WSDL/Rest DSL.
 - **Rutas en XML** fuera de la comparación de estructura.
 - **Reporte de configuración**: claves `{{...}}`/`${...}` que el código usa y no están en los `.properties` del origen.
 - Pruebas unitarias de la capa de compatibilidad.
-- Las pruebas existentes del backend no corren en Windows (el worker usa el módulo POSIX `resource`): la suite completa
-  no se ejecutó después de este cambio; hay que correrla en Linux o Docker.
+- Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

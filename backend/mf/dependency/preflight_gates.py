@@ -20,21 +20,26 @@ def _major(v: str | None) -> str | None:
     return v.split('.')[0] if v and v[:1].isdigit() else None
 
 
-def component_gate(modules, usage, target_camel) -> dict:
+def component_gate(modules, usage, target_camel, decisions=(), context=None) -> dict:
+    """code-review 44: a dependency the plan already decided is validated against that decision (never re-decided with less
+    context); a new artifact (e.g. a rename target) is decided with exactly the plan's context."""
     from ..camel_compat import decide
+    planned = {d['artifact']: d for d in decisions}
+    ctx = context or {'usage': usage}
     bad = []
     for m in modules:
         for d in m['dependencies']:
             if d['groupId'] != 'org.apache.camel':
                 continue
-            x = decide(d['artifactId'], usage, target_camel)
+            x = planned.get(d['artifactId']) or decide(d['artifactId'], camel_target=target_camel, **ctx)
             if x['action'] == 'KEEP':
                 continue
             code = x.get('code') or {'RENAME': 'INVALID_CAMEL_COMPONENT_MAPPING', 'REMOVE': 'REMOVED_CAMEL_COMPONENT'}[x['action']]
             action = {'RENAME': f"REPLACE_WITH {x.get('target')}", 'REMOVE': 'REMOVE_DEPENDENCY'}.get(
                 x['action'], f"{x['status']}: " + (', '.join(a['name'] for a in x.get('alternatives', [])) or 'revisión manual'))
             bad.append({'artifact': d['artifactId'], 'file': m['file'], 'status': x['status'], 'code': code, 'target': x.get('target'),
-                        'recommendedAction': action})
+                        'recommendedAction': action, 'decisionSource': 'PLAN' if d['artifactId'] in planned else 'RECOMPUTED_SAME_CONTEXT',
+                        'dependencyEvidence': x.get('dependencyEvidence'), 'migrationConfidence': x.get('migrationConfidence')})
     return {'name': 'CAMEL_COMPONENT_COMPATIBILITY_GATE', 'status': 'FAIL' if bad else 'PASS', 'code': bad[0]['code'] if bad else None,
             'findings': bad}
 
@@ -79,7 +84,7 @@ def availability_gate(modules, remote_check) -> dict:
             'reasons': [f"{c['artifact']}:{c['version'] or '(gestionada)'} {c['status']} ({c['basis']})" for c in fail + warn]}
 
 
-def run(root: Path, target_camel: str, *, usage: dict, decisions=(), modules=None, remote_check=None) -> dict:
+def run(root: Path, target_camel: str, *, usage: dict, decisions=(), context=None, modules=None, remote_check=None) -> dict:
     from ..analysis.scanner import scan
     from ..config import get_settings
     from ..pom import normalizer
@@ -87,7 +92,7 @@ def run(root: Path, target_camel: str, *, usage: dict, decisions=(), modules=Non
     s = get_settings()
     remote_check = remote_check or (lambda g, a, v: remote(g, a, v, s.maven_mirror_url, s.maven_network))
     modules = modules if modules is not None else scan(root)['modules']
-    steps = [lambda: normalizer.sanity(root), lambda: component_gate(modules, usage, target_camel), lambda: version_gate(modules, target_camel),
+    steps = [lambda: normalizer.sanity(root), lambda: component_gate(modules, usage, target_camel, decisions, context), lambda: version_gate(modules, target_camel),
              lambda: availability_gate(modules, remote_check),
              lambda: {'name': 'DEPENDENCY_VALIDATION_GATE', **({'status': 'FAIL', 'code': 'DEPENDENCY_VALIDATION_FAILED',
                                                                  'reasons': [f"mapeo sin confianza: {d['artifact']}" for d in decisions if not d.get('confidence')]}

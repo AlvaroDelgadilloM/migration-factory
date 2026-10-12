@@ -61,7 +61,7 @@ import { WorkspaceMigrationPanel } from './ws-migration';
           </div>
           @if ($any(s.summary['workspace'])?.repositoryType === 'MULTI_PROJECT_REPOSITORY' && !$any(s.summary['workspace'])?.selectedProject) {
             <mf-workspace [ws]="$any(s.summary['workspace'])" [disabledReason]="scanBlockReason()" (analyze)="startScan($event)" />
-            @if (s.status === 'succeeded') { <mf-ws-migration [scanId]="s.id" /> }
+            @if (s.status === 'succeeded') { <mf-ws-migration [scanId]="s.id" [recommended]="$any(s.summary)?.workspace?.shared?.recommendedTarget ?? null" /> }
           }
           <p class="meta">Snapshot <code>{{ s.snapshotHash?.slice(0, 16) }}…</code>
             @if (s.commitSha) { · commit <code>{{ s.commitSha }}</code> · ref {{ s.ref }} } · raíz Maven <code>{{ s.projectRoot }}</code>

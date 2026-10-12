@@ -18,8 +18,8 @@ def wave_status(runnable_results: list[str], blocked: int) -> str:
     ok = [s for s in runnable_results if s in OK]
     if len(ok) == len(runnable_results) and not blocked:
         return 'WAVE_SUCCEEDED'
-    if not ok:
-        return 'WAVE_FAILED'
+    if not ok:  # every runnable project stopped before building (pre-compile gate / decision pending): blocked, not failed
+        return 'WAVE_BLOCKED' if all(s == 'BLOCKED' for s in runnable_results) else 'WAVE_FAILED'
     return 'WAVE_PARTIAL_SUCCESS'
 
 

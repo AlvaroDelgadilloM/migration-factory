@@ -80,6 +80,7 @@ const SEVERITY: Record<string, { s: 'success' | 'info' | 'warn' | 'danger' | 'se
   PROPOSED_ONLY: { s: 'info', icon: 'pi-lightbulb' }, NO_CHANGES: { s: 'secondary', icon: 'pi-minus' },
   WARN: { s: 'warn', icon: 'pi-exclamation-triangle' }, BLOCKED: { s: 'danger', icon: 'pi-lock' },
   partial_success: { s: 'warn', icon: 'pi-exclamation-circle' }, FINDINGS: { s: 'warn', icon: 'pi-key' },
+  PASS_WITH_STUBS: { s: 'warn', icon: 'pi-exclamation-circle' }, NOT_EXECUTABLE: { s: 'secondary', icon: 'pi-minus-circle' },
   high: { s: 'danger', icon: 'pi-arrow-up' }, medium: { s: 'warn', icon: 'pi-minus' }, low: { s: 'info', icon: 'pi-arrow-down' }, info: { s: 'secondary', icon: 'pi-info-circle' },
   'maven-effective': { s: 'success', icon: 'pi-check' }, 'static-local': { s: 'info', icon: 'pi-file' }, 'static-partial': { s: 'warn', icon: 'pi-exclamation-circle' },
 };
@@ -92,7 +93,8 @@ const LABEL: Record<string, string> = {
   high: 'Alta', medium: 'Media', low: 'Baja', info: 'Info', NOT_RUN: 'No ejecutado', SKIPPED: 'Omitido',
   'blocked-by-baseline': 'Bloqueado por baseline', BLOCKED_BY_BASELINE: 'Bloqueado por baseline', APPLIED: 'Aplicado',
   ROLLED_BACK: 'Revertido', PROPOSED_ONLY: 'Solo propuesta', NO_CHANGES: 'Sin cambios', WARN: 'Advertencia', BLOCKED: 'Bloqueado', ERROR: 'Error de herramienta',
-  partial_success: 'Éxito parcial', FINDINGS: 'Hallazgos',
+  partial_success: 'Éxito parcial', FINDINGS: 'Hallazgos', PASS_WITH_STUBS: 'Válido solo con stubs (sin resolución real)',
+  NOT_EXECUTABLE: 'No ejecutable',
   'maven-effective': 'Resuelto con Maven', 'static-local': 'Resuelto localmente', 'static-partial': 'Resolución parcial',
 };
 
