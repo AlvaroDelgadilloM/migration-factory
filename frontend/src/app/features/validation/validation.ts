@@ -44,7 +44,7 @@ import { executionLabel } from '../execution/execution';
                 <td><mf-status [value]="v.status" /></td>
                 <td>@if (v.tests) { {{ v.tests.tests }} total · {{ v.tests.failures }} fallos · {{ v.tests.errors }} errores · {{ v.tests.skipped }} omitidas }</td>
                 <td>{{ v.exitCode ?? '—' }}</td><td>{{ v.durationMs ? (v.durationMs / 1000).toFixed(1) + ' s' : '—' }}</td>
-                <td>@if (v.artifactId) { <button type="button" class="link" (click)="log(v)"><i class="pi pi-download"></i> log</button> }
+                <td>@if (v.artifactId) { <button type="button" class="link" (click)="log(v)"><i class="pi pi-download"></i> {{ v.recordedBy ? 'evidencia' : 'log' }}</button> }
                   @if (v.recordedBy) { <small>registrada por {{ v.recordedBy }}: {{ v.detail }}</small> } @else if (v.detail) { <small>{{ v.detail }}</small> }</td></tr></ng-template>
             </p-table>
           </mf-state>
@@ -59,6 +59,8 @@ import { executionLabel } from '../execution/execution';
               <label for="est">Resultado</label><p-select inputId="est" name="est" [options]="results" [(ngModel)]="ev.status" />
               <label for="det">Detalle y referencia a la evidencia (mínimo 10 caracteres)</label>
               <textarea pTextarea id="det" name="det" rows="3" [(ngModel)]="ev.detail"></textarea>
+              <label for="evf">Archivo de evidencia (opcional: pdf, json, md, txt, html, xml, csv, zip, png, jpg · máx. 20 MB)</label>
+              <input id="evf" name="evf" type="file" accept=".pdf,.json,.md,.txt,.html,.xml,.csv,.zip,.png,.jpg" (change)="evFile = $any($event.target).files?.[0] ?? null" />
               @if (error(); as err) { <p-message severity="error">{{ err.code }}: {{ err.message }}</p-message> }
               <mf-action label="Registrar evidencia" icon="pi pi-save" [disabledReason]="ev.detail.trim().length < 10 ? 'Describa la evidencia' : null" (run)="record(e)" />
             </form>
@@ -102,6 +104,7 @@ export class ValidationPage {
   prMsg = signal('');
   label = executionLabel;
   ev = { suite: 'equivalence', status: 'PASS', detail: '' };
+  evFile: File | null = null;
   suites = [{ l: 'Equivalencia (G4)', v: 'equivalence' }, { l: 'Contratos (G3)', v: 'contracts' }];
   results = ['PASS', 'FAIL', 'SKIPPED'];
   applied = computed(() => (this.list.data()?.items ?? []).filter(e => e.mode === 'apply'));
@@ -131,13 +134,15 @@ export class ValidationPage {
   }
 
   load(id: string) { this.ex.load(() => this.api.execution(id)); this.vals.load(() => this.api.validations(id)); }
-  log(v: Validation) { this.api.download(v.artifactId!, `${v.target}-${v.suite}.log`); }
+  log(v: Validation) { this.api.download(v.artifactId!, v.recordedBy ? `evidencia-${v.suite}` : `${v.target}-${v.suite}.log`); }
 
   async record(e: Execution) {
     this.error.set(null);
     try {
-      await this.api.recordEvidence(e.id, { ...this.ev, detail: this.ev.detail.trim() });
+      const artifactId = this.evFile ? (await this.api.uploadEvidence(e.id, this.evFile)).id : undefined;
+      await this.api.recordEvidence(e.id, { ...this.ev, detail: this.ev.detail.trim(), artifactId });
       this.ev.detail = '';
+      this.evFile = null;
       this.load(e.id);
     } catch (err) {
       this.error.set(UiError.from(err));

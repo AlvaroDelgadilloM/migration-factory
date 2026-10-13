@@ -92,6 +92,17 @@ def mvn(ctx, cwd, goals, name, timeout=None):
     return runner.run(args, cwd, ctx, name=name, timeout=timeout or s.step_timeout_seconds, env={'MAVEN_OPTS': opts})
 
 
+def external_env(ctx) -> dict:
+    """Same Maven guarantees for a tool that runs `mvn` itself (tomcat-war verify): approved mirror (settings), the job's local
+    repository, Jansi off /tmp (noexec in the worker) and user.home inside the job workspace."""
+    from ..preflight import jansi_tmp
+    s = get_settings()
+    home = ctx.workdir / 'home'
+    home.mkdir(parents=True, exist_ok=True)
+    return {'MAVEN_ARGS': f'-ntp -s {settings_file(ctx)} -Dmaven.repo.local={s.maven_repo_local}' + (' -o' if s.maven_network == 'offline' else ''),
+            'MAVEN_OPTS': f'-Djansi.tmpdir={jansi_tmp(ctx.workdir)} -Djansi.force=false -Duser.home={home} {s.maven_opts}'}
+
+
 def effective_pom(ctx, repo) -> tuple[runner.Result, Path]:
     out = ctx.workdir / 'meta' / 'effective-pom.xml'
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -61,6 +61,11 @@ def test_project_update_requires_if_match(client, token, pilot_repo):
     r = client.patch(f'{API}/projects/{pid}', headers=token('ana.arquitecta') | {'If-Match': '1'},
                      json={'prConfig': {'provider': 'github', 'repository': 'acme/orders', 'credentialRef': 'env:MF_CRED_GH'}})
     assert r.status_code == 200 and r.json()['version'] == 2
+    # regression (real GitHub run): stored with the keys the UI and the worker read
+    assert r.json()['prConfig'] == {'provider': 'github', 'repository': 'acme/orders', 'baseBranch': 'main', 'credentialRef': 'env:MF_CRED_GH'}
+    from mf.worker.providers import pr_config
+    assert pr_config({'provider': 'github', 'repository': 'a/b', 'base_branch': 'dev', 'credential_ref': 'env:MF_CRED_X'}) == \
+        {'provider': 'github', 'repository': 'a/b', 'baseBranch': 'dev', 'credentialRef': 'env:MF_CRED_X'}       # rows saved before the fix
 
 
 def test_scan_idempotency_and_conflicts(client, token, pilot_repo, monkeypatch):

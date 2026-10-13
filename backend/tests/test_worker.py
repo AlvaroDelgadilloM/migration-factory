@@ -182,9 +182,17 @@ def test_apply_commits_per_step_rolls_back_failed_step_and_validates(client, tok
     for f in files.values():
         assert client.post(f"{API}/diff-files/{f['id']}/review", headers=token('rosa.revisora') | {'If-Match': str(f['version'])},
                            json={'decision': 'approved'}).status_code == 200
+    files_url = f"{API}/executions/{ex['id']}/evidence-files"
+    assert client.post(files_url, headers=token('rosa.revisora') | {'X-Filename': 'run.sh'}, content=b'rm -rf /').status_code == 415
+    assert client.post(files_url, headers=token('aldo.auditor') | {'X-Filename': 'e.json'}, content=b'{}').status_code == 403
+    up = client.post(files_url, headers=token('rosa.revisora') | {'X-Filename': 'equivalence-evidence.json'}, content=b'{"gate": "G4", "status": "PASS"}')
+    assert up.status_code == 201, up.text
     ev = client.post(f"{API}/executions/{ex['id']}/validations", headers=token('rosa.revisora'),
-                     json={'suite': 'equivalence', 'status': 'PASS', 'detail': 'Suite de contratos y JMS del proyecto: ver evidencia EV-12'})
-    assert ev.status_code == 201
+                     json={'suite': 'equivalence', 'status': 'PASS', 'detail': 'Suite de contratos y JMS del proyecto: ver evidencia EV-12',
+                           'artifactId': up.json()['id']})
+    assert ev.status_code == 201 and ev.json()['artifactId'] == up.json()['id']
+    dl = client.get(f"{API}/artifacts/{up.json()['id']}/download", headers=token('diego.dev'))
+    assert dl.content == b'{"gate": "G4", "status": "PASS"}' and dl.headers['content-disposition'].startswith('attachment')
     ex = client.get(f"{API}/executions/{ex['id']}", headers=token('diego.dev')).json()
     gates = {g['gate']: g['status'] for g in ex['gates']}
     assert gates['G4'] == 'PASS' and gates['G6'] == 'PASS'

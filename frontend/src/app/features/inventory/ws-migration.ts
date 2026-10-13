@@ -31,7 +31,10 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
     @if (profileId === TOMCAT) {
       <p class="muted">Tomcat WAR convierte todos los bundles OSGi/Blueprint del workspace en <strong>un solo WAR</strong> con Camel 4.18: las rutas no
         se rediseñan; Blueprint pasa a Spring XML y una capa de compatibilidad cubre direct-vm, xmljson y servicios OSGi. Compilar prueba los
-        POM y la API; el comportamiento se valida con <code>migrate.py verify</code> (gate G4).</p>
+        POM y la API; la estructura de las rutas se compara sola contra el original (G4) y las respuestas con <code>migrate.py verify responses</code>.</p>
+      <label for="wsc">Configuración del cliente (JSON opcional: groupId, version, containers, patches, extraWarDependencies)</label>
+      <textarea pTextarea id="wsc" rows="3" [(ngModel)]="configText" placeholder='{"groupId": "com.cliente.migrated", "version": "1.0.0"}'></textarea>
+      <label class="check"><input type="checkbox" [(ngModel)]="verifyRoutes" /> Comparar la estructura de las rutas con el original (G4, tarda más)</label>
     }
     <label for="wsa">Decisiones del arquitecto sobre hallazgos bloqueantes, una por línea: <code>REGLA=motivo</code> (se aplican a todos los proyectos y quedan en auditoría)</label>
     <textarea pTextarea id="wsa" rows="2" [(ngModel)]="acceptText" placeholder="CAMEL2_VERSION=Revisado contra la guía 2→3 para todo el workspace"></textarea>
@@ -62,6 +65,17 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
           <p>Tomcat WAR · {{ tw(m).counts?.modules }} módulos · build <mf-status [value]="b.status" />
             · {{ (tw(m).manualActions ?? []).length }} punto(s) de revisión manual</p>
           @if ((tw(m).manualActions ?? []).length) { <ul>@for (a of tw(m).manualActions; track a) { <li><small>{{ a }}</small></li> }</ul> }
+          @if (tw(m).equivalence; as eq) {
+            <p>Equivalencia (G4): <mf-status [value]="eq.g4" /> · estructura de rutas <mf-status [value]="eq.routeStructure?.status" />
+              @if (eq.routeStructure?.totals; as t) { ({{ t.identical }} idénticas, {{ t.unexpected }} distintas, {{ t.expectedByPatch }} por parche) }
+              @if (eq.routeStructure?.detail) { <small class="muted">{{ eq.routeStructure.detail }}</small> }
+              · respuestas <mf-status [value]="eq.responses?.status" /></p>
+          }
+          @if (tw(m).configKeys; as ck) {
+            <p>Claves de configuración: {{ ck.used }} usadas · {{ ck.definedInRepository }} definidas en el repositorio ·
+              <strong>{{ ck.missing.length }}</strong> deben venir de <code>etc</code> del Tomcat destino</p>
+            @if (ck.missing.length) { <ul>@for (k of ck.missing.slice(0, 20); track k.key) { <li><code>{{ k.key }}</code> <small class="muted">{{ k.usedAt[0] }}</small></li> }</ul> }
+          }
           @if (tw(m).note) { <p class="muted">{{ tw(m).note }}</p> }
         }
         @if (m.jobId && ['queued', 'running'].includes(m.state)) { <mf-job-log [jobId]="m.jobId" (finished)="list.reload()" /> }
@@ -81,7 +95,7 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
       }
     </mf-state>`,
   styles: [`.form{display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0}.form span{display:flex;flex-direction:column;gap:.25rem}
-    textarea{width:100%;margin:.25rem 0 .5rem}.waves{display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0}
+    textarea{width:100%;margin:.25rem 0 .5rem}.check{display:flex;gap:.5rem;align-items:center;margin:.25rem 0 .5rem}.waves{display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0}
     .wave{border:1px solid var(--p-content-border-color,#ddd);border-radius:6px;padding:.5rem .75rem;min-width:14rem}.wave ul{margin:.25rem 0;padding-left:1rem;list-style:none}
     .ok{color:#2e7d32}.warn{color:#e65100}.bad{color:#b71c1c}.blk{color:#6d4c41}.retry{display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0}`],
 })
@@ -99,11 +113,13 @@ export class WorkspaceMigrationPanel {
   profileId: string | null = null;
   java = '21';
   acceptText = '';
+  configText = '';
+  verifyRoutes = true;
   busy = signal(false);
   error = signal<UiError | null>(null);
   current = computed(() => this.list.data()?.[0] ?? null);
   rows = computed(() => Object.entries((this.current()?.results ?? {}) as Record<string, any>).map(([name, r]) => ({
-    name, status: r.status, reason: r.reason, dependency: (r.blockedBy ?? []).join(', ') || r.dependency, artifacts: Object.entries(r.artifacts ?? {}) as [string, string][],
+    name, status: r.status, reason: r.reason + ((r.routeDifferences ?? []).length ? ': ' + r.routeDifferences.join(', ') : ''), dependency: (r.blockedBy ?? []).join(', ') || r.dependency, artifacts: Object.entries(r.artifacts ?? {}) as [string, string][],
   })));
   reason = computed(() => {
     if (!this.ctx.can('execute') || !this.ctx.can('plan')) return `Su rol (${this.ctx.role()}) no permite migrar el workspace (requiere arquitecto u owner)`;
@@ -151,7 +167,13 @@ export class WorkspaceMigrationPanel {
       accept[line.slice(0, i).trim().toUpperCase()] = line.slice(i + 1).trim();
     }
     this.busy.set(true);
-    const body = this.profileId === this.TOMCAT ? { target: this.TOMCAT, java: this.java, accept } : { target: 'profile', profileId: this.profileId, java: this.java, accept };
+    let config: Record<string, unknown> | undefined;
+    if (this.profileId === this.TOMCAT && this.configText.trim()) {
+      try { config = JSON.parse(this.configText); }
+      catch { this.error.set(new UiError(422, 'VALIDATION_ERROR', 'La configuración del cliente no es JSON válido')); return; }
+    }
+    const body = this.profileId === this.TOMCAT ? { target: this.TOMCAT, java: this.java, accept, config, verifyRoutes: this.verifyRoutes }
+      : { target: 'profile', profileId: this.profileId, java: this.java, accept };
     try { await this.api.startWorkspaceMigration(this.scanId(), body); this.list.reload(); }
     catch (e) { this.error.set(UiError.from(e)); }
     finally { this.busy.set(false); }

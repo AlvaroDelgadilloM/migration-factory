@@ -33,6 +33,10 @@ export class Api {
     return firstValueFrom(this.http.post<Upload>(`${B}/uploads`, file, { headers: { 'Content-Type': 'application/zip', 'X-Filename': encodeURIComponent(name) } }));
   }
 
+  replaceUpload(projectId: string, uploadId: string) {
+    return this.send<Project>('PUT', `/projects/${projectId}/upload`, { uploadId });
+  }
+
   // projects
   projects(p: Params) { return this.get<Page<Project>>('/projects', p); }
   project(id: string) { return this.get<Project>(`/projects/${id}`); }
@@ -81,6 +85,10 @@ export class Api {
     return this.send<DiffFile>('POST', `/diff-files/${id}/review`, { decision, reason, minutes: minutes || null }, { 'If-Match': String(version) });
   }
   validations(executionId: string) { return this.get<Validation[]>(`/executions/${executionId}/validations`); }
+  uploadEvidence(executionId: string, file: File) {
+    return firstValueFrom(this.http.post<{ id: string }>(`${B}/executions/${executionId}/evidence-files`, file,
+      { headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name) } }));
+  }
   recordEvidence(executionId: string, body: unknown) { return this.send<Validation>('POST', `/executions/${executionId}/validations`, body); }
   changes(executionId: string) { return this.get<ChangeEntry[]>(`/executions/${executionId}/changes`); }
   modernizationRules() { return this.get<ModernizationRule[]>('/modernization-rules'); }

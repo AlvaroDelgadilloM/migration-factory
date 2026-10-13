@@ -10,7 +10,8 @@ from ..auth import Principal, authorize, current_principal, role_in, visible_pro
 from ..db import get_db
 from ..errors import ApiError
 from ..models import AppUser, Membership, Organization, Project, Repository, RuleCatalog, Scan, Upload
-from ..schemas import MemberIn, MemberOut, Page, ProjectCreate, ProjectOut, ProjectUpdate, ScanAccepted, ScanCreate, ScanOut
+from ..schemas import (MemberIn, MemberOut, Page, ProjectCreate, ProjectOut, ProjectUpdate, ScanAccepted, ScanCreate, ScanOut,
+                       UploadReplace)
 from ..security import UnsafeInput, classify_source, validate_credential_ref, validate_git_url, validate_local_path
 from .common import limit_param, paginate
 
@@ -116,11 +117,37 @@ def update_project(project_id: uuid.UUID, body: ProjectUpdate, request: Request,
         raise ApiError(409, 'VERSION_CONFLICT', 'El proyecto cambió; recargue', {'currentVersion': p.version})
     before = {'gates': p.required_gates, 'review': p.independent_review, 'pr': p.pr_config, 'runtime': p.target_runtime}
     data = body.model_dump(exclude_unset=True, by_alias=False)
+    if body.pr_config is not None:  # stored as the UI and the worker read it (camelCase): snake_case keys broke the real PR
+        data['pr_config'] = body.pr_config.model_dump(by_alias=True)
     for k, v in data.items():
         setattr(p, k, v)
     p.version += 1
     audit.record(db, actor=me.subject, action='project.update', entity_type='project', entity_id=p.id, project_id=p.id,
                  before=before, after=data, details={'fields': sorted(data)}, request=request)
+    db.commit()
+    return project_out(db, p, me)
+
+
+@router.put('/projects/{project_id}/upload', response_model=ProjectOut)
+def replace_upload(project_id: uuid.UUID, body: UploadReplace, request: Request, db: Session = Depends(get_db),
+                   me: Principal = Depends(current_principal)):
+    """New version of a ZIP project's source. The ZIP passed the same validation on upload; earlier scans keep their own
+    immutable snapshot, so their plans, executions and downloads are unaffected. The next scan reads the new version."""
+    p = authorize(db, me, project_id, 'manage')
+    repo = db.get(Repository, p.repository_id)
+    if repo.source_type != 'zip':
+        raise ApiError(409, 'INVALID_STATE', 'Solo un proyecto de origen ZIP recibe una nueva versión del archivo')
+    upload = db.get(Upload, body.upload_id)
+    if upload is None or upload.owner != me.subject:
+        raise ApiError(404, 'NOT_FOUND', 'Archivo subido no encontrado')
+    if upload.project_id:
+        raise ApiError(409, 'UPLOAD_IN_USE', 'Este archivo ya está asociado a un proyecto')
+    previous = db.get(Upload, repo.upload_id) if repo.upload_id else None
+    repo.upload_id, upload.project_id = upload.id, p.id
+    p.version += 1
+    audit.record(db, actor=me.subject, action='project.upload.replace', entity_type='project', entity_id=p.id, project_id=p.id,
+                 before={'upload': previous and previous.sha256, 'filename': previous and previous.filename},
+                 after={'upload': upload.sha256, 'filename': upload.filename}, request=request)
     db.commit()
     return project_out(db, p, me)
 

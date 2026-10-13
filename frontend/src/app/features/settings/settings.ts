@@ -29,6 +29,12 @@ import { ActionButton, PageHeader, StateView } from '../../shared/ui';
           @case ('local') { <dt>Ruta (worker)</dt><dd class="mono">{{ p.localPath }}</dd> }
           @case ('zip') { <dt>Archivo</dt><dd class="mono">{{ p.upload?.['filename'] }} · sha256 {{ $any(p.upload?.['sha256'])?.slice(0, 16) }}…</dd> }
         }</dl>
+      @if (p.sourceType === 'zip' && ctx.can('manage')) {
+        <p><label for="newzip">Nueva versión del ZIP</label>
+          <input id="newzip" type="file" accept=".zip,application/zip" (change)="newVersion($event)" [disabled]="uploading()" />
+          <small class="muted">Los análisis anteriores conservan su snapshot; el próximo análisis lee la nueva versión.</small>
+          @if (uploading()) { <small> · subiendo…</small> }</p>
+      }
       <h2>Gates obligatorios y revisión</h2>
       <form class="form narrow" (ngSubmit)="save()">
         <label for="gates">Gates obligatorios para PR</label>
@@ -67,6 +73,7 @@ export class Settings {
   members = new Loader<Member[]>();
   error = signal<UiError | null>(null);
   saved = signal(false);
+  uploading = signal(false);
   allGates = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6'];
   roles = ['owner', 'architect', 'developer', 'reviewer', 'auditor'];
   gates: string[] = [];
@@ -85,6 +92,18 @@ export class Settings {
       const c = (p.prConfig ?? {}) as Record<string, string>;
       this.pr = { repository: c['repository'] ?? '', baseBranch: c['baseBranch'] ?? 'main', credentialRef: c['credentialRef'] ?? '' };
     });
+  }
+
+  async newVersion(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    const p = this.ctx.project();
+    if (!file || !p) return;
+    this.error.set(null);
+    this.uploading.set(true);
+    try { const up = await this.api.uploadZip(file, file.name); await this.api.replaceUpload(p.id, up.id); await this.ctx.refresh(); }
+    catch (e) { this.error.set(UiError.from(e)); }
+    finally { this.uploading.set(false); input.value = ''; }
   }
 
   async save() {

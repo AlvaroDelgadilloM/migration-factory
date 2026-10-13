@@ -1,0 +1,33 @@
+{
+  "realm": "mf",
+  "enabled": true,
+  "sslRequired": "external",
+  "roles": {"realm": [{"name": "mf-admin", "description": "Administrador de Migration Factory"}]},
+  "clients": [
+    {
+      "clientId": "migration-factory-ui",
+      "name": "Migration Factory UI",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:3240/*", "http://localhost:3240/*"],
+      "webOrigins": ["http://127.0.0.1:3240", "http://localhost:3240"],
+      "attributes": {"pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "http://127.0.0.1:3240/*##http://localhost:3240/*"},
+      "protocolMappers": [
+        {"name": "audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper",
+         "config": {"included.custom.audience": "migration-factory", "access.token.claim": "true", "id.token.claim": "false"}}
+      ]
+    },
+    {
+      "clientId": "mf-e2e",
+      "name": "Solo pruebas locales (scripts/oidc_e2e.py): password grant",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {"name": "audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper",
+         "config": {"included.custom.audience": "migration-factory", "access.token.claim": "true", "id.token.claim": "false"}}
+      ]
+    }
+  ]
+}

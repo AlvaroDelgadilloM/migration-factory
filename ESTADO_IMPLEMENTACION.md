@@ -72,11 +72,11 @@ Documento 16 (estado real del job y POM del candidato), verificado con el proyec
 
 ## 3. Funcionalidades parciales
 
-- **PR borrador**: adaptador GitHub implementado y probado con mock; **no probado contra GitHub real** (faltan token y repositorio). GitLab/Bitbucket no implementados.
+- **PR borrador**: (verificado 2026-10-13 contra GitHub real) proyecto Git sobre AlvaroDelgadilloM/migration-factory, raíz examples/pilot-orders, apply con Maven real, revisión independiente → PR borrador #2 (rama mf/35659167, 8 archivos, solo la fixture). Bug encontrado y corregido: `prConfig` se guardaba en snake_case y el worker/UI lo leían en camelCase (KeyError credentialRef); regresión en test_api. GitLab/Bitbucket no implementados.
 - **Origen Git**: probado con un repositorio local en pruebas (validación de URL sustituida solo en el test); no se ejecutó un piloto contra un host Git real.
 - **Carpeta de mi computadora con plataforma remota**: se sube con el selector de carpeta del navegador (copia, no ruta). Un agente local que lea la carpeta sin subirla no está implementado.
 - **Selector de carpeta del navegador**: el diálogo del sistema operativo no se automatizó en la prueba de UI; el ZIP que genera está cubierto por pruebas y validado contra el lector de Python.
-- **Nueva versión de ZIP para un proyecto existente**: no implementado (se registra un proyecto nuevo).
+- **Nueva versión de ZIP para un proyecto existente**: (resuelto 2026-10-12) `PUT /projects/{id}/upload` (owner) y UI en Proyecto → Origen.
 - **OIDC**: validación JWT por JWKS/discovery y flujo Code+PKCE en la UI implementados; **no probado contra un IdP real** (Keycloak no levantado). El modo `dev` sí está probado.
 - **Gestor de secretos**: referencias `vault:` aceptadas, pero el adaptador devuelve `VAULT_NOT_CONFIGURED`.
 - **ArtifactStore**: solo sistema de archivos local; S3/Blob pendiente.
@@ -373,10 +373,9 @@ Verificado:
   pruebas de humo.
 
 No verificado / pendiente:
-- La suite existente del backend no se ejecutó tras el cambio: en Windows no corre (`mf/worker/runner.py` importa `resource`)
-  y no había Docker disponible. El cambio en código existente se limita a `cli_tool.py` (destino nuevo y dos opciones) y `plugins.py`.
-- Sin integración en la plataforma (perfil en BD, job, UI). Sin evidencia G4 automática (comparación de estructura de rutas y
-  prueba diferencial). Sin reporte de claves de configuración faltantes. Sin pruebas unitarias de la capa de compatibilidad.
+- (Resuelto) La suite completa del backend se ejecutó en macOS después de integrar el perfil: pasa.
+- (Resuelto 2026-10-11/12) Integración en la plataforma, comparación de estructura de rutas automática, reporte de claves de
+  configuración y pruebas JUnit de la capa de compatibilidad: ver las secciones de esas fechas.
 
 ### Evidencia de equivalencia para el perfil `tomcat-war` (gate G4) — 2026-10-08
 
@@ -427,3 +426,33 @@ No verificado / pendiente:
   no FAILED (regla común `aggregate_status`); una oleada donde todos quedaron así es WAVE_BLOCKED.
 - Probado: backend 174 (nuevo `tests/test_tomcat_war_platform.py`), frontend 10. Plataforma real (Docker, Maven real) con «develop 2»:
   recomendación 33/33 → tomcat-war → 33 módulos, 61 Blueprint convertidos, build PASS, ROOT.war, PARTIAL_SUCCESS (2 revisiones manuales).
+
+## Correcciones de la revisión de pendientes (2026-10-12)
+- **Bug secret-remediation** (visto en common-epay del repositorio real): (1) `HARDCODED_SECRET` marcaba código que *lee*
+  un secreto (`password = exchange.getProperty(...)`, `x = null`, variables) — corregido en el catálogo 2026.10.7 (regla v3,
+  15 casos verificados); (2) una edición de secreto no aplicable revertía todas las demás y el paso quedaba ROLLED_BACK
+  con "la receta terminó con error" — ahora cada edición es independiente; las no aplicables quedan como acción manual con su
+  motivo (`editsNotApplied`, manual-actions.md). Prueba: `tests/test_secret_remediation.py`.
+- **Tomcat WAR en la plataforma, completo**: archivo del cliente (`config`, sin `overlay`; migración 0010), comparación de
+  estructura de rutas (G4) automática tras compilar con el Maven del worker (`mavenops.external_env`: mirror aprobado, repo
+  local, Jansi fuera de /tmp noexec), reporte de claves de configuración (`mf/tomcat_war/config_keys.py`), estado por módulo
+  con `routeDifferences`. Real («develop 2»): 502 rutas idénticas y **3 que Camel 4 arma distinto sin error**
+  (member-santander, nochespremio-booking-mob/web: nodos que suben de nivel) → PARTIAL_SUCCESS `ROUTE_STRUCTURE_DIFFERENCES`;
+  claves: 235 usadas, 232 definidas, 3 deben venir de `etc` (`env`, `pac.url`, `sql.insert.logging`). `verify responses`
+  sigue en CLI (necesita sistemas levantados y casos del cliente).
+- **Capa de compatibilidad**: 7 pruebas JUnit (direct-vm entre contextos, registro OSGi, xmljson, nombres de headers), corridas
+  con Maven real; viajan con el workspace migrado; job `tomcat-compat` en el CI.
+- **GitHub Actions**: checkout@v5, setup-python@v6, setup-java@v5, setup-node@v5 (sin avisos de Node 20).
+- **Nueva versión de ZIP** para un proyecto existente: `PUT /projects/{id}/upload` (owner, auditado) + UI.
+- **Archivos de evidencia**: `POST /executions/{id}/evidence-files` (tipos y tamaño limitados, se sirven como adjunto) enlazados
+  a la evidencia registrada (`artifactId`); UI en Validación.
+- **OIDC probado contra Keycloak real**: `docker-compose.oidc.yml` + `scripts/oidc_e2e.py` (usuarios con contraseña aleatoria,
+  nada en Git): 7/7 (RS256/JWKS/aud/iss, sin token 401, firma alterada 401, otro realm 401, rol mf-admin → admin).
+  Flujo Code+PKCE del navegador no automatizado.
+- **UI recorrida en el navegador**: panel de migración de workspace con recomendación, destino Tomcat WAR, config, G4 y claves.
+- Probado: backend 177, frontend 10, Java compat 7.
+
+Fuera de alcance de este entorno (necesitan servicios o decisiones externas): PR contra GitHub/GitLab reales (token),
+Vault, S3, runners efímeros (Kubernetes), escaneo de vulnerabilidades (servicio externo), aislamiento de `~/.m2` por proyecto
+(decisión de costo: hoy repositorio compartido + mirror aprobado), botón "Re-ejecutar suites". Ruta Spring Boot: Camel 2→3,
+vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemplazos ciegos).

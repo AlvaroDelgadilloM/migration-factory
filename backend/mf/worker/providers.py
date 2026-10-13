@@ -8,6 +8,15 @@ class ProviderError(Exception):
     pass
 
 
+def pr_config(cfg: dict) -> dict:
+    """Project PR settings with camelCase keys; projects saved before the fix stored snake_case (credential_ref, base_branch)."""
+    cfg = dict(cfg or {})
+    for snake, camel in (('credential_ref', 'credentialRef'), ('base_branch', 'baseBranch')):
+        if snake in cfg:
+            cfg.setdefault(camel, cfg.pop(snake))
+    return cfg
+
+
 def create_draft_pr(cfg: dict, branch: str, *, title: str, body: str, token: str, transport=None) -> str:
     if cfg.get('provider') != 'github':
         raise ProviderError(f"Proveedor no soportado: {cfg.get('provider')}")

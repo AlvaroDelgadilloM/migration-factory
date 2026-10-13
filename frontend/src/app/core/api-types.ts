@@ -40,6 +40,27 @@ export interface paths {
         patch: operations["update_project_api_v1_projects__project_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Upload
+         * @description New version of a ZIP project's source. The ZIP passed the same validation on upload; earlier scans keep their own
+         *     immutable snapshot, so their plans, executions and downloads are unaffected. The next scan reads the new version.
+         */
+        put: operations["replace_upload_api_v1_projects__project_id__upload_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/members": {
         parameters: {
             query?: never;
@@ -436,6 +457,27 @@ export interface paths {
          * @description Manual evidence for suites run outside the tool (equivalence/contracts). Automatic suites run in the worker.
          */
         post: operations["record_evidence_api_v1_executions__execution_id__validations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/executions/{execution_id}/evidence-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Evidence
+         * @description A file that backs external evidence (e.g. equivalence-evidence.json of `migrate.py verify`, a test report). Stored as an
+         *     artifact of the execution, served only as an attachment; it is evidence for a reviewer, never executed or rendered.
+         */
+        post: operations["upload_evidence_api_v1_executions__execution_id__evidence_files_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1295,6 +1337,8 @@ export interface components {
             status: "PASS" | "FAIL" | "SKIPPED";
             /** Detail */
             detail: string;
+            /** Artifactid */
+            artifactId?: string | null;
         };
         /** ExecutionAccepted */
         ExecutionAccepted: {
@@ -2148,6 +2192,14 @@ export interface components {
              */
             createdAt: string;
         };
+        /** UploadReplace */
+        UploadReplace: {
+            /**
+             * Uploadid
+             * Format: uuid
+             */
+            uploadId: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -2218,6 +2270,15 @@ export interface components {
             };
             /** Approve */
             approve?: string[];
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Verifyroutes
+             * @default true
+             */
+            verifyRoutes: boolean;
         };
         /** WorkspaceMigrationOut */
         WorkspaceMigrationOut: {
@@ -2250,6 +2311,10 @@ export interface components {
              * @default profile
              */
             target: string;
+            /** Config */
+            config?: {
+                [key: string]: unknown;
+            } | null;
             /** Jobid */
             jobId: string | null;
             /** State */
@@ -2404,6 +2469,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_upload_api_v1_projects__project_id__upload_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadReplace"];
             };
         };
         responses: {
@@ -3344,6 +3444,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_evidence_api_v1_executions__execution_id__evidence_files_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-filename": string;
+            };
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactOut"];
                 };
             };
             /** @description Validation Error */

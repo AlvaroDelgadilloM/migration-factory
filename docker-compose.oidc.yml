@@ -1,0 +1,33 @@
+# Local OIDC profile (Keycloak) to test MF_AUTH_MODE=oidc end to end. NOT for production: Keycloak runs in dev mode.
+#   docker compose -f docker-compose.yml -f docker-compose.oidc.yml up -d
+#   .venv/bin/python scripts/oidc_e2e.py        # creates test users with random passwords and checks the API
+# Needs KEYCLOAK_ADMIN_PASSWORD in .env (random value; never in Git). Back to dev mode: docker compose up -d
+x-oidc-env: &oidc-env
+  MF_AUTH_MODE: oidc
+  MF_OIDC_ISSUER: http://localhost:${MF_KEYCLOAK_PORT:-3242}/realms/mf
+  MF_OIDC_AUDIENCE: migration-factory
+  MF_OIDC_JWKS_URL: http://keycloak:8080/realms/mf/protocol/openid-connect/certs
+  MF_OIDC_CLIENT_ID: migration-factory-ui
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD es obligatorio en .env}
+      KC_HOSTNAME: http://localhost:${MF_KEYCLOAK_PORT:-3242}   # issuer stable for the browser, the API and the tokens
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports: ["127.0.0.1:${MF_KEYCLOAK_PORT:-3242}:8080"]
+    volumes: ["./docker/keycloak/realm-mf.json:/opt/keycloak/data/import/realm-mf.json:ro"]
+    networks: [edge]   # the API reaches the JWKS at keycloak:8080; browsers at localhost
+  api:
+    environment: *oidc-env
+    depends_on: [keycloak]
+  worker:
+    environment: *oidc-env
+  worker-long:
+    environment: *oidc-env
+  frontend:
+    environment:
+      MF_CSP_CONNECT_EXTRA: http://localhost:${MF_KEYCLOAK_PORT:-3242}

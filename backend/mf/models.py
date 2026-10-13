@@ -402,6 +402,7 @@ class WorkspaceMigration(Entity, Base):
     scan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('scan.id', ondelete='CASCADE'), index=True)
     profile_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('target_profile.id'), nullable=True)  # None for target tomcat-war
     target: Mapped[str] = mapped_column(String(20), default='profile', server_default='profile')     # profile | tomcat-war
+    config: Mapped[dict | None] = mapped_column(Json, nullable=True)  # tomcat-war client file (docs/19), without overlay
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     state: Mapped[str] = mapped_column(String(20), default='queued')
     java: Mapped[str] = mapped_column(String(5))

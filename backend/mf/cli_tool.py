@@ -588,7 +588,12 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
             elif s['recipe'].get('edits'):
                 edits = transform.apply_edits(work, s['recipe']['edits'], target)
                 result.setdefault('edits', []).extend(edits)
-                res = runner.Result(0 if all(e['applied'] for e in edits) else 1, 0, out / 'logs' / f"transform-{s['key']}.log")
+                # independent located edits: one that does not apply is a manual action with its reason, never a rollback of the rest
+                skipped = [{k: e[k] for k in ('op', 'file', 'line', 'reason') if k in e} for e in edits if not e['applied']]
+                if skipped:
+                    result.setdefault('editsNotApplied', []).extend(x | {'step': s['key']} for x in skipped)
+                    log(f"Paso {s['key']}: {len(skipped)} edición(es) no aplicable(s) → acción manual ({skipped[0].get('reason')})")
+                res = runner.Result(0, 0, out / 'logs' / f"transform-{s['key']}.log")
                 res.log_path.parent.mkdir(parents=True, exist_ok=True)
                 res.log_path.write_text(json.dumps(edits, ensure_ascii=False, indent=2))
             else:
@@ -828,6 +833,11 @@ def _finish(out, report, plan, result, log):
     if result.pop('_ownOverlay', False):
         from .worker import mavenops
         mavenops.use_local_overlay(None)
+    if result.get('editsNotApplied') and (out / 'reports' / 'manual-actions.md').exists():
+        ma = out / 'reports' / 'manual-actions.md'
+        ma.write_text(ma.read_text() + '\n## Ediciones automáticas no aplicables (revisar a mano)\n\n'
+                      + '\n'.join(f"- `{e['file']}:{e['line']}` ({e['step']}, {e['op']}): {e.get('reason', '')}" for e in result['editsNotApplied']) + '\n')
+        result['manualActions'] = result.get('manualActions', 0) + len(result['editsNotApplied'])
     leak = False
     if (out / 'migrated-project').exists():  # code-review 46: the deliverable is checked before reports and packaging
         from .dependency import stub_leak_guard

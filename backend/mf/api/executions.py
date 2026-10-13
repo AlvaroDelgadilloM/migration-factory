@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
@@ -233,13 +234,50 @@ def record_evidence(execution_id: uuid.UUID, body: EvidenceIn, request: Request,
         raise ApiError(409, 'INVALID_STATE', 'La evidencia se registra sobre una ejecución aplicada y vigente')
     if project.independent_review and ex.created_by == me.subject:
         raise ApiError(403, 'INDEPENDENT_REVIEW_REQUIRED', 'La evidencia debe registrarla alguien distinto de quien ejecutó')
+    if body.artifact_id is not None:
+        art = db.get(Artifact, body.artifact_id)
+        if art is None or art.execution_id != ex.id or art.kind != 'evidence':
+            raise ApiError(422, 'VALIDATION_ERROR', 'El archivo de evidencia no pertenece a esta ejecución')
     v = Validation(execution_id=ex.id, suite=body.suite, target='candidate', gate='G4' if body.suite == 'equivalence' else 'G3',
-                   status=body.status, detail=body.detail, recorded_by=me.subject)
+                   status=body.status, detail=body.detail, recorded_by=me.subject, artifact_id=body.artifact_id)
     db.add(v)
     audit.record(db, actor=me.subject, action='validation.evidence', entity_type='execution', entity_id=ex.id, project_id=ex.project_id,
                  details={'suite': body.suite, 'status': body.status}, request=request)
     db.commit()
     return v
+
+
+EVIDENCE_TYPES = {'.pdf': 'application/pdf', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
+                  '.html': 'text/html; charset=utf-8', '.xml': 'application/xml', '.csv': 'text/csv; charset=utf-8', '.zip': 'application/zip',
+                  '.png': 'image/png', '.jpg': 'image/jpeg'}
+EVIDENCE_MAX = 20 * 1024 * 1024
+
+
+@router.post('/executions/{execution_id}/evidence-files', status_code=201, response_model=ArtifactOut)
+async def upload_evidence(execution_id: uuid.UUID, request: Request, x_filename: str = Header(..., max_length=255),
+                          db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """A file that backs external evidence (e.g. equivalence-evidence.json of `migrate.py verify`, a test report). Stored as an
+    artifact of the execution, served only as an attachment; it is evidence for a reviewer, never executed or rendered."""
+    from urllib.parse import unquote
+    ex = load_execution(db, me, execution_id, 'evidence')
+    authorize(db, me, ex.project_id, 'evidence')
+    name = Path(unquote(x_filename)).name[:200]
+    ctype = EVIDENCE_TYPES.get(Path(name).suffix.lower())
+    if not name or ctype is None:
+        raise ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', f"Tipos admitidos: {', '.join(sorted(EVIDENCE_TYPES))}")
+    data = bytearray()
+    async for chunk in request.stream():
+        data += chunk
+        if len(data) > EVIDENCE_MAX:
+            raise ApiError(413, 'PAYLOAD_TOO_LARGE', f'Máximo {EVIDENCE_MAX // 1024 // 1024} MB')
+    if not data:
+        raise ApiError(422, 'VALIDATION_ERROR', 'Archivo vacío')
+    art = ArtifactStore().put(db, project_id=ex.project_id, kind='evidence', name=f'evidence-{name}', data=bytes(data), content_type=ctype,
+                              execution_id=ex.id)
+    audit.record(db, actor=me.subject, action='validation.evidence_file', entity_type='execution', entity_id=ex.id, project_id=ex.project_id,
+                 details={'name': name, 'sha256': art.sha256, 'size': len(data)}, request=request)
+    db.commit()
+    return art
 
 
 @router.post('/executions/{execution_id}/pull-request', status_code=202, response_model=ExecutionAccepted)

@@ -224,6 +224,60 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/upload": {
+      "put": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Replace Upload",
+        "description": "New version of a ZIP project's source. The ZIP passed the same validation on upload; earlier scans keep their own\nimmutable snapshot, so their plans, executions and downloads are unaffected. The next scan reads the new version.",
+        "operationId": "replace_upload_api_v1_projects__project_id__upload_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadReplace"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/members": {
       "get": {
         "tags": [
@@ -1845,6 +1899,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ValidationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/executions/{execution_id}/evidence-files": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Upload Evidence",
+        "description": "A file that backs external evidence (e.g. equivalence-evidence.json of `migrate.py verify`, a test report). Stored as an\nartifact of the execution, served only as an attachment; it is evidence for a reviewer, never executed or rendered.",
+        "operationId": "upload_evidence_api_v1_executions__execution_id__evidence_files_post",
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          },
+          {
+            "name": "x-filename",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 255,
+              "title": "X-Filename"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactOut"
                 }
               }
             }
@@ -4417,6 +4525,18 @@
             "maxLength": 4000,
             "minLength": 10,
             "title": "Detail"
+          },
+          "artifactId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifactid"
           }
         },
         "type": "object",
@@ -6671,6 +6791,20 @@
         ],
         "title": "UploadOut"
       },
+      "UploadReplace": {
+        "properties": {
+          "uploadId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Uploadid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uploadId"
+        ],
+        "title": "UploadReplace"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -6883,6 +7017,23 @@
             "type": "array",
             "maxItems": 30,
             "title": "Approve"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
+          },
+          "verifyRoutes": {
+            "type": "boolean",
+            "title": "Verifyroutes",
+            "default": true
           }
         },
         "type": "object",
@@ -6941,6 +7092,18 @@
             "type": "string",
             "title": "Target",
             "default": "profile"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
           },
           "jobId": {
             "anyOf": [

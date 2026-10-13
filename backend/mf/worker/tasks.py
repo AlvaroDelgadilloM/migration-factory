@@ -609,8 +609,10 @@ def do_execution(job: Job, ctx: Context):
             elif step_def['recipe'].get('edits'):
                 results = transform.apply_edits(src, step_def['recipe']['edits'], profile.runtime)
                 st['edits'] = results
-                res = runner.Result(0 if all(r['applied'] for r in results) else 1, 0,
-                                    _write_log(ctx, f'transform-{st["key"]}', json.dumps(results, ensure_ascii=False, indent=2)))
+                # located edits are independent: one that does not apply (literal not recognised) stays as a manual action with
+                # its reason; it never rolls back the edits that did apply (it is not a recipe error)
+                st['editsNotApplied'] = [{k: r[k] for k in ('op', 'file', 'line', 'reason') if k in r} for r in results if not r['applied']]
+                res = runner.Result(0, 0, _write_log(ctx, f'transform-{st["key"]}', json.dumps(results, ensure_ascii=False, indent=2)))
             else:
                 res = mavenops.rewrite(ctx, src, 'run', plugin_version=tooling['pluginVersion'], artifacts=tooling['artifacts'],
                                        active=step_def['recipe']['activeRecipes'], config=cfg, name=f'rewrite-{st["key"]}')
@@ -923,11 +925,18 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
     through mavenops (approved mirror, isolated local repository, timeout and cancellation of this job). Compiling proves the POMs
     and the Camel 4 API; behaviour is G4 (`migrate.py verify`)."""
     import re as _re
+    import subprocess
     from ..tomcat_war import pipeline as tw
     out = ctx.workdir / 'tw-out'
+    cfg = dict(wm.config or {})
+    verify_routes = cfg.pop('_verifyRoutes', True)
+    cfg_path = None
+    if cfg:  # the client file of docs/19 (validated by the API, never an overlay folder)
+        cfg_path = ctx.workdir / 'client-config.json'
+        cfg_path.write_text(json.dumps(cfg, ensure_ascii=False))
     set_phase(ctx, 'tomcat-war', 10)
     try:
-        res = tw.migrate(src, out, None, log=lambda m: ctx.emit('info', 'tomcat-war', m))
+        res = tw.migrate(src, out, cfg_path, log=lambda m: ctx.emit('info', 'tomcat-war', m))
     except tw.InvalidInput as e:
         raise StepFailure('WORKSPACE_INVALID', str(e)) from None
     ws_dir = out / 'migrated-workspace'
@@ -942,6 +951,36 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
         status = 'FAILED'
         reason = 'DEPENDENCY_RESOLUTION_ERROR' if any(_re.search(r'Could not (resolve|transfer|find)', e) for e in errors) else 'CANDIDATE_COMPILE_FAILED'
     res['build'] = build
+    equivalence = {'routeStructure': {'status': 'NOT_RUN', 'detail': 'build no PASS' if build['status'] != 'PASS' else 'desactivado'},
+                   'responses': {'status': 'NOT_RUN', 'detail': 'requiere el original y el WAR levantados y casos del cliente: '
+                                                                  'migrate.py verify baseline-server + verify responses'}}
+    route_diffs = {}  # artifactId -> routes Camel 4 builds differently (unexpected, not covered by a client patch)
+    if build['status'] == 'PASS' and verify_routes:  # G4 evidence: route structure, original Camel 2 vs migrated Camel 4
+        set_phase(ctx, 'verify-routes', 75)
+        from ..tomcat_war import verify
+        env = mavenops.external_env(ctx)
+        saved = {k: os.environ.get(k) for k in env}
+        # ponytail: verify.py runs `mvn` itself; the environment gives it the worker's Maven guarantees. Its subprocesses have
+        # their own 30 min timeout but not this job's cancellation (upgrade: route them through runner).
+        os.environ.update(env)
+        try:
+            rs = verify.routes(src, ws_dir, out, cfg_path, log=lambda m: ctx.emit('info', 'verify', m))
+            equivalence['routeStructure'] = {'status': rs['status'], 'totals': rs['totals']}
+            route_diffs = {m['module']: [u['route'] for u in m['unexpected']] for m in rs['modules'] if m.get('unexpected')}
+        except (verify.ToolError, tw.InvalidInput, subprocess.TimeoutExpired) as e:
+            equivalence['routeStructure'] = {'status': 'NOT_EXECUTABLE', 'detail': str(e)[:500]}
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        if equivalence['routeStructure']['status'] == 'FAIL' and status == 'SUCCEEDED':
+            status = 'PARTIAL_SUCCESS'
+        if equivalence['routeStructure']['status'] == 'FAIL':
+            reason = 'ROUTE_STRUCTURE_DIFFERENCES'  # a route Camel 4 builds differently without error: review before deploying
+    g4 = ('FAIL' if equivalence['routeStructure']['status'] == 'FAIL' else 'REVIEW')  # PASS needs responses too (docs/19)
+    res['equivalence'] = equivalence | {'g4': g4}
     (out / 'reports' / 'tomcat-war-report.json').write_text(json.dumps(res, ensure_ascii=False, indent=2))
     set_phase(ctx, 'artifacts', 90)
     tag, arts = str(wm.id)[:8], {}
@@ -961,11 +1000,16 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
     keep(out / 'reports' / 'tomcat-war-report.md', f'ws-{tag}.tomcat-war-report.md', 'report-md', 'text/markdown; charset=utf-8')
     keep(out / 'reports' / 'tomcat-war-report.json', f'ws-{tag}.tomcat-war-report.json', 'report-json', 'application/json')
     keep(r.log_path, f'ws-{tag}.build.log', 'log', 'text/plain; charset=utf-8')
+    for f, kind, ctype in (('route-structure.md', 'report-md', 'text/markdown; charset=utf-8'), ('route-structure.json', 'report-json', 'application/json'),
+                           ('equivalence-evidence.json', 'report-json', 'application/json')):
+        keep(out / 'reports' / f, f'ws-{tag}.{f}', kind, ctype)
     results = {}
     for m in res['modules']:
-        st = 'FAILED' if build['status'] != 'PASS' else ('PARTIAL_SUCCESS' if m.get('manual') else 'SUCCEEDED')
+        diffs = route_diffs.get(m['artifactId'], [])
+        st = 'FAILED' if build['status'] != 'PASS' else ('PARTIAL_SUCCESS' if m.get('manual') or diffs else 'SUCCEEDED')
+        why = reason if st == 'FAILED' else ('ROUTE_STRUCTURE_DIFFERENCES' if diffs else 'MANUAL_REVIEW' if m.get('manual') else '')
         results[m['source']] = {'project': m['source'], 'status': st, 'artifactId': m['artifactId'], 'manual': m.get('manual', []),
-                                'reason': reason if st == 'FAILED' else ('MANUAL_REVIEW' if m.get('manual') else ''), 'artifacts': {}}
+                                'reason': why, 'routeDifferences': diffs, 'artifacts': {}}
     ws_scan = (scan.summary or {}).get('workspace') or {}
     wave_status = {'SUCCEEDED': 'WAVE_SUCCEEDED', 'PARTIAL_SUCCESS': 'WAVE_PARTIAL_SUCCESS'}.get(status, 'WAVE_FAILED')
     wm.results = results
@@ -973,6 +1017,8 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                   'primaryReason': reason, 'analysisStatus': ws_scan.get('analysisStatus'),
                   'migrationStatus': f"MIGRATION_{status}", 'counts': res['totals'], 'build': build,
                   'manualActions': res['manualActions'], 'unresolvedServices': res['unresolvedServices'],
+                  'equivalence': res['equivalence'], 'configKeys': res['configKeys'] | {'missing': res['configKeys']['missing'][:300]},
+                  'clientConfig': bool(cfg),
                   'migrationWaves': [{'wave': 'WAR', 'projects': sorted(results), 'status': wave_status}], 'artifacts': arts,
                   'exitCode': 0 if status in ('SUCCEEDED', 'PARTIAL_SUCCESS') else 2,
                   'note': 'Compilar prueba los POM y la API de Camel 4; la equivalencia funcional es el gate G4 (migrate.py verify).'}
@@ -1200,7 +1246,8 @@ def do_pull_request(job: Job, ctx: Context):
         scan = db.get(Scan, db.get(Plan, ex.plan_id).scan_id)
         if patch_art is None:
             raise StepFailure('NO_CANDIDATE', 'La ejecución no produjo cambios')
-        cfg = project.pr_config
+        from .providers import pr_config
+        cfg = pr_config(project.pr_config)
         try:
             token = resolve_credential(cfg['credentialRef'], CREDENTIALS or None)
         except UnsafeInput as e:

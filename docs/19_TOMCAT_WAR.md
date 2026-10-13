@@ -58,7 +58,7 @@ Para levantarlo: `mvn -Prun -DskipTests verify -Dmf.etc=<carpeta etc> [-Dmf.cont
 | `servlet` | Tomcat entrega los headers HTTP en minúsculas: se restaura el nombre que esperan las rutas |
 | `cxf` | `setFaultBody` (se lanza el fault guardado) |
 
-Es código que el equipo debe mantener. No tiene pruebas unitarias propias todavía.
+Es código que el equipo debe mantener. Pruebas JUnit en `compat/src/test` (direct-vm entre contextos, registro OSGi, xmljson, nombres de headers): viajan con el workspace migrado (`mvn -pl compat test`) y el CI las corre en cada push (job `tomcat-compat`).
 
 ## Archivo del cliente (`--config`)
 
@@ -124,13 +124,19 @@ Estas comprobaciones no sustituyen las pruebas con los sistemas reales del clien
 - `verify baseline-server` + `verify responses` sobre un módulo del piloto (45 casos): 25 idénticos y 20 distintos
   (`FAIL`). Los casos de éxito coinciden; las diferencias están en errores y encabezados y nadie las ha aceptado todavía.
 
+## Claves de configuración
+
+`reports/tomcat-war-report.{md,json}` (`configKeys`) lista las claves que el código lee (`{{clave}}`, `${clave}` de Blueprint,
+`@PropertyInject`) y no están en los `.properties`/`.cfg` del repositorio ni en los valores por defecto de Blueprint: deben estar
+en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, no un error.
+
 ## Pendiente
 
-- **Plataforma**: ya corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war"}`,
-  pantalla Inventario → destino «Tomcat WAR»); el análisis de workspace lo recomienda cuando la mayoría de los proyectos son
-  OSGi/Blueprint. Falta: `--config` del cliente y `verify` (G4) desde la plataforma; la evidencia G4 sigue en archivos.
+- **Plataforma**: corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war",
+  "config": {...}, "verifyRoutes": true}`; pantalla Inventario → destino «Tomcat WAR»). El análisis de workspace lo recomienda
+  cuando la mayoría de los proyectos son OSGi/Blueprint. Acepta el archivo del cliente salvo `overlay` (carpeta del servidor)
+  y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. `verify responses` sigue siendo CLI: necesita el
+  original y el WAR levantados y los casos del cliente.
 - **Casos de la prueba de respuestas**: los escribe quien conoce el servicio. No se generan desde WSDL/Rest DSL.
 - **Rutas en XML** fuera de la comparación de estructura.
-- **Reporte de configuración**: claves `{{...}}`/`${...}` que el código usa y no están en los `.properties` del origen.
-- Pruebas unitarias de la capa de compatibilidad.
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

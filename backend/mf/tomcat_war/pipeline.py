@@ -19,7 +19,7 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 
-from . import blueprint
+from . import blueprint, config_keys
 
 RULES_DIR = Path(__file__).resolve().parents[3] / 'rules' / 'tomcat-war'
 BOMS_DIR = Path(__file__).resolve().parents[3] / 'rules' / 'camel' / 'boms'
@@ -310,7 +310,11 @@ def _template(out: Path, rules: dict, cfg: dict):
 
 
 def load_config(path: Path | None) -> dict:
-    cfg = json.loads(Path(path).read_text(encoding='utf-8')) if path else {}
+    return validate_config(json.loads(Path(path).read_text(encoding='utf-8')) if path else {})
+
+
+def validate_config(cfg: dict) -> dict:
+    cfg = dict(cfg)
     cfg.setdefault('groupId', 'org.migrationfactory.generated')
     cfg.setdefault('version', '1.0.0-SNAPSHOT')
     for p in cfg.get('patches', []):
@@ -394,6 +398,7 @@ def migrate(source: Path, out: Path, config: Path | None = None, log=lambda m: N
         'profile': rules['profile']['key'], 'rulesVersion': rules['version'], 'source': str(source), 'output': str(ws),
         'status': 'PARTIAL_SUCCESS' if manual or unresolved else 'SUCCEEDED',
         'totals': totals | {'modules': len(modules)}, 'modules': modules, 'manualActions': manual, 'unresolvedServices': unresolved,
+        'configKeys': config_keys.scan(source),  # keys the code reads that must come from the target etc folder
     }
     reports = out / 'reports'
     reports.mkdir(parents=True, exist_ok=True)
@@ -427,5 +432,7 @@ def report_markdown(result: dict, lines: list) -> str:
         out += [f"| {u['module']} | `{u['interface']}` | {u['componentName'] or '—'} |" for u in result['unresolvedServices']] + ['']
     if result['manualActions']:
         out += ['## Revisión manual', ''] + [f'- {m}' for m in result['manualActions']] + ['']
+    if result.get('configKeys'):
+        out += [config_keys.markdown(result['configKeys'])]
     out += ['## Detalle por módulo', '', '```text'] + lines + ['```', '']
     return '\n'.join(out)

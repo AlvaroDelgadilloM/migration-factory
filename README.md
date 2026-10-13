@@ -41,6 +41,18 @@ sobre ese snapshot, nunca sobre el origen. El candidato se entrega como `candida
 Flujo: Cartera → Inventario (Analizar) → Hallazgos (resolver `CAMEL2_VERSION` con motivo) → Plan (crear, aprobar, preview,
 ejecutar) → Ejecución → Diff (aprobar como revisora) → Validación (gates y PR).
 
+## OIDC de punta a punta en local (Keycloak)
+
+```bash
+# .env: KEYCLOAK_ADMIN_PASSWORD=<aleatorio>
+docker compose -f docker-compose.yml -f docker-compose.oidc.yml up -d   # API y workers en MF_AUTH_MODE=oidc, Keycloak en 127.0.0.1:3242
+.venv/bin/python scripts/oidc_e2e.py                                    # usuarios de prueba con contraseña aleatoria + comprobaciones
+docker compose up -d                                                    # volver al modo dev
+```
+
+Realm `mf` (`docker/keycloak/realm-mf.json`): cliente público `migration-factory-ui` (Code + PKCE, audiencia `migration-factory`),
+rol de realm `mf-admin` = administrador de la plataforma. Keycloak corre en modo dev: solo para pruebas locales.
+
 ## Validar
 
 ```bash

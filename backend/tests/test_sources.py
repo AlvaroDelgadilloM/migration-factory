@@ -244,3 +244,27 @@ def test_multi_project_zip_is_a_workspace_not_an_error(client, token):
     assert r.status_code == 201, r.text
     st = r.json()['structure']
     assert st['repositoryType'] == 'MULTI_PROJECT_REPOSITORY' and st['root'] == 'commons' and st['projects'] == ['a', 'b']
+
+
+def test_new_zip_version_for_an_existing_project(client, token, monkeypatch):
+    install(monkeypatch, FakeMaven(effective_ok=True))
+    first = upload(client, token, pilot_zip()).json()
+    pid = new_project(client, token, first['id'], source_type='zip')
+    r = client.post(f'{API}/projects/{pid}/scans', headers=token('diego.dev'), json={}).json()
+    run_job(r['jobId'])
+    old_scan = client.get(f"{API}/scans/{r['scanId']}", headers=token('diego.dev')).json()
+    second = upload(client, token, pilot_zip('v2/'), name='v2.zip').json()
+    url = f'{API}/projects/{pid}/upload'
+    assert client.put(url, headers=token('diego.dev'), json={'uploadId': second['id']}).status_code == 403   # owner only
+    other = upload(client, token, pilot_zip(), user='diego.dev').json()
+    assert client.put(url, headers=token('ana.arquitecta'), json={'uploadId': other['id']}).status_code == 404  # someone else's upload
+    ok = client.put(url, headers=token('ana.arquitecta'), json={'uploadId': second['id']})
+    assert ok.status_code == 200 and ok.json()['upload']['filename'] == 'v2.zip' and ok.json()['upload']['structure']['root'] == 'v2'
+    assert client.put(url, headers=token('ana.arquitecta'), json={'uploadId': first['id']}).json()['code'] == 'UPLOAD_IN_USE'
+    r2 = client.post(f'{API}/projects/{pid}/scans', headers=token('diego.dev'), json={}).json()
+    run_job(r2['jobId'])
+    new_scan = client.get(f"{API}/scans/{r2['scanId']}", headers=token('diego.dev')).json()
+    assert new_scan['status'] == 'succeeded' and new_scan['projectRoot'] == 'v2'                  # the next scan reads the new version
+    assert client.get(f"{API}/scans/{old_scan['id']}", headers=token('diego.dev')).json()['snapshotHash'] == old_scan['snapshotHash']
+    events = client.get(f'{API}/audit', headers=token('aldo.auditor'), params={'projectId': pid}).json()['items']
+    assert any(e['action'] == 'project.upload.replace' for e in events)

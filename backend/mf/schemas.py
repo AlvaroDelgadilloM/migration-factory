@@ -1,4 +1,6 @@
 """API contracts (camelCase JSON). OpenAPI at /api/v1/openapi.json is generated from these models."""
+import json
+import re
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
@@ -310,6 +312,7 @@ class EvidenceIn(Dto):
     suite: Literal['equivalence', 'contracts']
     status: Literal['PASS', 'FAIL', 'SKIPPED']
     detail: str = Field(min_length=10, max_length=4000)
+    artifact_id: uuid.UUID | None = None  # an evidence file uploaded to this execution (POST /executions/{id}/evidence-files)
 
 
 class ValidationOut(Dto):
@@ -529,6 +532,10 @@ class ModernizationOut(Dto):
     job: JobOut | None = None
 
 
+class UploadReplace(Dto):
+    upload_id: uuid.UUID
+
+
 class WorkspaceMigrationIn(Dto):
     # target 'profile' = Spring Boot / Quarkus by waves (profile_id required); 'tomcat-war' = Fuse/Karaf bundles -> one WAR (docs/19)
     target: Literal['profile', 'tomcat-war'] = 'profile'
@@ -538,10 +545,28 @@ class WorkspaceMigrationIn(Dto):
     accept: dict[Annotated[str, Field(pattern=r'^[A-Z0-9_]{2,60}$')], Annotated[str, Field(min_length=10, max_length=500)]] = Field(default_factory=dict)
     approve: list[Annotated[str, Field(pattern=r'^[a-z0-9-]{2,60}$')]] = Field(default_factory=list, max_length=30)
 
+    # tomcat-war client decisions (groupId, version, containers, patches, extraWarDependencies). `overlay` names a folder of the
+    # machine that runs the CLI: never accepted from the platform
+    config: dict | None = None
+    verify_routes: bool = True
+
     @model_validator(mode='after')
     def _profile_or_tomcat(self):
         if self.target == 'profile' and self.profile_id is None:
             raise ValueError('profileId es obligatorio salvo con target tomcat-war')
+        if self.config is not None:
+            if self.target != 'tomcat-war':
+                raise ValueError('config solo aplica a target tomcat-war')
+            extra = set(self.config) - {'groupId', 'version', 'containers', 'patches', 'extraWarDependencies'}
+            if extra:
+                raise ValueError(f"config: claves no permitidas desde la plataforma: {', '.join(sorted(extra))}")
+            if len(json.dumps(self.config)) > 200_000:
+                raise ValueError('config demasiado grande (máx. 200 KB)')
+            from .tomcat_war.pipeline import InvalidInput, validate_config
+            try:
+                validate_config(self.config)
+            except (InvalidInput, re.error) as e:
+                raise ValueError(f'config inválida: {e}') from None
         return self
 
 
@@ -553,6 +578,7 @@ class WorkspaceMigrationOut(Dto):
     scan_id: uuid.UUID
     profile_id: uuid.UUID | None = None
     target: str = 'profile'
+    config: dict | None = None
     job_id: uuid.UUID | None
     state: str
     java: str

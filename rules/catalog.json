@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "2026.10.6",
+  "catalogVersion": "2026.10.7",
   "description": "Reglas de diagnóstico estático. Son indicios revisables, no una matriz completa de compatibilidad Camel.",
   "rules": [
     {
@@ -448,9 +448,9 @@
     },
     {
       "id": "HARDCODED_SECRET",
-      "version": 2,
+      "version": 3,
       "detector": "text",
-      "pattern": "(?i)\\b(password|passwd|pwd|secret|token|api[_-]?key)\\s*[=:]\\s*(?![\\s\"']*(?:\\$\\{|\\{\\{|RAW\\(\\{\\{))[\"']?[^\\s\"'${}<]{3,}",
+      "pattern": "(?i)\\b(password|passwd|pwd|secret|token|api[_-]?key)\\s*[=:]\\s*(?![\\s\\\"']*(?:\\$\\{|\\{\\{|RAW\\(\\{\\{))(?!(?:null|true|false|new|this)\\b|[\\w.]+\\s*[(;,)])[\\\"']?[^\\s\\\"'${}<]{3,}",
       "severity": "high",
       "classification": "MANUAL",
       "blocking": false,

@@ -56,7 +56,8 @@ def start(scan_id: uuid.UUID, body: WorkspaceMigrationIn, request: Request, idem
                                                      WorkspaceMigration.state.in_(('queued', 'running')))):
         raise ApiError(409, 'INVALID_STATE', 'Ya hay una migración de workspace en curso para este proyecto')
     wm = WorkspaceMigration(project_id=scan.project_id, scan_id=scan.id, profile_id=profile.id if profile else None, target=body.target,
-                            java=body.java, accepted=body.accept, approved=sorted(set(body.approve)), created_by=me.subject)
+                            java=body.java, accepted=body.accept, approved=sorted(set(body.approve)), created_by=me.subject,
+                            config=(body.config or {}) | ({'_verifyRoutes': body.verify_routes} if body.target == 'tomcat-war' else {}) or None)
     db.add(wm)
     db.flush()
     job = jobs.create_job(db, kind='workspace_migrate', project_id=scan.project_id, subject_id=wm.id, actor=me.subject)
