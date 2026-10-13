@@ -7,20 +7,42 @@
     <version>1.0.0</version>
   </parent>
   <artifactId>orders-routes</artifactId>
-  <packaging>war</packaging>
 
   <dependencies>
     <dependency>
-      <groupId>org.apache.camel</groupId>
-      <artifactId>camel-core</artifactId>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-bean-starter</artifactId>
+      <version>4.14.9</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.camel</groupId>
-      <artifactId>camel-jms</artifactId>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-direct-starter</artifactId>
+      <version>4.14.9</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.camel</groupId>
-      <artifactId>camel-jdbc</artifactId>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-spring-boot-starter</artifactId>
+      <version>4.14.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-xml-io-dsl-starter</artifactId>
+      <version>4.14.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-jms-starter</artifactId>
+      <version>4.14.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-log-starter</artifactId>
+      <version>4.14.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.camel.springboot</groupId>
+      <artifactId>camel-jdbc-starter</artifactId>
+      <version>4.14.9</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>

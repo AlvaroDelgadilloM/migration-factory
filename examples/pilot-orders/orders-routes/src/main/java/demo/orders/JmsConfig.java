@@ -1,6 +1,6 @@
 package demo.orders;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 import org.apache.camel.component.jms.JmsComponent;
 
 public final class JmsConfig {

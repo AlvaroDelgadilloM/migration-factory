@@ -1,0 +1,4 @@
+# Generado por Migration Factory. Externalizar datasource/broker con referencias, sin secretos.
+camel:
+  springboot:
+    routes-include-pattern: "classpath:camel/routes.xml"
