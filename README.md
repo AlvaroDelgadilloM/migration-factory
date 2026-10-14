@@ -41,6 +41,26 @@ sobre ese snapshot, nunca sobre el origen. El candidato se entrega como `candida
 Flujo: Cartera → Inventario (Analizar) → Hallazgos (resolver `CAMEL2_VERSION` con motivo) → Plan (crear, aprobar, preview,
 ejecutar) → Ejecución → Diff (aprobar como revisora) → Validación (gates y PR).
 
+## Despliegue en la VPS con Portainer (GitHub Actions)
+
+Actions → **Deploy VPS (Portainer)** → Run workflow: corre el CI, publica las imágenes en GHCR
+(`ghcr.io/<owner>/mf-{api,worker,frontend}:<commit>`) y crea o actualiza el stack `migration-factory` por la API de Portainer.
+La VPS no compila y no existe ningún `.env`: las variables del stack salen de los secrets del environment `vps`.
+
+| Secret (environment `vps`) | Valor |
+|---|---|
+| `PORTAINER_URL` | `https://<host>:9443` |
+| `PORTAINER_API_KEY` | Portainer → My account → Access tokens |
+| `PORTAINER_ENDPOINT_ID` | id del entorno (número en la URL de Portainer al abrirlo) |
+| `PORTAINER_INSECURE` | `true` solo si Portainer usa su certificado autofirmado |
+| `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | `openssl rand -hex 16` |
+| `MF_DEV_JWT_SECRET` | `openssl rand -hex 32` |
+| `MF_CRED_GITHUB` | opcional (PR borrador) |
+
+Variables opcionales del environment: `MF_ENV`, `MF_AUTH_MODE`, `MF_OIDC_ISSUER`, `MF_OIDC_AUDIENCE`, `MF_OIDC_JWKS_URL`,
+`MF_HOST_SOURCES_DIR` (por defecto `/opt/mf-sources`, créela en la VPS). Las imágenes de GHCR deben ser públicas o Portainer
+debe tener el registro `ghcr.io` con un token `read:packages`. Delante: nginx del host (`docker/vps-nginx-http.conf`).
+
 ## OIDC de punta a punta en local (Keycloak)
 
 ```bash
