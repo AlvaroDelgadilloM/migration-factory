@@ -44,22 +44,23 @@ ejecutar) → Ejecución → Diff (aprobar como revisora) → Validación (gates
 ## Despliegue en la VPS con Portainer (GitHub Actions)
 
 Actions → **Deploy VPS (Portainer)** → Run workflow: corre el CI, publica las imágenes en GHCR
-(`ghcr.io/<owner>/mf-{api,worker,frontend}:<commit>`) y crea o actualiza el stack `migration-factory` por la API de Portainer.
-La VPS no compila y no existe ningún `.env`: las variables del stack salen de los secrets del environment `vps`.
+(`ghcr.io/<owner>/mf-{api,worker,frontend}:<commit>`), abre un túnel SSH a la VPS y crea o actualiza el stack
+`migration-factory` por la API de Portainer en `127.0.0.1` (Portainer no se expone a internet). La VPS no compila y no existe
+ningún `.env`: las variables del stack salen de los secrets del environment `vps cpontabo`.
 
-| Secret (environment `vps`) | Valor |
+| Secret (environment `vps cpontabo`) | Valor |
 |---|---|
-| `PORTAINER_URL` | `https://<host>:9443` |
+| `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_SSH_PASSPHRASE`, `VPS_KNOWN_HOSTS` | acceso SSH (ya configurados) |
 | `PORTAINER_API_KEY` | Portainer → My account → Access tokens |
 | `PORTAINER_ENDPOINT_ID` | id del entorno (número en la URL de Portainer al abrirlo) |
-| `PORTAINER_INSECURE` | `true` solo si Portainer usa su certificado autofirmado |
 | `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | `openssl rand -hex 16` |
 | `MF_DEV_JWT_SECRET` | `openssl rand -hex 32` |
 | `MF_CRED_GITHUB` | opcional (PR borrador) |
 
-Variables opcionales del environment: `MF_ENV`, `MF_AUTH_MODE`, `MF_OIDC_ISSUER`, `MF_OIDC_AUDIENCE`, `MF_OIDC_JWKS_URL`,
-`MF_HOST_SOURCES_DIR` (por defecto `/opt/mf-sources`, créela en la VPS). Las imágenes de GHCR deben ser públicas o Portainer
-debe tener el registro `ghcr.io` con un token `read:packages`. Delante: nginx del host (`docker/vps-nginx-http.conf`).
+Variables opcionales del environment: `PORTAINER_PORT` (9443), `MF_ENV`, `MF_AUTH_MODE`, `MF_OIDC_ISSUER`, `MF_OIDC_AUDIENCE`,
+`MF_OIDC_JWKS_URL`, `MF_HOST_SOURCES_DIR` (por defecto `/opt/mf-sources`, créela en la VPS). Las imágenes de GHCR deben ser
+públicas o Portainer debe tener el registro `ghcr.io` con un token `read:packages`. Delante: nginx del host
+(`docker/vps-nginx-http.conf`).
 
 ## OIDC de punta a punta en local (Keycloak)
 

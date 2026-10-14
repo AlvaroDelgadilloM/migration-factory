@@ -1,11 +1,13 @@
 name: Deploy VPS (Portainer)
 
 # Manual: Actions → "Deploy VPS (Portainer)" → Run workflow. Runs CI, builds the images, publishes them to GHCR tagged with
-# the commit and updates (or creates) the Portainer stack through its API. The VPS never builds and no .env exists anywhere:
-# the stack variables come from these secrets (Settings → Environments → "vps"):
-#   PORTAINER_URL, PORTAINER_API_KEY, PORTAINER_ENDPOINT_ID, [PORTAINER_INSECURE="true" for the self-signed certificate]
-#   POSTGRES_PASSWORD, REDIS_PASSWORD, MF_DEV_JWT_SECRET  (required)   MF_CRED_GITHUB (optional, draft PRs)
-# Optional variables (Settings → Environments → "vps" → Variables): MF_ENV, MF_AUTH_MODE, MF_OIDC_*, MF_HOST_SOURCES_DIR.
+# the commit and updates (or creates) the Portainer stack through its API, reached through an SSH tunnel to the VPS: Portainer
+# stays bound to the VPS and is never exposed to the internet. The VPS never builds and no .env exists anywhere.
+# Secrets of the environment "vps cpontabo":
+#   SSH (already configured): VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_SSH_PASSPHRASE, VPS_KNOWN_HOSTS
+#   Portainer: PORTAINER_API_KEY, PORTAINER_ENDPOINT_ID          [variable PORTAINER_PORT, default 9443]
+#   App: POSTGRES_PASSWORD, REDIS_PASSWORD, MF_DEV_JWT_SECRET (required), MF_CRED_GITHUB (optional, draft PRs)
+# Optional variables: MF_ENV, MF_AUTH_MODE, MF_OIDC_*, MF_HOST_SOURCES_DIR (default /opt/mf-sources).
 on:
   workflow_dispatch:
 
@@ -46,7 +48,7 @@ jobs:
   deploy:
     needs: images
     runs-on: ubuntu-24.04
-    environment: vps            # add required reviewers to this environment to approve each deploy
+    environment: vps cpontabo   # add required reviewers to this environment to approve each deploy
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -59,12 +61,31 @@ jobs:
                  -e "s#image: migration-factory/(api|worker|frontend):local#image: $REG/mf-\1:$SHA#" docker-compose.yml > stack.yml
           ! grep -nE '^\s+build:|migration-factory/.*:local' stack.yml
           grep -n "image:" stack.yml
+      - name: Túnel SSH hasta Portainer (127.0.0.1 de la VPS)
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+          PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PORT: ${{ vars.PORTAINER_PORT || '9443' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          # the passphrase reaches ssh-add only through SSH_ASKPASS (env var), the key only through stdin
+          printf '#!/bin/sh\nprintf "%%s" "$PASSPHRASE"\n' > ~/.ssh/askpass && chmod 700 ~/.ssh/askpass
+          printf '%s\n' "$KEY" | SSH_ASKPASS=~/.ssh/askpass SSH_ASKPASS_REQUIRE=force DISPLAY=none ssh-add - >/dev/null
+          rm -f ~/.ssh/askpass
+          ssh -f -N -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -L "19443:127.0.0.1:$PORT" "$USER@$HOST"
       - name: Actualizar el stack en Portainer
         env:
-          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_URL: https://127.0.0.1:19443
+          PORTAINER_INSECURE: 'true'      # Portainer's self-signed certificate, reached only through the authenticated SSH tunnel
           PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
           PORTAINER_ENDPOINT_ID: ${{ secrets.PORTAINER_ENDPOINT_ID }}
-          PORTAINER_INSECURE: ${{ secrets.PORTAINER_INSECURE }}
           STACK_ENV: POSTGRES_PASSWORD,REDIS_PASSWORD,MF_DEV_JWT_SECRET,MF_CRED_GITHUB,MF_ENV,MF_AUTH_MODE,MF_OIDC_ISSUER,MF_OIDC_AUDIENCE,MF_OIDC_JWKS_URL,MF_HOST_SOURCES_DIR,MF_UI_PORT,MF_API_PORT
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
@@ -79,3 +100,8 @@ jobs:
           MF_UI_PORT: ${{ vars.MF_UI_PORT || '3240' }}
           MF_API_PORT: ${{ vars.MF_API_PORT || '3241' }}
         run: python3 scripts/portainer_deploy.py stack.yml
+      - name: Cerrar túnel y ssh-agent
+        if: always()
+        run: |
+          pkill -f 'ssh -f -N .*19443' || true
+          ssh-agent -k >/dev/null 2>&1 || true
