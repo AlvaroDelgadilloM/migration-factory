@@ -31,9 +31,9 @@ jobs:
       - uses: actions/checkout@v5
       - id: reg
         run: echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with: {registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}'}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Construir y publicar (api, worker, frontend)
         env:
           REG: ${{ steps.reg.outputs.registry }}
@@ -108,7 +108,9 @@ jobs:
         run: |
           DIR="${DIR:-migration-factory}"
           SSH="ssh -o StrictHostKeyChecking=yes $USER@$HOST"
-          $SSH "mkdir -p '$DIR/sources' && test -w '$DIR'" || { echo "VPS_USER no puede escribir en $DIR"; exit 1; }
+          $SSH true || { echo "::error::No se pudo entrar por SSH. Si dice 'Host key verification failed', VPS_KNOWN_HOSTS no tiene la huella de VPS_HOST tal como está escrito (genérela con: ssh-keyscan -t ed25519,ecdsa,rsa VPS_HOST, y si el puerto no es 22: ssh-keyscan -p PUERTO ...)"; exit 1; }
+          $SSH "mkdir -p '$DIR/sources' && test -w '$DIR'" || { echo "::error::VPS_USER no puede crear o escribir en la carpeta VPS_PATH"; exit 1; }
+          $SSH "docker version --format '{{.Server.Version}}'" >/dev/null || { echo "::error::VPS_USER no puede usar Docker (agréguelo al grupo docker)"; exit 1; }
           $SSH "cat > '$DIR/docker-compose.yml'" < stack.yml
           $SSH "umask 077 && cat > '$DIR/.env' && chmod 600 '$DIR/.env'" < stack.env
           # images are pulled with this job's short-lived token, which is removed right after (packages may stay private)
