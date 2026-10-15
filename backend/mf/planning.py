@@ -61,11 +61,21 @@ def _package_of(java_file: str) -> tuple[str, str] | None:
     return None
 
 
-def _spring_app(pkg):
+def _spring_app(pkg, war=False):
+    if not war:
+        return (f'package {pkg};\n\nimport org.springframework.boot.SpringApplication;\n'
+                'import org.springframework.boot.autoconfigure.SpringBootApplication;\n\n'
+                '/** Generado por Migration Factory: punto de entrada Spring Boot. Revisar. */\n'
+                '@SpringBootApplication\npublic class Application {\n'
+                '    public static void main(String[] args) {\n        SpringApplication.run(Application.class, args);\n    }\n}\n')
     return (f'package {pkg};\n\nimport org.springframework.boot.SpringApplication;\n'
-            'import org.springframework.boot.autoconfigure.SpringBootApplication;\n\n'
-            '/** Generado por Migration Factory: punto de entrada Spring Boot. Revisar. */\n'
-            '@SpringBootApplication\npublic class Application {\n'
+            'import org.springframework.boot.autoconfigure.SpringBootApplication;\n'
+            'import org.springframework.boot.builder.SpringApplicationBuilder;\n'
+            'import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;\n\n'
+            '/** Generado por Migration Factory: WAR para Tomcat 10.1 (SpringBootServletInitializer); también arranca con java -jar. Revisar. */\n'
+            '@SpringBootApplication\npublic class Application extends SpringBootServletInitializer {\n'
+            '    @Override\n    protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {\n'
+            '        return builder.sources(Application.class);\n    }\n\n'
             '    public static void main(String[] args) {\n        SpringApplication.run(Application.class, args);\n    }\n}\n')
 
 
@@ -92,6 +102,66 @@ def _yaml_from_props(props: list[str]) -> str:
                 out.append('  ' * depth + f'{k}: {_yaml(v)}')
     walk(tree, 0)
     return '\n'.join(out) + '\n'
+
+
+def _spring_from_jboss(items, notes, legacy, prefix, profile, pkg_hint=None) -> list[str]:
+    """What JBoss provided and a Spring Boot jar must declare itself, from facts read in the repository (jboss_facts):
+    the runnable jar, the datasource (JNDI -> spring.datasource.* with environment variables and the same bean name),
+    the JDBC driver and the context root. Returns properties for application.yml."""
+    props = []
+    items.append(('org.openrewrite.maven.RemoveManagedDependency', {'groupId': 'org.springframework', 'artifactId': 'spring-framework-bom'}))
+    items.append(('org.openrewrite.maven.RemoveDependency', {'groupId': 'javax.servlet', 'artifactId': 'javax.servlet-api'}))
+    notes.append('Se quitan spring-framework-bom (Spring 5 del legado; Spring Boot gestiona Spring 6) y javax.servlet-api (el servidor '
+                 'embebido usa jakarta.servlet).')
+    items.append(('org.openrewrite.maven.AddPlugin', {'groupId': 'org.springframework.boot', 'artifactId': 'spring-boot-maven-plugin',
+                  'version': profile.runtime_version,
+                  'executions': '<executions><execution><goals><goal>repackage</goal></goals></execution></executions>'}))
+    notes.append('spring-boot-maven-plugin (repackage): el artefacto resultante es ejecutable con java -jar.')
+    roots = [r for r in legacy.get('contextRoots', []) if r['file'].startswith(prefix)]
+    root = next((r for r in roots if r['source'] == 'jboss-web.xml'), roots[0] if roots else None)
+    if root and root['path'] != '/':
+        props.append(f"server.servlet.context-path={root['path']}")
+        notes.append(f"Contexto {root['path']} (de {root['source']}): las URLs que JBoss servía se conservan.")
+    sources = [d for d in legacy.get('jndiDataSources', []) if d['file'].startswith(prefix)]
+    if len(sources) == 1:
+        ds = sources[0]
+        env = re.sub(r'[^A-Z0-9]+', '_', ds['bean'].upper()).strip('_')
+        props += [f'spring.datasource.url=${{MF_DS_{env}_URL}}', f'spring.datasource.username=${{MF_DS_{env}_USERNAME}}',
+                  f'spring.datasource.password=${{MF_DS_{env}_PASSWORD}}']
+        items.append(('org.openrewrite.maven.AddDependency', {'groupId': 'org.springframework.boot', 'artifactId': 'spring-boot-starter-jdbc',
+                      'version': profile.runtime_version, 'onlyIfUsing': 'org.apache.camel..*'}))
+        notes.append(f"Datasource JNDI {ds['jndiName']} → spring.datasource.* desde MF_DS_{env}_URL/_USERNAME/_PASSWORD (sin valores "
+                     f"por defecto: falla al arrancar si faltan); el bean conserva el nombre {ds['bean']} (alias) para las rutas.")
+        if ds['bean'] != 'dataSource' and pkg_hint:
+            items.append(('org.openrewrite.text.CreateTextFile',
+                          {'relativeFileName': f"{prefix}src/main/java/{pkg_hint.replace('.', '/')}/MigratedDataSourceConfig.java",
+                           'fileContents': _datasource_alias(pkg_hint, ds), 'overwriteExisting': False}))
+    elif len(sources) > 1:
+        notes.append('Varios datasources JNDI (' + ', '.join(d['bean'] for d in sources) + '): configurar cada DataSource a mano.')
+    drivers = legacy.get('jdbcDrivers', [])
+    for d in drivers:
+        g, a = d['artifact'].split(':')
+        if d['version']:
+            items.append(('org.openrewrite.maven.AddDependency', {'groupId': g, 'artifactId': a, 'version': d['version'], 'scope': 'runtime',
+                          'onlyIfUsing': 'org.apache.camel..*'}))
+            notes.append(f"Driver JDBC {d['artifact']}:{d['version']} (lo proveía JBoss; encontrado en {d['file']}): dependencia runtime.")
+        else:
+            notes.append(f"Driver JDBC {d['artifact']} sin versión en {d['file']}: agregar la dependencia a mano.")
+    if sources and not drivers:
+        notes.append('No se encontró el driver JDBC en el repositorio (en JBoss lo provee el servidor): agregar la dependencia a mano.')
+    return props
+
+
+def _datasource_alias(pkg, ds):
+    return (f'package {pkg};\n\nimport org.springframework.beans.factory.config.BeanFactoryPostProcessor;\n'
+            'import org.springframework.beans.factory.support.BeanDefinitionRegistry;\nimport org.springframework.context.annotation.Bean;\n'
+            'import org.springframework.context.annotation.Configuration;\n\n'
+            f'/** Generado por Migration Factory: en JBoss el DataSource se buscaba por JNDI ({ds["jndiName"]}) como bean "{ds["bean"]}";\n'
+            ' *  Spring Boot lo crea como "dataSource" desde spring.datasource.*. El alias conserva el nombre que usan las rutas. */\n'
+            '@Configuration\npublic class MigratedDataSourceConfig {\n'
+            '    @Bean\n    public static BeanFactoryPostProcessor jbossDataSourceAlias() {\n'
+            f'        return beanFactory -> ((BeanDefinitionRegistry) beanFactory).registerAlias("dataSource", "{ds["bean"]}");\n'
+            '    }\n}\n')
 
 
 def _test_framework(mod) -> str | None:
@@ -144,7 +214,8 @@ def _verified_target(profile, group, artifact):
     return None
 
 
-def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, components=(), route_builders=(), renames=None, removed=None):
+def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, components=(), route_builders=(), renames=None, removed=None,
+                   legacy=None):
     """Return (recipe dict, preconditions, notes, unmapped deps)."""
     m = profile.dependency_mapping
     pre, notes, unmapped, items = [], [], [], []
@@ -223,30 +294,54 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
         mod = deployables[0]
         mod_dir = str(PurePosixPath(mod.path).parent)
         prefix = '' if mod_dir == '.' else mod_dir + '/'
-        if mod.packaging == 'war':
+        war = profile.dependency_mapping.get('deployment') == 'war'  # external Tomcat 10.1 instead of an executable jar
+        if mod.packaging != ('war' if war else 'jar'):
             items.append(('org.openrewrite.maven.ChangePackaging',
-                          {'groupId': mod.group_id, 'artifactId': mod.artifact_id, 'packaging': 'jar'}))
-            for desc in ('jboss-deployment-structure.xml', 'jboss-web.xml'):  # server-only descriptors, useless in a JAR
+                          {'groupId': mod.group_id, 'artifactId': mod.artifact_id, 'packaging': 'war' if war else 'jar'}))
+            notes.append(f"Empaquetado {mod.packaging}→{'war' if war else 'jar'}.")
+        if mod.packaging == 'war':
+            for desc in ('jboss-deployment-structure.xml', 'jboss-web.xml'):  # JBoss-only descriptors, useless on Spring Boot / Tomcat
                 items.append(('org.openrewrite.DeleteSourceFiles', {'filePattern': f'{prefix}**/WEB-INF/{desc}'}))
-            notes.append('Empaquetado war→jar; se eliminan jboss-deployment-structure.xml y jboss-web.xml (revisar sus módulos/dependencias antes de aprobar el diff).')
+            notes.append('Se eliminan jboss-deployment-structure.xml y jboss-web.xml (revisar sus módulos/dependencias antes de aprobar el diff).')
+        if war and profile.runtime == 'spring':
+            # Tomcat would also start the JBoss web.xml (javax listener + CamelHttpTransportServlet) next to Spring Boot: Boot registers
+            # the Camel servlet itself from camel.servlet.mapping.* and SpringBootServletInitializer replaces the listener.
+            items.append(('org.openrewrite.DeleteSourceFiles', {'filePattern': f'{prefix}src/main/webapp/WEB-INF/web.xml'}))
+            items.append(('org.openrewrite.maven.AddDependency', {'groupId': 'org.springframework.boot', 'artifactId': 'spring-boot-starter-tomcat',
+                          'version': profile.runtime_version, 'scope': 'provided', 'onlyIfUsing': 'org.apache.camel..*'}))
+            notes.append(f"WAR para {profile.dependency_mapping.get('servletContainer', 'Tomcat')}: Application extiende SpringBootServletInitializer, "
+                         'spring-boot-starter-tomcat queda provided y se elimina WEB-INF/web.xml (Spring Boot registra el servlet de Camel). '
+                         'En Tomcat el contexto es el nombre del WAR (finalName); las variables de entorno MF_DS_* se definen en el Tomcat.')
         spring_xml = {f.file for f in findings_by_rule.get('SPRING_XML', [])}
         xml_routes = sorted({r.file for r in routes if r.dsl == 'xml' and r.file.startswith(prefix) and r.file not in spring_xml})
         for f in sorted({r.file for r in routes if r.dsl == 'xml' and r.file in spring_xml}):
             notes.append(f'{f} es Spring XML (<beans><camelContext>): no se carga como rutas; requiere @ImportResource + camel-spring-xml o conversión revisada.')
+        legacy = legacy or {}
         servlet_used = 'servlet' in components or any(d['artifactId'] == 'camel-servlet' for d in mod.dependencies)
         if servlet_used:
             ctx_paths = sorted({b.get('restContextPath') for b in route_builders if b.get('restContextPath')})
-            pattern = (ctx_paths[0].rstrip('/') + '/*') if ctx_paths else '/camel/*'
+            web_patterns = sorted({p['pattern'] for p in legacy.get('servletPatterns', []) if p['file'].startswith(prefix)})
+            # the URL clients call today: web.xml mapping of CamelHttpTransportServlet first, then restConfiguration().contextPath
+            pattern = web_patterns[0] if web_patterns else (ctx_paths[0].rstrip('/') + '/*') if ctx_paths else '/camel/*'
             if profile.runtime == 'spring':
                 items.append(('org.openrewrite.maven.AddDependency', {'groupId': 'org.springframework.boot', 'artifactId': 'spring-boot-starter-web',
                               'version': profile.runtime_version, 'onlyIfUsing': 'org.apache.camel..*'}))
                 props_extra = [f'camel.servlet.mapping.context-path={pattern}']
             else:
                 props_extra = [f'quarkus.camel.servlet.url-patterns={pattern}']
-            notes.append(f'REST sobre servlet: mapeo {pattern} (de restConfiguration().contextPath); web.xml de JBoss queda sin uso: revisar.')
+            # Camel 2 left non-2xx bodies (custom error code) out of the REST binding; Camel 4 binds them too, so a body the route
+            # already marshalled (the usual Camel 2 workaround) fails with 500. Verified on examples/jboss-legacy-shop.
+            props_extra.append('camel.rest.skip-binding-on-error-code=true')
+            notes.append('camel.rest.skip-binding-on-error-code=true: conserva el comportamiento de Camel 2 (los cuerpos de error 4xx/5xx '
+                         'no pasan por el binding REST).')
+            notes.append(f"REST sobre servlet: mapeo {pattern} ({'de web.xml' if web_patterns else 'de restConfiguration().contextPath'}); "
+                         'web.xml de JBoss queda sin uso: revisar.')
         else:
             props_extra = []
         props = list(props_extra)
+        if profile.runtime == 'spring' and mod.packaging == 'war':  # facts of the JBoss deployment (both jar and WAR targets)
+            props += _spring_from_jboss(items, notes, legacy, prefix, profile, pkg_hint=next(
+                (b['package'] for b in route_builders if b['file'].startswith(prefix) and b.get('package')), None))
         if xml_routes:
             items.append(('org.openrewrite.maven.AddDependency',
                           {'groupId': m['groupId'], 'artifactId': m['xmlDsl'], 'version': m['version'], 'onlyIfUsing': 'org.apache.camel..*'}))
@@ -268,7 +363,7 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
             if pkg:
                 items.append(('org.openrewrite.text.CreateTextFile',
                               {'relativeFileName': f"{prefix}src/main/java/{pkg.replace('.', '/')}/Application.java",
-                               'fileContents': _spring_app(pkg), 'overwriteExisting': False}))
+                               'fileContents': _spring_app(pkg, war), 'overwriteExisting': False}))
             if pkg and usable:
                 items.append(('org.openrewrite.text.CreateTextFile',
                               {'relativeFileName': f"{prefix}src/main/java/{pkg.replace('.', '/')}/MigratedRoutesConfig.java",
@@ -398,7 +493,8 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
             notes=['Solo el paquete indicado; javax.sql, javax.naming, javax.crypto y demás APIs Java SE permanecen.'])
     recipe, pre, notes, unmapped = runtime_recipe(profile, modules, routes, by_rule, scan.components or [], scan.route_builders or [],
                                                   renames={d['artifact']: d['target'] for d in decisions if d['action'] == 'RENAME'},
-                                                  removed={d['artifact'] for d in decisions if d['action'] in ('REMOVE', 'BLOCK')})
+                                                  removed={d['artifact'] for d in decisions if d['action'] in ('REMOVE', 'BLOCK')},
+                                                  legacy=(scan.summary or {}).get('legacyRuntime'))
     if java_version == '21':  # verified in rewrite-migrate-java 3.11.0 and 3.42.0
         recipe['activeRecipes'] = recipe['activeRecipes'] + ['org.openrewrite.java.migrate.UpgradeToJava21']
         notes.append('Java 21: org.openrewrite.java.migrate.UpgradeToJava21 (el perfil base usa Java 17).')

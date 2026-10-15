@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode
 
-from . import maven, xmlparse
+from . import jboss_facts, maven, xmlparse
 from ..baseline.vendor_bom_analyzer import VENDOR_GROUPS, detect_platform
 
 SCHEMA_VERSION = 2
@@ -198,7 +198,7 @@ def scan(root, target='spring', catalog=None):
     text_rules = [r for r in catalog['rules'] if r['detector'] == 'text']
     report = {'schemaVersion': SCHEMA_VERSION, 'target': target, 'catalogVersion': catalog['catalogVersion'],
               'catalogDigest': catalog['digest'], 'analysis': 'static', 'modules': [], 'routes': [],
-              'components': [], 'findings': [], 'errors': [], 'routeBuilders': [], 'testClasses': 0, 'usage': {}, 'usageEvidence': {}}
+              'components': [], 'findings': [], 'errors': [], 'routeBuilders': [], 'testClasses': 0, 'usage': {}, 'usageEvidence': {}, 'legacyRuntime': jboss_facts.empty()}
     tokens = json.loads(COMPAT_PATH.read_text(encoding='utf-8'))['usageTokens'] if COMPAT_PATH.exists() else []
     findings = {}
 
@@ -238,6 +238,7 @@ def scan(root, target='spring', catalog=None):
                 report['testClasses'] += 1
         if tree is not None:
             report['routes'] += xml_routes(rel, tree)
+        jboss_facts.collect(rel, matchable, report['legacyRuntime'])  # datasource/driver/servlet/context of the JBoss deployment
         for tok in tokens:  # doc 19: how components are used decides their Camel 4 replacement
             if tok in matchable or ('/' in tok and f'/{tok}/' in f'/{rel}'):
                 report['usage'].setdefault(tok, [])
@@ -322,6 +323,7 @@ def finalize(report, catalog):
         'testClasses': report.get('testClasses', 0),
         'usage': report.get('usage', {}),
         'usageEvidence': report.get('usageEvidence', {}),
+        'legacyRuntime': report.get('legacyRuntime') or jboss_facts.empty(),
         'platform': report['platform'],
     }
     from .semantic import enrich  # improvements/02: graph, migration action per finding, risks, hints

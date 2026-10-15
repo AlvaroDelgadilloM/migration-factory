@@ -468,3 +468,21 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
 - La auditoría nunca se borra (sin FK al proyecto): `execution.delete`, `project.delete`, `retention.purge` (actor `system`).
 - UI: «Eliminar ejecución» (confirmación) en Ejecución; «Eliminar proyecto» (escribir el nombre) al final de Proyecto.
 - Pruebas: `tests/test_purge.py` (3); backend 180, frontend 10.
+
+## JBoss/WildFly WAR → Spring Boot jar o Tomcat 10.1 WAR, probado contra BD real (2026-10-15)
+- Ejemplo `examples/jboss-legacy-shop`: WildFly 10.1, Java 8, Camel 2.24.3, Spring XML, datasource JNDI `java:jboss/datasources/ShopDS`,
+  PostgreSQL 16 con 3 tablas (5 000 clientes, 300 productos, 50 000 pedidos), 5 servicios REST y 9 casos (`scripts/capture.py`).
+- `analysis/jboss_facts.py` (resumen `legacyRuntime`): datasource JNDI y bean, driver JDBC con versión, url-pattern de
+  `CamelHttpTransportServlet` en web.xml y context root (jboss-web.xml o finalName). Solo lee el repositorio.
+- Runtime Spring desde un WAR de JBoss: se quitan `spring-framework-bom` (Spring 5) y `javax.servlet-api`; se agregan
+  `spring-boot-maven-plugin` (repackage), `spring-boot-starter-jdbc` y el driver detectado (runtime); `spring.datasource.*` desde
+  `MF_DS_<BEAN>_URL/_USERNAME/_PASSWORD` sin valores por defecto; alias `dataSource`→`<bean>` (MigratedDataSourceConfig) para
+  que `#shopDS` siga resolviendo; se conservan `/api/*` y `/shop`.
+- `camel.rest.skip-binding-on-error-code=true`: Camel 4 aplica el binding REST también a cuerpos 4xx/5xx y rompía (500) los
+  cuerpos de error ya serializados al estilo Camel 2. Encontrado al comparar la evidencia.
+- Perfil nuevo `tomcat-10.1-war-spring-boot-3.5-camel-4.14` v1 (proyectos individuales; target CLI `--target tomcat`): mismo motor,
+  empaquetado war, `Application extends SpringBootServletInitializer`, `spring-boot-starter-tomcat` provided y se elimina el web.xml
+  de JBoss. El perfil `tomcat-war` de workspace (Fuse/Blueprint) no cambia: en un WAR de JBoss no carga su Spring XML ni el JNDI.
+- Evidencia (mismo estado de BD antes de cada corrida): `evidence/legacy` (WildFly) = `evidence/migrated` (jar, `java -jar`) =
+  `evidence/migrated-tomcat` (WAR en `tomcat:10.1.48-jdk21-temurin`): 9/9 casos con el mismo status y la misma respuesta.
+- Pruebas: `tests/test_jboss_runtime.py` (2) y autoverificación de `jboss_facts.py`; backend 182, frontend 12.

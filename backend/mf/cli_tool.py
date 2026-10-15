@@ -20,7 +20,8 @@ import uuid
 from pathlib import Path
 
 EXIT_OK, EXIT_ERROR, EXIT_BUILD, EXIT_CRITICAL, EXIT_INPUT = 0, 1, 2, 3, 4
-TARGETS = {'springboot': 'spring', 'spring': 'spring', 'quarkus': 'quarkus', 'tomcat-war': 'tomcat-war'}
+TARGETS = {'springboot': 'spring', 'spring': 'spring', 'quarkus': 'quarkus', 'tomcat': 'spring', 'tomcat-war': 'tomcat-war'}
+WAR_TARGETS = {'tomcat'}  # one project -> WAR for an external Tomcat 10.1 (Spring Boot engine); tomcat-war is the Fuse workspace pipeline
 ACTION = {'AUTO': 'AUTOMATIC', 'AUTO_TEST': 'AUTOMATIC_WITH_REVIEW', 'REVIEW': 'AUTOMATIC_WITH_REVIEW', 'MANUAL': 'MANUAL'}
 JAKARTA_FIX = {  # compile error "package javax.X does not exist" -> verified Jakarta recipe
     'javax.jms': 'org.openrewrite.java.migrate.jakarta.JavaxJmsToJakartaJms',
@@ -230,17 +231,18 @@ def run_baseline(root, baseline_dir, ctx, report, pf, catalog, build, log):
 
 
 # --- plan ---------------------------------------------------------------------------------------
-def build_plan(report, target: str, java: str, accepted: dict):
+def build_plan(report, target: str, java: str, accepted: dict, war: bool = False):
     """accepted: rule id -> reason (explicit human decision, recorded in the reports)."""
     from .models import Finding, Module, Route, Scan, TargetProfile
     from .planning import build_steps, evaluate_steps
     from .profiles import PROFILES, profile_digest
-    p = next(x for x in PROFILES if x['runtime'] == target and x['status'] == 'validated')
+    from .profiles import pick
+    p = pick(target, war)
     profile = TargetProfile(**p, digest=profile_digest(p))
     scan = Scan(commit_sha=None, snapshot_hash=report['snapshotHash'], errors=report['errors'], route_builders=report.get('routeBuilders', []),
                 maven_resolution=report['mavenResolution'], components=report['components'],
                 summary={'usage': report.get('usage', {}), 'usageEvidence': report.get('usageEvidence', {}), 'testClasses': report.get('testClasses', 0),
-                         'platform': report.get('platform')})
+                         'platform': report.get('platform'), 'legacyRuntime': report.get('legacyRuntime')})
     endpoints = [{'component': e['component'], 'file': r['file'], 'line': e['line'], 'dynamic': e['dynamic']} for r in report['routes'] for e in r['endpoints']]
     modules = [Module(path=m['file'], group_id=m['groupId'], artifact_id=m['artifactId'], packaging=m['packaging'],
                       dependencies=m['dependencies'], resolution=m['resolution']) for m in report['modules']]
@@ -406,7 +408,7 @@ RECIPE_STATES = ('APPLIED', 'SKIPPED', 'ROLLED_BACK', 'BLOCKED_BY_BASELINE', 'FA
 
 
 def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds, baseline, log, allow_baseline_failure=False,
-            auto_up_to='REVIEW', approved=(), on_candidate=None, baseline_policy=None):
+            auto_up_to='REVIEW', approved=(), on_candidate=None, baseline_policy=None, war=False):
     """Doc 15 pipeline. Trees: source (read only) -> .work/baseline (repair + validation) -> .work/candidate (migration)."""
     from . import preflight, transform
     from .profiles import PROFILES
@@ -435,7 +437,7 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
     if pf.get('repairPatch'):
         (out / 'reports' / 'baseline-repair.patch').write_text(redact(pf['repairPatch']))
     state = pf['build'].get('state')
-    plan = build_plan(report, target, java, accepted) if state != 'BASELINE_BLOCKED' else {'steps': [], 'accepted': accepted}
+    plan = build_plan(report, target, java, accepted, war) if state != 'BASELINE_BLOCKED' else {'steps': [], 'accepted': accepted}
     write_json(out / 'reports' / 'analysis.json', report)
     from . import ENGINE_VERSION, rules as mrules
     from datetime import datetime, timezone
@@ -482,7 +484,8 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
             result['rootCause'] |= {'secondary': result['reasonCodes'][1:], 'migration': decision['migration'], 'detail': decision.get('reason')}
         _finish(out, report, plan, result, log)
         return EXIT_ERROR
-    profile = next(x for x in PROFILES if x['runtime'] == target and x['status'] == 'validated')
+    from .profiles import pick
+    profile = pick(target, war)
     (out / 'reports' / 'migration-plan.md').write_text(plan_markdown(report, plan))
     write_json(out / 'reports' / 'migration-plan.json', plan)
     actions = manual_actions(report, plan)
@@ -1414,7 +1417,7 @@ def main(argv=None):
         target = TARGETS[args.target]
         if args.cmd == 'plan':
             report = analyze(source, target, None, True, log)
-            plan = build_plan(report, target, args.java, accepted)
+            plan = build_plan(report, target, args.java, accepted, args.target in WAR_TARGETS)
             md = plan_markdown(report, plan)
             if args.output:
                 o = Path(args.output).resolve(); o.mkdir(parents=True, exist_ok=True)
@@ -1432,7 +1435,7 @@ def main(argv=None):
                        baseline_policy=baseline_policy(args))
             print((out / 'workspace' / 'workspace-migration.md').read_text())
             return code
-        code = migrate(source, out, target, args.java, accepted, dry_run=args.dry_run, autofix=not args.no_autofix,
+        code = migrate(source, out, target, args.java, accepted, war=args.target in WAR_TARGETS, dry_run=args.dry_run, autofix=not args.no_autofix,
                        max_rounds=args.max_fix_rounds, baseline=not args.skip_baseline, log=log,
                        allow_baseline_failure=args.allow_baseline_failure, auto_up_to=args.auto_apply_up_to, approved=set(args.approve),
                        baseline_policy=baseline_policy(args))

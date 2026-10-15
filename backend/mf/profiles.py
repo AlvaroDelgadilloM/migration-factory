@@ -73,6 +73,33 @@ PROFILES = [
                     'https://camel.apache.org/manual/camel-upgrade-recipes-tool.html'],
         'status': 'validated',
     },
+    {   # same engine as the Spring Boot profile, packaged as a WAR for an external Tomcat 10.1 (Servlet 6 / jakarta) instead of a jar:
+        # the individual-project counterpart of the workspace tomcat-war pipeline (Fuse bundles), for JBoss/WildFly WARs.
+        'key': 'tomcat-10.1-war-spring-boot-3.5-camel-4.14', 'version': 1, 'runtime': 'spring',
+        'name': 'Tomcat 10.1 WAR · Spring Boot 3.5.16 + Camel 4.14.9 (LTS)',
+        'java_version': '17', 'camel_version': SPRING_CAMEL, 'runtime_version': '3.5.16',
+        'bom_coordinates': ['org.apache.camel.springboot:camel-spring-boot-bom:4.14.9',
+                            'org.springframework.boot:spring-boot-dependencies:3.5.16'],
+        'tooling': {
+            'pluginVersion': '6.15.0',
+            'artifacts': ['org.apache.camel.upgrade:camel-upgrade-recipes:4.14.0',
+                          'org.openrewrite.recipe:rewrite-migrate-java:3.11.0'],
+            'camelRecipe': 'org.apache.camel.upgrade.CamelMigrationRecipe',
+            'camelRecipeTarget': '4.14.0',
+        },
+        'dependency_mapping': {
+            'groupId': 'org.apache.camel.springboot', 'version': SPRING_CAMEL,
+            'artifacts': {f'org.apache.camel:{k}': ('camel-spring-boot-starter' if v is None else f'camel-{v}-starter')
+                          for k, v in _COMPONENTS.items()},
+            'xmlDsl': 'camel-xml-io-dsl-starter',
+            'coreComponent': 'camel-{}-starter',
+            'routesProperty': 'camel.springboot.routes-include-pattern',
+            'deployment': 'war', 'servletContainer': 'Apache Tomcat 10.1',
+        },
+        'sources': ['https://docs.spring.io/spring-boot/3.5/how-to/deployment/traditional-deployment.html',
+                    'https://tomcat.apache.org/whichversion.html'],
+        'status': 'validated',
+    },
     {
         'key': 'quarkus-3.40-camel-quarkus', 'version': 3, 'runtime': 'quarkus',
         'name': 'Quarkus 3.40.1 + Camel Quarkus 3.40.0 (Camel 4.22.1)',
@@ -98,6 +125,12 @@ PROFILES = [
         'status': 'validated',
     },
 ]
+
+
+def pick(target_runtime: str, war: bool = False) -> dict:
+    """Validated profile of a runtime; war=True selects the external-Tomcat WAR variant of that runtime."""
+    return next(x for x in PROFILES if x['runtime'] == target_runtime and x['status'] == 'validated'
+                and (x['dependency_mapping'].get('deployment') == 'war') == war)
 
 
 def profile_digest(p: dict) -> str:

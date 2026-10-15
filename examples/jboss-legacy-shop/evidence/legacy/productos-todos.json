@@ -1,0 +1,1811 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/products",
+    "body": null
+  },
+  "status": 200,
+  "contentType": "application/json",
+  "response": [
+    {
+      "id": 1,
+      "name": "Desayuno 1",
+      "category": "alimentos",
+      "price": 3727.58
+    },
+    {
+      "id": 2,
+      "name": "Spa 2",
+      "category": "bienestar",
+      "price": 1844.23
+    },
+    {
+      "id": 3,
+      "name": "Traslado 3",
+      "category": "transporte",
+      "price": 4686.19
+    },
+    {
+      "id": 4,
+      "name": "Tour 4",
+      "category": "experiencias",
+      "price": 368.38
+    },
+    {
+      "id": 5,
+      "name": "Cena 5",
+      "category": "hospedaje",
+      "price": 516.57
+    },
+    {
+      "id": 6,
+      "name": "Upgrade 6",
+      "category": "alimentos",
+      "price": 1108.63
+    },
+    {
+      "id": 7,
+      "name": "Late checkout 7",
+      "category": "bienestar",
+      "price": 2479.83
+    },
+    {
+      "id": 8,
+      "name": "Noche 8",
+      "category": "transporte",
+      "price": 1976.77
+    },
+    {
+      "id": 9,
+      "name": "Desayuno 9",
+      "category": "experiencias",
+      "price": 2898.72
+    },
+    {
+      "id": 10,
+      "name": "Spa 10",
+      "category": "hospedaje",
+      "price": 3782.08
+    },
+    {
+      "id": 11,
+      "name": "Traslado 11",
+      "category": "alimentos",
+      "price": 2869.14
+    },
+    {
+      "id": 12,
+      "name": "Tour 12",
+      "category": "bienestar",
+      "price": 4848.78
+    },
+    {
+      "id": 13,
+      "name": "Cena 13",
+      "category": "transporte",
+      "price": 4199.94
+    },
+    {
+      "id": 14,
+      "name": "Upgrade 14",
+      "category": "experiencias",
+      "price": 4146.03
+    },
+    {
+      "id": 15,
+      "name": "Late checkout 15",
+      "category": "hospedaje",
+      "price": 697.57
+    },
+    {
+      "id": 16,
+      "name": "Noche 16",
+      "category": "alimentos",
+      "price": 1010.72
+    },
+    {
+      "id": 17,
+      "name": "Desayuno 17",
+      "category": "bienestar",
+      "price": 1593.84
+    },
+    {
+      "id": 18,
+      "name": "Spa 18",
+      "category": "transporte",
+      "price": 4385.78
+    },
+    {
+      "id": 19,
+      "name": "Traslado 19",
+      "category": "experiencias",
+      "price": 456.16
+    },
+    {
+      "id": 20,
+      "name": "Tour 20",
+      "category": "hospedaje",
+      "price": 4063.03
+    },
+    {
+      "id": 21,
+      "name": "Cena 21",
+      "category": "alimentos",
+      "price": 2077.85
+    },
+    {
+      "id": 22,
+      "name": "Upgrade 22",
+      "category": "bienestar",
+      "price": 1619.76
+    },
+    {
+      "id": 23,
+      "name": "Late checkout 23",
+      "category": "transporte",
+      "price": 2144.38
+    },
+    {
+      "id": 24,
+      "name": "Noche 24",
+      "category": "experiencias",
+      "price": 2353.46
+    },
+    {
+      "id": 25,
+      "name": "Desayuno 25",
+      "category": "hospedaje",
+      "price": 4885.8
+    },
+    {
+      "id": 26,
+      "name": "Spa 26",
+      "category": "alimentos",
+      "price": 4414.72
+    },
+    {
+      "id": 27,
+      "name": "Traslado 27",
+      "category": "bienestar",
+      "price": 4719.27
+    },
+    {
+      "id": 28,
+      "name": "Tour 28",
+      "category": "transporte",
+      "price": 1807.79
+    },
+    {
+      "id": 29,
+      "name": "Cena 29",
+      "category": "experiencias",
+      "price": 2471.76
+    },
+    {
+      "id": 30,
+      "name": "Upgrade 30",
+      "category": "hospedaje",
+      "price": 3209.69
+    },
+    {
+      "id": 31,
+      "name": "Late checkout 31",
+      "category": "alimentos",
+      "price": 1070.08
+    },
+    {
+      "id": 32,
+      "name": "Noche 32",
+      "category": "bienestar",
+      "price": 3204.62
+    },
+    {
+      "id": 33,
+      "name": "Desayuno 33",
+      "category": "transporte",
+      "price": 1395.48
+    },
+    {
+      "id": 34,
+      "name": "Spa 34",
+      "category": "experiencias",
+      "price": 1998.48
+    },
+    {
+      "id": 35,
+      "name": "Traslado 35",
+      "category": "hospedaje",
+      "price": 1406.62
+    },
+    {
+      "id": 36,
+      "name": "Tour 36",
+      "category": "alimentos",
+      "price": 651.33
+    },
+    {
+      "id": 37,
+      "name": "Cena 37",
+      "category": "bienestar",
+      "price": 4278.4
+    },
+    {
+      "id": 38,
+      "name": "Upgrade 38",
+      "category": "transporte",
+      "price": 4701.43
+    },
+    {
+      "id": 39,
+      "name": "Late checkout 39",
+      "category": "experiencias",
+      "price": 3926.02
+    },
+    {
+      "id": 40,
+      "name": "Noche 40",
+      "category": "hospedaje",
+      "price": 946.33
+    },
+    {
+      "id": 41,
+      "name": "Desayuno 41",
+      "category": "alimentos",
+      "price": 4139.09
+    },
+    {
+      "id": 42,
+      "name": "Spa 42",
+      "category": "bienestar",
+      "price": 143.01
+    },
+    {
+      "id": 43,
+      "name": "Traslado 43",
+      "category": "transporte",
+      "price": 1210.95
+    },
+    {
+      "id": 44,
+      "name": "Tour 44",
+      "category": "experiencias",
+      "price": 3254.39
+    },
+    {
+      "id": 45,
+      "name": "Cena 45",
+      "category": "hospedaje",
+      "price": 4590.18
+    },
+    {
+      "id": 46,
+      "name": "Upgrade 46",
+      "category": "alimentos",
+      "price": 152.25
+    },
+    {
+      "id": 47,
+      "name": "Late checkout 47",
+      "category": "bienestar",
+      "price": 640.87
+    },
+    {
+      "id": 48,
+      "name": "Noche 48",
+      "category": "transporte",
+      "price": 603.38
+    },
+    {
+      "id": 49,
+      "name": "Desayuno 49",
+      "category": "experiencias",
+      "price": 1606.7
+    },
+    {
+      "id": 50,
+      "name": "Spa 50",
+      "category": "hospedaje",
+      "price": 1022.29
+    },
+    {
+      "id": 51,
+      "name": "Traslado 51",
+      "category": "alimentos",
+      "price": 979.07
+    },
+    {
+      "id": 52,
+      "name": "Tour 52",
+      "category": "bienestar",
+      "price": 4730.06
+    },
+    {
+      "id": 53,
+      "name": "Cena 53",
+      "category": "transporte",
+      "price": 584.81
+    },
+    {
+      "id": 54,
+      "name": "Upgrade 54",
+      "category": "experiencias",
+      "price": 1809.06
+    },
+    {
+      "id": 55,
+      "name": "Late checkout 55",
+      "category": "hospedaje",
+      "price": 3179.2
+    },
+    {
+      "id": 56,
+      "name": "Noche 56",
+      "category": "alimentos",
+      "price": 878.13
+    },
+    {
+      "id": 57,
+      "name": "Desayuno 57",
+      "category": "bienestar",
+      "price": 193.72
+    },
+    {
+      "id": 58,
+      "name": "Spa 58",
+      "category": "transporte",
+      "price": 2543.19
+    },
+    {
+      "id": 59,
+      "name": "Traslado 59",
+      "category": "experiencias",
+      "price": 4528.83
+    },
+    {
+      "id": 60,
+      "name": "Tour 60",
+      "category": "hospedaje",
+      "price": 3839.79
+    },
+    {
+      "id": 61,
+      "name": "Cena 61",
+      "category": "alimentos",
+      "price": 2380.26
+    },
+    {
+      "id": 62,
+      "name": "Upgrade 62",
+      "category": "bienestar",
+      "price": 1578.58
+    },
+    {
+      "id": 63,
+      "name": "Late checkout 63",
+      "category": "transporte",
+      "price": 165.87
+    },
+    {
+      "id": 64,
+      "name": "Noche 64",
+      "category": "experiencias",
+      "price": 4480.7
+    },
+    {
+      "id": 65,
+      "name": "Desayuno 65",
+      "category": "hospedaje",
+      "price": 163.04
+    },
+    {
+      "id": 66,
+      "name": "Spa 66",
+      "category": "alimentos",
+      "price": 1841.47
+    },
+    {
+      "id": 67,
+      "name": "Traslado 67",
+      "category": "bienestar",
+      "price": 1375.65
+    },
+    {
+      "id": 68,
+      "name": "Tour 68",
+      "category": "transporte",
+      "price": 2735.27
+    },
+    {
+      "id": 69,
+      "name": "Cena 69",
+      "category": "experiencias",
+      "price": 4968.4
+    },
+    {
+      "id": 70,
+      "name": "Upgrade 70",
+      "category": "hospedaje",
+      "price": 585.39
+    },
+    {
+      "id": 71,
+      "name": "Late checkout 71",
+      "category": "alimentos",
+      "price": 1418.65
+    },
+    {
+      "id": 72,
+      "name": "Noche 72",
+      "category": "bienestar",
+      "price": 1998.75
+    },
+    {
+      "id": 73,
+      "name": "Desayuno 73",
+      "category": "transporte",
+      "price": 4862.74
+    },
+    {
+      "id": 74,
+      "name": "Spa 74",
+      "category": "experiencias",
+      "price": 4132.45
+    },
+    {
+      "id": 75,
+      "name": "Traslado 75",
+      "category": "hospedaje",
+      "price": 1770.18
+    },
+    {
+      "id": 76,
+      "name": "Tour 76",
+      "category": "alimentos",
+      "price": 1706.4
+    },
+    {
+      "id": 77,
+      "name": "Cena 77",
+      "category": "bienestar",
+      "price": 1645.03
+    },
+    {
+      "id": 78,
+      "name": "Upgrade 78",
+      "category": "transporte",
+      "price": 810.86
+    },
+    {
+      "id": 79,
+      "name": "Late checkout 79",
+      "category": "experiencias",
+      "price": 1646.99
+    },
+    {
+      "id": 80,
+      "name": "Noche 80",
+      "category": "hospedaje",
+      "price": 3290.8
+    },
+    {
+      "id": 81,
+      "name": "Desayuno 81",
+      "category": "alimentos",
+      "price": 4260.78
+    },
+    {
+      "id": 82,
+      "name": "Spa 82",
+      "category": "bienestar",
+      "price": 3209.52
+    },
+    {
+      "id": 83,
+      "name": "Traslado 83",
+      "category": "transporte",
+      "price": 2840.09
+    },
+    {
+      "id": 84,
+      "name": "Tour 84",
+      "category": "experiencias",
+      "price": 3003.15
+    },
+    {
+      "id": 85,
+      "name": "Cena 85",
+      "category": "hospedaje",
+      "price": 1350.76
+    },
+    {
+      "id": 86,
+      "name": "Upgrade 86",
+      "category": "alimentos",
+      "price": 4448.79
+    },
+    {
+      "id": 87,
+      "name": "Late checkout 87",
+      "category": "bienestar",
+      "price": 2773.18
+    },
+    {
+      "id": 88,
+      "name": "Noche 88",
+      "category": "transporte",
+      "price": 3248.42
+    },
+    {
+      "id": 89,
+      "name": "Desayuno 89",
+      "category": "experiencias",
+      "price": 1022.3
+    },
+    {
+      "id": 90,
+      "name": "Spa 90",
+      "category": "hospedaje",
+      "price": 2470.42
+    },
+    {
+      "id": 91,
+      "name": "Traslado 91",
+      "category": "alimentos",
+      "price": 4944.2
+    },
+    {
+      "id": 92,
+      "name": "Tour 92",
+      "category": "bienestar",
+      "price": 493.61
+    },
+    {
+      "id": 93,
+      "name": "Cena 93",
+      "category": "transporte",
+      "price": 251.51
+    },
+    {
+      "id": 94,
+      "name": "Upgrade 94",
+      "category": "experiencias",
+      "price": 3323.96
+    },
+    {
+      "id": 95,
+      "name": "Late checkout 95",
+      "category": "hospedaje",
+      "price": 4106.75
+    },
+    {
+      "id": 96,
+      "name": "Noche 96",
+      "category": "alimentos",
+      "price": 3768.41
+    },
+    {
+      "id": 97,
+      "name": "Desayuno 97",
+      "category": "bienestar",
+      "price": 2898.8
+    },
+    {
+      "id": 98,
+      "name": "Spa 98",
+      "category": "transporte",
+      "price": 4428.2
+    },
+    {
+      "id": 99,
+      "name": "Traslado 99",
+      "category": "experiencias",
+      "price": 4739.85
+    },
+    {
+      "id": 100,
+      "name": "Tour 100",
+      "category": "hospedaje",
+      "price": 782.85
+    },
+    {
+      "id": 101,
+      "name": "Cena 101",
+      "category": "alimentos",
+      "price": 1054.32
+    },
+    {
+      "id": 102,
+      "name": "Upgrade 102",
+      "category": "bienestar",
+      "price": 766.97
+    },
+    {
+      "id": 103,
+      "name": "Late checkout 103",
+      "category": "transporte",
+      "price": 1537.51
+    },
+    {
+      "id": 104,
+      "name": "Noche 104",
+      "category": "experiencias",
+      "price": 1357.96
+    },
+    {
+      "id": 105,
+      "name": "Desayuno 105",
+      "category": "hospedaje",
+      "price": 736.94
+    },
+    {
+      "id": 106,
+      "name": "Spa 106",
+      "category": "alimentos",
+      "price": 3113.06
+    },
+    {
+      "id": 107,
+      "name": "Traslado 107",
+      "category": "bienestar",
+      "price": 2947.7
+    },
+    {
+      "id": 108,
+      "name": "Tour 108",
+      "category": "transporte",
+      "price": 1852.48
+    },
+    {
+      "id": 109,
+      "name": "Cena 109",
+      "category": "experiencias",
+      "price": 4520.3
+    },
+    {
+      "id": 110,
+      "name": "Upgrade 110",
+      "category": "hospedaje",
+      "price": 3869.21
+    },
+    {
+      "id": 111,
+      "name": "Late checkout 111",
+      "category": "alimentos",
+      "price": 4883.39
+    },
+    {
+      "id": 112,
+      "name": "Noche 112",
+      "category": "bienestar",
+      "price": 4728.15
+    },
+    {
+      "id": 113,
+      "name": "Desayuno 113",
+      "category": "transporte",
+      "price": 4388.02
+    },
+    {
+      "id": 114,
+      "name": "Spa 114",
+      "category": "experiencias",
+      "price": 1094.17
+    },
+    {
+      "id": 115,
+      "name": "Traslado 115",
+      "category": "hospedaje",
+      "price": 2047.36
+    },
+    {
+      "id": 116,
+      "name": "Tour 116",
+      "category": "alimentos",
+      "price": 4977.1
+    },
+    {
+      "id": 117,
+      "name": "Cena 117",
+      "category": "bienestar",
+      "price": 4323.18
+    },
+    {
+      "id": 118,
+      "name": "Upgrade 118",
+      "category": "transporte",
+      "price": 2824.66
+    },
+    {
+      "id": 119,
+      "name": "Late checkout 119",
+      "category": "experiencias",
+      "price": 4787.32
+    },
+    {
+      "id": 120,
+      "name": "Noche 120",
+      "category": "hospedaje",
+      "price": 2917.13
+    },
+    {
+      "id": 121,
+      "name": "Desayuno 121",
+      "category": "alimentos",
+      "price": 3297.77
+    },
+    {
+      "id": 122,
+      "name": "Spa 122",
+      "category": "bienestar",
+      "price": 491.1
+    },
+    {
+      "id": 123,
+      "name": "Traslado 123",
+      "category": "transporte",
+      "price": 4105.18
+    },
+    {
+      "id": 124,
+      "name": "Tour 124",
+      "category": "experiencias",
+      "price": 2382.48
+    },
+    {
+      "id": 125,
+      "name": "Cena 125",
+      "category": "hospedaje",
+      "price": 2539.48
+    },
+    {
+      "id": 126,
+      "name": "Upgrade 126",
+      "category": "alimentos",
+      "price": 3073.6
+    },
+    {
+      "id": 127,
+      "name": "Late checkout 127",
+      "category": "bienestar",
+      "price": 2208.58
+    },
+    {
+      "id": 128,
+      "name": "Noche 128",
+      "category": "transporte",
+      "price": 4137.22
+    },
+    {
+      "id": 129,
+      "name": "Desayuno 129",
+      "category": "experiencias",
+      "price": 104.17
+    },
+    {
+      "id": 130,
+      "name": "Spa 130",
+      "category": "hospedaje",
+      "price": 4986.56
+    },
+    {
+      "id": 131,
+      "name": "Traslado 131",
+      "category": "alimentos",
+      "price": 852.96
+    },
+    {
+      "id": 132,
+      "name": "Tour 132",
+      "category": "bienestar",
+      "price": 2338.8
+    },
+    {
+      "id": 133,
+      "name": "Cena 133",
+      "category": "transporte",
+      "price": 2830.45
+    },
+    {
+      "id": 134,
+      "name": "Upgrade 134",
+      "category": "experiencias",
+      "price": 3210.87
+    },
+    {
+      "id": 135,
+      "name": "Late checkout 135",
+      "category": "hospedaje",
+      "price": 4557.21
+    },
+    {
+      "id": 136,
+      "name": "Noche 136",
+      "category": "alimentos",
+      "price": 4379.25
+    },
+    {
+      "id": 137,
+      "name": "Desayuno 137",
+      "category": "bienestar",
+      "price": 2770.98
+    },
+    {
+      "id": 138,
+      "name": "Spa 138",
+      "category": "transporte",
+      "price": 3932.64
+    },
+    {
+      "id": 139,
+      "name": "Traslado 139",
+      "category": "experiencias",
+      "price": 973.57
+    },
+    {
+      "id": 140,
+      "name": "Tour 140",
+      "category": "hospedaje",
+      "price": 286.87
+    },
+    {
+      "id": 141,
+      "name": "Cena 141",
+      "category": "alimentos",
+      "price": 2709.7
+    },
+    {
+      "id": 142,
+      "name": "Upgrade 142",
+      "category": "bienestar",
+      "price": 4991.59
+    },
+    {
+      "id": 143,
+      "name": "Late checkout 143",
+      "category": "transporte",
+      "price": 4032.95
+    },
+    {
+      "id": 144,
+      "name": "Noche 144",
+      "category": "experiencias",
+      "price": 3386.69
+    },
+    {
+      "id": 145,
+      "name": "Desayuno 145",
+      "category": "hospedaje",
+      "price": 3105.63
+    },
+    {
+      "id": 146,
+      "name": "Spa 146",
+      "category": "alimentos",
+      "price": 3428.43
+    },
+    {
+      "id": 147,
+      "name": "Traslado 147",
+      "category": "bienestar",
+      "price": 4366.18
+    },
+    {
+      "id": 148,
+      "name": "Tour 148",
+      "category": "transporte",
+      "price": 4570.75
+    },
+    {
+      "id": 149,
+      "name": "Cena 149",
+      "category": "experiencias",
+      "price": 2287.06
+    },
+    {
+      "id": 150,
+      "name": "Upgrade 150",
+      "category": "hospedaje",
+      "price": 4532.78
+    },
+    {
+      "id": 151,
+      "name": "Late checkout 151",
+      "category": "alimentos",
+      "price": 4982.29
+    },
+    {
+      "id": 152,
+      "name": "Noche 152",
+      "category": "bienestar",
+      "price": 2686.16
+    },
+    {
+      "id": 153,
+      "name": "Desayuno 153",
+      "category": "transporte",
+      "price": 2839.6
+    },
+    {
+      "id": 154,
+      "name": "Spa 154",
+      "category": "experiencias",
+      "price": 2182.3
+    },
+    {
+      "id": 155,
+      "name": "Traslado 155",
+      "category": "hospedaje",
+      "price": 4534.01
+    },
+    {
+      "id": 156,
+      "name": "Tour 156",
+      "category": "alimentos",
+      "price": 2581.13
+    },
+    {
+      "id": 157,
+      "name": "Cena 157",
+      "category": "bienestar",
+      "price": 4743.9
+    },
+    {
+      "id": 158,
+      "name": "Upgrade 158",
+      "category": "transporte",
+      "price": 1859.01
+    },
+    {
+      "id": 159,
+      "name": "Late checkout 159",
+      "category": "experiencias",
+      "price": 1913.24
+    },
+    {
+      "id": 160,
+      "name": "Noche 160",
+      "category": "hospedaje",
+      "price": 3183.5
+    },
+    {
+      "id": 161,
+      "name": "Desayuno 161",
+      "category": "alimentos",
+      "price": 1174.22
+    },
+    {
+      "id": 162,
+      "name": "Spa 162",
+      "category": "bienestar",
+      "price": 2108.03
+    },
+    {
+      "id": 163,
+      "name": "Traslado 163",
+      "category": "transporte",
+      "price": 3873.76
+    },
+    {
+      "id": 164,
+      "name": "Tour 164",
+      "category": "experiencias",
+      "price": 4626.62
+    },
+    {
+      "id": 165,
+      "name": "Cena 165",
+      "category": "hospedaje",
+      "price": 1243.38
+    },
+    {
+      "id": 166,
+      "name": "Upgrade 166",
+      "category": "alimentos",
+      "price": 2035.02
+    },
+    {
+      "id": 167,
+      "name": "Late checkout 167",
+      "category": "bienestar",
+      "price": 821.32
+    },
+    {
+      "id": 168,
+      "name": "Noche 168",
+      "category": "transporte",
+      "price": 2181.92
+    },
+    {
+      "id": 169,
+      "name": "Desayuno 169",
+      "category": "experiencias",
+      "price": 2111.81
+    },
+    {
+      "id": 170,
+      "name": "Spa 170",
+      "category": "hospedaje",
+      "price": 4759.84
+    },
+    {
+      "id": 171,
+      "name": "Traslado 171",
+      "category": "alimentos",
+      "price": 4498.62
+    },
+    {
+      "id": 172,
+      "name": "Tour 172",
+      "category": "bienestar",
+      "price": 635.0
+    },
+    {
+      "id": 173,
+      "name": "Cena 173",
+      "category": "transporte",
+      "price": 1205.87
+    },
+    {
+      "id": 174,
+      "name": "Upgrade 174",
+      "category": "experiencias",
+      "price": 2787.37
+    },
+    {
+      "id": 175,
+      "name": "Late checkout 175",
+      "category": "hospedaje",
+      "price": 4449.62
+    },
+    {
+      "id": 176,
+      "name": "Noche 176",
+      "category": "alimentos",
+      "price": 903.76
+    },
+    {
+      "id": 177,
+      "name": "Desayuno 177",
+      "category": "bienestar",
+      "price": 3275.42
+    },
+    {
+      "id": 178,
+      "name": "Spa 178",
+      "category": "transporte",
+      "price": 4132.11
+    },
+    {
+      "id": 179,
+      "name": "Traslado 179",
+      "category": "experiencias",
+      "price": 4890.59
+    },
+    {
+      "id": 180,
+      "name": "Tour 180",
+      "category": "hospedaje",
+      "price": 3768.47
+    },
+    {
+      "id": 181,
+      "name": "Cena 181",
+      "category": "alimentos",
+      "price": 1667.23
+    },
+    {
+      "id": 182,
+      "name": "Upgrade 182",
+      "category": "bienestar",
+      "price": 2166.7
+    },
+    {
+      "id": 183,
+      "name": "Late checkout 183",
+      "category": "transporte",
+      "price": 3237.26
+    },
+    {
+      "id": 184,
+      "name": "Noche 184",
+      "category": "experiencias",
+      "price": 3950.98
+    },
+    {
+      "id": 185,
+      "name": "Desayuno 185",
+      "category": "hospedaje",
+      "price": 2063.14
+    },
+    {
+      "id": 186,
+      "name": "Spa 186",
+      "category": "alimentos",
+      "price": 1377.93
+    },
+    {
+      "id": 187,
+      "name": "Traslado 187",
+      "category": "bienestar",
+      "price": 2394.01
+    },
+    {
+      "id": 188,
+      "name": "Tour 188",
+      "category": "transporte",
+      "price": 2032.18
+    },
+    {
+      "id": 189,
+      "name": "Cena 189",
+      "category": "experiencias",
+      "price": 1219.17
+    },
+    {
+      "id": 190,
+      "name": "Upgrade 190",
+      "category": "hospedaje",
+      "price": 987.91
+    },
+    {
+      "id": 191,
+      "name": "Late checkout 191",
+      "category": "alimentos",
+      "price": 4845.27
+    },
+    {
+      "id": 192,
+      "name": "Noche 192",
+      "category": "bienestar",
+      "price": 3670.83
+    },
+    {
+      "id": 193,
+      "name": "Desayuno 193",
+      "category": "transporte",
+      "price": 2952.24
+    },
+    {
+      "id": 194,
+      "name": "Spa 194",
+      "category": "experiencias",
+      "price": 2410.53
+    },
+    {
+      "id": 195,
+      "name": "Traslado 195",
+      "category": "hospedaje",
+      "price": 3965.68
+    },
+    {
+      "id": 196,
+      "name": "Tour 196",
+      "category": "alimentos",
+      "price": 4173.62
+    },
+    {
+      "id": 197,
+      "name": "Cena 197",
+      "category": "bienestar",
+      "price": 4546.42
+    },
+    {
+      "id": 198,
+      "name": "Upgrade 198",
+      "category": "transporte",
+      "price": 424.25
+    },
+    {
+      "id": 199,
+      "name": "Late checkout 199",
+      "category": "experiencias",
+      "price": 184.87
+    },
+    {
+      "id": 200,
+      "name": "Noche 200",
+      "category": "hospedaje",
+      "price": 909.52
+    },
+    {
+      "id": 201,
+      "name": "Desayuno 201",
+      "category": "alimentos",
+      "price": 1192.08
+    },
+    {
+      "id": 202,
+      "name": "Spa 202",
+      "category": "bienestar",
+      "price": 3519.9
+    },
+    {
+      "id": 203,
+      "name": "Traslado 203",
+      "category": "transporte",
+      "price": 2787.04
+    },
+    {
+      "id": 204,
+      "name": "Tour 204",
+      "category": "experiencias",
+      "price": 798.0
+    },
+    {
+      "id": 205,
+      "name": "Cena 205",
+      "category": "hospedaje",
+      "price": 4024.8
+    },
+    {
+      "id": 206,
+      "name": "Upgrade 206",
+      "category": "alimentos",
+      "price": 438.52
+    },
+    {
+      "id": 207,
+      "name": "Late checkout 207",
+      "category": "bienestar",
+      "price": 1705.53
+    },
+    {
+      "id": 208,
+      "name": "Noche 208",
+      "category": "transporte",
+      "price": 700.45
+    },
+    {
+      "id": 209,
+      "name": "Desayuno 209",
+      "category": "experiencias",
+      "price": 3194.88
+    },
+    {
+      "id": 210,
+      "name": "Spa 210",
+      "category": "hospedaje",
+      "price": 505.48
+    },
+    {
+      "id": 211,
+      "name": "Traslado 211",
+      "category": "alimentos",
+      "price": 2173.28
+    },
+    {
+      "id": 212,
+      "name": "Tour 212",
+      "category": "bienestar",
+      "price": 4170.11
+    },
+    {
+      "id": 213,
+      "name": "Cena 213",
+      "category": "transporte",
+      "price": 4170.39
+    },
+    {
+      "id": 214,
+      "name": "Upgrade 214",
+      "category": "experiencias",
+      "price": 1812.13
+    },
+    {
+      "id": 215,
+      "name": "Late checkout 215",
+      "category": "hospedaje",
+      "price": 4480.35
+    },
+    {
+      "id": 216,
+      "name": "Noche 216",
+      "category": "alimentos",
+      "price": 234.71
+    },
+    {
+      "id": 217,
+      "name": "Desayuno 217",
+      "category": "bienestar",
+      "price": 4019.22
+    },
+    {
+      "id": 218,
+      "name": "Spa 218",
+      "category": "transporte",
+      "price": 2545.46
+    },
+    {
+      "id": 219,
+      "name": "Traslado 219",
+      "category": "experiencias",
+      "price": 1499.87
+    },
+    {
+      "id": 220,
+      "name": "Tour 220",
+      "category": "hospedaje",
+      "price": 4987.06
+    },
+    {
+      "id": 221,
+      "name": "Cena 221",
+      "category": "alimentos",
+      "price": 4099.4
+    },
+    {
+      "id": 222,
+      "name": "Upgrade 222",
+      "category": "bienestar",
+      "price": 1944.05
+    },
+    {
+      "id": 223,
+      "name": "Late checkout 223",
+      "category": "transporte",
+      "price": 366.85
+    },
+    {
+      "id": 224,
+      "name": "Noche 224",
+      "category": "experiencias",
+      "price": 2137.4
+    },
+    {
+      "id": 225,
+      "name": "Desayuno 225",
+      "category": "hospedaje",
+      "price": 1377.24
+    },
+    {
+      "id": 226,
+      "name": "Spa 226",
+      "category": "alimentos",
+      "price": 73.27
+    },
+    {
+      "id": 227,
+      "name": "Traslado 227",
+      "category": "bienestar",
+      "price": 622.75
+    },
+    {
+      "id": 228,
+      "name": "Tour 228",
+      "category": "transporte",
+      "price": 3022.54
+    },
+    {
+      "id": 229,
+      "name": "Cena 229",
+      "category": "experiencias",
+      "price": 697.14
+    },
+    {
+      "id": 230,
+      "name": "Upgrade 230",
+      "category": "hospedaje",
+      "price": 4177.99
+    },
+    {
+      "id": 231,
+      "name": "Late checkout 231",
+      "category": "alimentos",
+      "price": 353.05
+    },
+    {
+      "id": 232,
+      "name": "Noche 232",
+      "category": "bienestar",
+      "price": 2737.22
+    },
+    {
+      "id": 233,
+      "name": "Desayuno 233",
+      "category": "transporte",
+      "price": 970.01
+    },
+    {
+      "id": 234,
+      "name": "Spa 234",
+      "category": "experiencias",
+      "price": 3210.92
+    },
+    {
+      "id": 235,
+      "name": "Traslado 235",
+      "category": "hospedaje",
+      "price": 828.05
+    },
+    {
+      "id": 236,
+      "name": "Tour 236",
+      "category": "alimentos",
+      "price": 2656.68
+    },
+    {
+      "id": 237,
+      "name": "Cena 237",
+      "category": "bienestar",
+      "price": 3225.58
+    },
+    {
+      "id": 238,
+      "name": "Upgrade 238",
+      "category": "transporte",
+      "price": 3469.61
+    },
+    {
+      "id": 239,
+      "name": "Late checkout 239",
+      "category": "experiencias",
+      "price": 2770.48
+    },
+    {
+      "id": 240,
+      "name": "Noche 240",
+      "category": "hospedaje",
+      "price": 4589.85
+    },
+    {
+      "id": 241,
+      "name": "Desayuno 241",
+      "category": "alimentos",
+      "price": 2697.44
+    },
+    {
+      "id": 242,
+      "name": "Spa 242",
+      "category": "bienestar",
+      "price": 1087.81
+    },
+    {
+      "id": 243,
+      "name": "Traslado 243",
+      "category": "transporte",
+      "price": 2452.6
+    },
+    {
+      "id": 244,
+      "name": "Tour 244",
+      "category": "experiencias",
+      "price": 2231.94
+    },
+    {
+      "id": 245,
+      "name": "Cena 245",
+      "category": "hospedaje",
+      "price": 1113.66
+    },
+    {
+      "id": 246,
+      "name": "Upgrade 246",
+      "category": "alimentos",
+      "price": 4709.8
+    },
+    {
+      "id": 247,
+      "name": "Late checkout 247",
+      "category": "bienestar",
+      "price": 1543.56
+    },
+    {
+      "id": 248,
+      "name": "Noche 248",
+      "category": "transporte",
+      "price": 4160.98
+    },
+    {
+      "id": 249,
+      "name": "Desayuno 249",
+      "category": "experiencias",
+      "price": 3499.42
+    },
+    {
+      "id": 250,
+      "name": "Spa 250",
+      "category": "hospedaje",
+      "price": 4175.51
+    },
+    {
+      "id": 251,
+      "name": "Traslado 251",
+      "category": "alimentos",
+      "price": 572.35
+    },
+    {
+      "id": 252,
+      "name": "Tour 252",
+      "category": "bienestar",
+      "price": 73.77
+    },
+    {
+      "id": 253,
+      "name": "Cena 253",
+      "category": "transporte",
+      "price": 4577.16
+    },
+    {
+      "id": 254,
+      "name": "Upgrade 254",
+      "category": "experiencias",
+      "price": 2953.0
+    },
+    {
+      "id": 255,
+      "name": "Late checkout 255",
+      "category": "hospedaje",
+      "price": 3356.63
+    },
+    {
+      "id": 256,
+      "name": "Noche 256",
+      "category": "alimentos",
+      "price": 3210.52
+    },
+    {
+      "id": 257,
+      "name": "Desayuno 257",
+      "category": "bienestar",
+      "price": 3720.94
+    },
+    {
+      "id": 258,
+      "name": "Spa 258",
+      "category": "transporte",
+      "price": 2321.98
+    },
+    {
+      "id": 259,
+      "name": "Traslado 259",
+      "category": "experiencias",
+      "price": 4189.64
+    },
+    {
+      "id": 260,
+      "name": "Tour 260",
+      "category": "hospedaje",
+      "price": 968.39
+    },
+    {
+      "id": 261,
+      "name": "Cena 261",
+      "category": "alimentos",
+      "price": 1888.65
+    },
+    {
+      "id": 262,
+      "name": "Upgrade 262",
+      "category": "bienestar",
+      "price": 3214.27
+    },
+    {
+      "id": 263,
+      "name": "Late checkout 263",
+      "category": "transporte",
+      "price": 1308.56
+    },
+    {
+      "id": 264,
+      "name": "Noche 264",
+      "category": "experiencias",
+      "price": 3062.22
+    },
+    {
+      "id": 265,
+      "name": "Desayuno 265",
+      "category": "hospedaje",
+      "price": 2205.2
+    },
+    {
+      "id": 266,
+      "name": "Spa 266",
+      "category": "alimentos",
+      "price": 531.37
+    },
+    {
+      "id": 267,
+      "name": "Traslado 267",
+      "category": "bienestar",
+      "price": 1979.94
+    },
+    {
+      "id": 268,
+      "name": "Tour 268",
+      "category": "transporte",
+      "price": 4005.24
+    },
+    {
+      "id": 269,
+      "name": "Cena 269",
+      "category": "experiencias",
+      "price": 1166.51
+    },
+    {
+      "id": 270,
+      "name": "Upgrade 270",
+      "category": "hospedaje",
+      "price": 1804.83
+    },
+    {
+      "id": 271,
+      "name": "Late checkout 271",
+      "category": "alimentos",
+      "price": 3615.37
+    },
+    {
+      "id": 272,
+      "name": "Noche 272",
+      "category": "bienestar",
+      "price": 142.99
+    },
+    {
+      "id": 273,
+      "name": "Desayuno 273",
+      "category": "transporte",
+      "price": 4828.18
+    },
+    {
+      "id": 274,
+      "name": "Spa 274",
+      "category": "experiencias",
+      "price": 4785.27
+    },
+    {
+      "id": 275,
+      "name": "Traslado 275",
+      "category": "hospedaje",
+      "price": 2593.92
+    },
+    {
+      "id": 276,
+      "name": "Tour 276",
+      "category": "alimentos",
+      "price": 2461.59
+    },
+    {
+      "id": 277,
+      "name": "Cena 277",
+      "category": "bienestar",
+      "price": 2329.96
+    },
+    {
+      "id": 278,
+      "name": "Upgrade 278",
+      "category": "transporte",
+      "price": 1592.96
+    },
+    {
+      "id": 279,
+      "name": "Late checkout 279",
+      "category": "experiencias",
+      "price": 2412.82
+    },
+    {
+      "id": 280,
+      "name": "Noche 280",
+      "category": "hospedaje",
+      "price": 4324.02
+    },
+    {
+      "id": 281,
+      "name": "Desayuno 281",
+      "category": "alimentos",
+      "price": 2946.65
+    },
+    {
+      "id": 282,
+      "name": "Spa 282",
+      "category": "bienestar",
+      "price": 2278.55
+    },
+    {
+      "id": 283,
+      "name": "Traslado 283",
+      "category": "transporte",
+      "price": 2146.75
+    },
+    {
+      "id": 284,
+      "name": "Tour 284",
+      "category": "experiencias",
+      "price": 1527.26
+    },
+    {
+      "id": 285,
+      "name": "Cena 285",
+      "category": "hospedaje",
+      "price": 1287.16
+    },
+    {
+      "id": 286,
+      "name": "Upgrade 286",
+      "category": "alimentos",
+      "price": 707.56
+    },
+    {
+      "id": 287,
+      "name": "Late checkout 287",
+      "category": "bienestar",
+      "price": 2502.71
+    },
+    {
+      "id": 288,
+      "name": "Noche 288",
+      "category": "transporte",
+      "price": 1096.5
+    },
+    {
+      "id": 289,
+      "name": "Desayuno 289",
+      "category": "experiencias",
+      "price": 4465.03
+    },
+    {
+      "id": 290,
+      "name": "Spa 290",
+      "category": "hospedaje",
+      "price": 4706.07
+    },
+    {
+      "id": 291,
+      "name": "Traslado 291",
+      "category": "alimentos",
+      "price": 2008.49
+    },
+    {
+      "id": 292,
+      "name": "Tour 292",
+      "category": "bienestar",
+      "price": 2762.33
+    },
+    {
+      "id": 293,
+      "name": "Cena 293",
+      "category": "transporte",
+      "price": 4967.23
+    },
+    {
+      "id": 294,
+      "name": "Upgrade 294",
+      "category": "experiencias",
+      "price": 4212.66
+    },
+    {
+      "id": 295,
+      "name": "Late checkout 295",
+      "category": "hospedaje",
+      "price": 1194.78
+    },
+    {
+      "id": 296,
+      "name": "Noche 296",
+      "category": "alimentos",
+      "price": 311.38
+    },
+    {
+      "id": 297,
+      "name": "Desayuno 297",
+      "category": "bienestar",
+      "price": 4916.79
+    },
+    {
+      "id": 298,
+      "name": "Spa 298",
+      "category": "transporte",
+      "price": 1115.0
+    },
+    {
+      "id": 299,
+      "name": "Traslado 299",
+      "category": "experiencias",
+      "price": 2315.33
+    },
+    {
+      "id": 300,
+      "name": "Tour 300",
+      "category": "hospedaje",
+      "price": 4697.51
+    }
+  ]
+}

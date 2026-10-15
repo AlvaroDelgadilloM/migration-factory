@@ -1,0 +1,28 @@
+# Entorno LEGADO de prueba: PostgreSQL local + WildFly 10.1 (JBoss, Java 8) con el WAR de Camel 2.
+#   cd examples/jboss-legacy-shop && (cd app && mvn -q -DskipTests package) && docker compose up -d
+#   Servicios: http://127.0.0.1:18081/shop/api/...      Base: 127.0.0.1:5433 (shop / shop, solo local)
+name: jboss-legacy-shop
+
+services:
+  db:
+    image: postgres:16.10-alpine3.22
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop          # base sintética y local: no es un secreto
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: ["./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 3s
+      retries: 30
+
+  jboss:
+    image: jboss/wildfly:10.1.0.Final       # JBoss/WildFly con Java 8, como el servidor legado
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["127.0.0.1:18081:8080"]
+    volumes:
+      - ./jboss/postgresql-42.2.27.jar:/opt/jboss/wildfly/standalone/deployments/postgresql-42.2.27.jar:ro
+      - ./jboss/shop-ds.xml:/opt/jboss/wildfly/standalone/deployments/shop-ds.xml:ro
+      - ./app/target/shop.war:/opt/jboss/wildfly/standalone/deployments/shop.war:ro

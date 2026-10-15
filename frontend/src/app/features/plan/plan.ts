@@ -139,7 +139,7 @@ export class PlanPage {
       this.ctx.select(id);
       this.profiles.load(() => this.api.profiles({ status: 'validated' })).then(ps => {
         const rt = this.ctx.project()?.targetRuntime;
-        this.profileId = ps?.find(p => p.runtime === rt)?.id ?? ps?.[0]?.id ?? null;
+        this.profileId = ps?.find(p => p.runtime === rt && !p.dependencyMapping?.['deployment'])?.id ?? ps?.[0]?.id ?? null;
       });
       const page = await this.scans.load(() => this.api.scans(id, { limit: 50 }));
       this.scanId.set(page?.items.find(s => s.status === 'succeeded')?.id ?? null);

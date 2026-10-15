@@ -130,7 +130,7 @@ export class WorkspaceMigrationPanel {
   constructor() {
     this.profiles.load(async () => {
       const ps = (await this.api.profiles()).filter(p => p.status === 'validated');
-      this.profileId ??= this.recommended()?.target === this.TOMCAT ? this.TOMCAT : ps.find(p => p.runtime === 'spring')?.id ?? ps[0]?.id ?? null;
+      this.profileId ??= this.recommended()?.target === this.TOMCAT ? this.TOMCAT : ps.find(p => p.runtime === 'spring' && !p.dependencyMapping?.['deployment'])?.id ?? ps[0]?.id ?? null;
       return ps;
     });
     effect(() => { const id = this.scanId(); this.list.load(() => this.api.workspaceMigrations(id)); });

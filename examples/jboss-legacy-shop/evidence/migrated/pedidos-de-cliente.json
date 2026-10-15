@@ -1,0 +1,83 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/customers/42/orders",
+    "body": null
+  },
+  "status": 200,
+  "contentType": "application/json",
+  "response": [
+    {
+      "id": 6144,
+      "product": "Noche 104",
+      "quantity": 2,
+      "status": "CANCELLED",
+      "ordered_at": "2025-08-05",
+      "total": 2715.92
+    },
+    {
+      "id": 5469,
+      "product": "Cena 37",
+      "quantity": 3,
+      "status": "NEW",
+      "ordered_at": "2025-05-01",
+      "total": 12835.2
+    },
+    {
+      "id": 3441,
+      "product": "Late checkout 151",
+      "quantity": 2,
+      "status": "SHIPPED",
+      "ordered_at": "2024-09-01",
+      "total": 9964.58
+    },
+    {
+      "id": 27063,
+      "product": "Noche 24",
+      "quantity": 5,
+      "status": "PAID",
+      "ordered_at": "2024-08-25",
+      "total": 11767.3
+    },
+    {
+      "id": 12446,
+      "product": "Tour 260",
+      "quantity": 7,
+      "status": "PAID",
+      "ordered_at": "2024-06-22",
+      "total": 6778.73
+    },
+    {
+      "id": 45248,
+      "product": "Spa 18",
+      "quantity": 10,
+      "status": "SHIPPED",
+      "ordered_at": "2024-01-16",
+      "total": 43857.8
+    },
+    {
+      "id": 11886,
+      "product": "Desayuno 273",
+      "quantity": 6,
+      "status": "CANCELLED",
+      "ordered_at": "2023-12-25",
+      "total": 28969.08
+    },
+    {
+      "id": 12418,
+      "product": "Upgrade 278",
+      "quantity": 3,
+      "status": "NEW",
+      "ordered_at": "2023-07-17",
+      "total": 4778.88
+    },
+    {
+      "id": 39972,
+      "product": "Spa 114",
+      "quantity": 4,
+      "status": "SHIPPED",
+      "ordered_at": "2023-03-19",
+      "total": 4376.68
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+<!doctype html><meta charset="utf-8"><title>Evidencia de servicios</title><style>body{font:14px system-ui;margin:24px;background:#f6f8fa;color:#1f2328}h1{font-size:20px}section{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:12px 16px;margin:12px 0}h2{font-size:15px;margin:0 0 8px}h2 span{color:#fff;border-radius:6px;padding:2px 8px;margin-right:6px}pre{margin:0;font-size:12.5px;max-height:240px;overflow:auto}</style><h1>Evidencia de servicios · http://127.0.0.1:18082/shop/api</h1><section><h2><span style="background:#1a7f37">200</span> GET /customers/42</h2><pre>{
+  &quot;id&quot;: 42,
+  &quot;name&quot;: &quot;María Pérez&quot;,
+  &quot;email&quot;: &quot;cliente42@ejemplo.test&quot;,
+  &quot;city&quot;: &quot;Monterrey&quot;,
+  &quot;created_at&quot;: &quot;2018-02-12&quot;
+}</pre></section><section><h2><span style="background:#9a6700">404</span> GET /customers/999999</h2><pre>{
+  &quot;error&quot;: &quot;Cliente no encontrado&quot;
+}</pre></section><section><h2><span style="background:#1a7f37">200</span> GET /customers/42/orders</h2><pre>[
+  {
+    &quot;id&quot;: 6144,
+    &quot;product&quot;: &quot;Noche 104&quot;,
+    &quot;quantity&quot;: 2,
+    &quot;status&quot;: &quot;CANCELLED&quot;,
+    &quot;ordered_at&quot;: &quot;2025-08-05&quot;,
+    &quot;total&quot;: 2715.92
+  },
+  {
+    &quot;id&quot;: 5469,
+    &quot;product&quot;: &quot;Cena 37&quot;,
+    &quot;quantity&quot;: 3,
+    &quot;status&quot;: &quot;NEW&quot;,
+    &quot;ordered_at&quot;: &quot;2025-05-01&quot;,
+    &quot;total&quot;: 12835.2
+  },
+  {
+    &quot;id&quot;: 3441,
+    &quot;product&quot;: &quot;Late checkout 151&quot;,
+    &quot;quantity&quot;: 2,
+    &quot;status&quot;: &quot;SHIPPED&quot;,
+    &quot;ordered_at&quot;: &quot;2024-09-01&quot;,
+    &quot;total&quot;: 9964.58
+  },
+  &quot;... (6 más)&quot;
+]</pre></section><section><h2><span style="background:#1a7f37">200</span> GET /products?category=bienestar</h2><pre>[
+  {
+    &quot;id&quot;: 2,
+    &quot;name&quot;: &quot;Spa 2&quot;,
+    &quot;category&quot;: &quot;bienestar&quot;,
+    &quot;price&quot;: 1844.23
+  },
+  {
+    &quot;id&quot;: 7,
+    &quot;name&quot;: &quot;Late checkout 7&quot;,
+    &quot;category&quot;: &quot;bienestar&quot;,
+    &quot;price&quot;: 2479.83
+  },
+  {
+    &quot;id&quot;: 12,
+    &quot;name&quot;: &quot;Tour 12&quot;,
+    &quot;category&quot;: &quot;bienestar&quot;,
+    &quot;price&quot;: 4848.78
+  },
+  &quot;... (57 más)&quot;
+]</pre></section><section><h2><span style="background:#1a7f37">200</span> GET /products</h2><pre>[
+  {
+    &quot;id&quot;: 1,
+    &quot;name&quot;: &quot;Desayuno 1&quot;,
+    &quot;category&quot;: &quot;alimentos&quot;,
+    &quot;price&quot;: 3727.58
+  },
+  {
+    &quot;id&quot;: 2,
+    &quot;name&quot;: &quot;Spa 2&quot;,
+    &quot;category&quot;: &quot;bienestar&quot;,
+    &quot;price&quot;: 1844.23
+  },
+  {
+    &quot;id&quot;: 3,
+    &quot;name&quot;: &quot;Traslado 3&quot;,
+    &quot;category&quot;: &quot;transporte&quot;,
+    &quot;price&quot;: 4686.19
+  },
+  &quot;... (297 más)&quot;
+]</pre></section><section><h2><span style="background:#1a7f37">200</span> GET /stats/top-products</h2><pre>[
+  {
+    &quot;id&quot;: 252,
+    &quot;name&quot;: &quot;Tour 252&quot;,
+    &quot;units&quot;: 853
+  },
+  {
+    &quot;id&quot;: 262,
+    &quot;name&quot;: &quot;Upgrade 262&quot;,
+    &quot;units&quot;: 848
+  },
+  {
+    &quot;id&quot;: 190,
+    &quot;name&quot;: &quot;Upgrade 190&quot;,
+    &quot;units&quot;: 837
+  },
+  &quot;... (2 más)&quot;
+]</pre></section><section><h2><span style="background:#1a7f37">201</span> POST /orders {&quot;customerId&quot;: 42, &quot;productId&quot;: 7, &quot;quantity&quot;: 2}</h2><pre>{
+  &quot;id&quot;: 50001,
+  &quot;status&quot;: &quot;NEW&quot;
+}</pre></section><section><h2><span style="background:#9a6700">400</span> POST /orders {&quot;customerId&quot;: 42, &quot;productId&quot;: 7, &quot;quantity&quot;: 500}</h2><pre>{
+  &quot;error&quot;: &quot;quantity fuera de rango (1-100)&quot;
+}</pre></section><section><h2><span style="background:#9a6700">400</span> POST /orders {&quot;customerId&quot;: 42, &quot;quantity&quot;: 1}</h2><pre>{
+  &quot;error&quot;: &quot;Campo obligatorio numérico: productId&quot;
+}</pre></section>

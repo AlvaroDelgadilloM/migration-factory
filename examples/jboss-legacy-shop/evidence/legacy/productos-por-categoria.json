@@ -1,0 +1,371 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/products?category=bienestar",
+    "body": null
+  },
+  "status": 200,
+  "contentType": "application/json",
+  "response": [
+    {
+      "id": 2,
+      "name": "Spa 2",
+      "category": "bienestar",
+      "price": 1844.23
+    },
+    {
+      "id": 7,
+      "name": "Late checkout 7",
+      "category": "bienestar",
+      "price": 2479.83
+    },
+    {
+      "id": 12,
+      "name": "Tour 12",
+      "category": "bienestar",
+      "price": 4848.78
+    },
+    {
+      "id": 17,
+      "name": "Desayuno 17",
+      "category": "bienestar",
+      "price": 1593.84
+    },
+    {
+      "id": 22,
+      "name": "Upgrade 22",
+      "category": "bienestar",
+      "price": 1619.76
+    },
+    {
+      "id": 27,
+      "name": "Traslado 27",
+      "category": "bienestar",
+      "price": 4719.27
+    },
+    {
+      "id": 32,
+      "name": "Noche 32",
+      "category": "bienestar",
+      "price": 3204.62
+    },
+    {
+      "id": 37,
+      "name": "Cena 37",
+      "category": "bienestar",
+      "price": 4278.4
+    },
+    {
+      "id": 42,
+      "name": "Spa 42",
+      "category": "bienestar",
+      "price": 143.01
+    },
+    {
+      "id": 47,
+      "name": "Late checkout 47",
+      "category": "bienestar",
+      "price": 640.87
+    },
+    {
+      "id": 52,
+      "name": "Tour 52",
+      "category": "bienestar",
+      "price": 4730.06
+    },
+    {
+      "id": 57,
+      "name": "Desayuno 57",
+      "category": "bienestar",
+      "price": 193.72
+    },
+    {
+      "id": 62,
+      "name": "Upgrade 62",
+      "category": "bienestar",
+      "price": 1578.58
+    },
+    {
+      "id": 67,
+      "name": "Traslado 67",
+      "category": "bienestar",
+      "price": 1375.65
+    },
+    {
+      "id": 72,
+      "name": "Noche 72",
+      "category": "bienestar",
+      "price": 1998.75
+    },
+    {
+      "id": 77,
+      "name": "Cena 77",
+      "category": "bienestar",
+      "price": 1645.03
+    },
+    {
+      "id": 82,
+      "name": "Spa 82",
+      "category": "bienestar",
+      "price": 3209.52
+    },
+    {
+      "id": 87,
+      "name": "Late checkout 87",
+      "category": "bienestar",
+      "price": 2773.18
+    },
+    {
+      "id": 92,
+      "name": "Tour 92",
+      "category": "bienestar",
+      "price": 493.61
+    },
+    {
+      "id": 97,
+      "name": "Desayuno 97",
+      "category": "bienestar",
+      "price": 2898.8
+    },
+    {
+      "id": 102,
+      "name": "Upgrade 102",
+      "category": "bienestar",
+      "price": 766.97
+    },
+    {
+      "id": 107,
+      "name": "Traslado 107",
+      "category": "bienestar",
+      "price": 2947.7
+    },
+    {
+      "id": 112,
+      "name": "Noche 112",
+      "category": "bienestar",
+      "price": 4728.15
+    },
+    {
+      "id": 117,
+      "name": "Cena 117",
+      "category": "bienestar",
+      "price": 4323.18
+    },
+    {
+      "id": 122,
+      "name": "Spa 122",
+      "category": "bienestar",
+      "price": 491.1
+    },
+    {
+      "id": 127,
+      "name": "Late checkout 127",
+      "category": "bienestar",
+      "price": 2208.58
+    },
+    {
+      "id": 132,
+      "name": "Tour 132",
+      "category": "bienestar",
+      "price": 2338.8
+    },
+    {
+      "id": 137,
+      "name": "Desayuno 137",
+      "category": "bienestar",
+      "price": 2770.98
+    },
+    {
+      "id": 142,
+      "name": "Upgrade 142",
+      "category": "bienestar",
+      "price": 4991.59
+    },
+    {
+      "id": 147,
+      "name": "Traslado 147",
+      "category": "bienestar",
+      "price": 4366.18
+    },
+    {
+      "id": 152,
+      "name": "Noche 152",
+      "category": "bienestar",
+      "price": 2686.16
+    },
+    {
+      "id": 157,
+      "name": "Cena 157",
+      "category": "bienestar",
+      "price": 4743.9
+    },
+    {
+      "id": 162,
+      "name": "Spa 162",
+      "category": "bienestar",
+      "price": 2108.03
+    },
+    {
+      "id": 167,
+      "name": "Late checkout 167",
+      "category": "bienestar",
+      "price": 821.32
+    },
+    {
+      "id": 172,
+      "name": "Tour 172",
+      "category": "bienestar",
+      "price": 635.0
+    },
+    {
+      "id": 177,
+      "name": "Desayuno 177",
+      "category": "bienestar",
+      "price": 3275.42
+    },
+    {
+      "id": 182,
+      "name": "Upgrade 182",
+      "category": "bienestar",
+      "price": 2166.7
+    },
+    {
+      "id": 187,
+      "name": "Traslado 187",
+      "category": "bienestar",
+      "price": 2394.01
+    },
+    {
+      "id": 192,
+      "name": "Noche 192",
+      "category": "bienestar",
+      "price": 3670.83
+    },
+    {
+      "id": 197,
+      "name": "Cena 197",
+      "category": "bienestar",
+      "price": 4546.42
+    },
+    {
+      "id": 202,
+      "name": "Spa 202",
+      "category": "bienestar",
+      "price": 3519.9
+    },
+    {
+      "id": 207,
+      "name": "Late checkout 207",
+      "category": "bienestar",
+      "price": 1705.53
+    },
+    {
+      "id": 212,
+      "name": "Tour 212",
+      "category": "bienestar",
+      "price": 4170.11
+    },
+    {
+      "id": 217,
+      "name": "Desayuno 217",
+      "category": "bienestar",
+      "price": 4019.22
+    },
+    {
+      "id": 222,
+      "name": "Upgrade 222",
+      "category": "bienestar",
+      "price": 1944.05
+    },
+    {
+      "id": 227,
+      "name": "Traslado 227",
+      "category": "bienestar",
+      "price": 622.75
+    },
+    {
+      "id": 232,
+      "name": "Noche 232",
+      "category": "bienestar",
+      "price": 2737.22
+    },
+    {
+      "id": 237,
+      "name": "Cena 237",
+      "category": "bienestar",
+      "price": 3225.58
+    },
+    {
+      "id": 242,
+      "name": "Spa 242",
+      "category": "bienestar",
+      "price": 1087.81
+    },
+    {
+      "id": 247,
+      "name": "Late checkout 247",
+      "category": "bienestar",
+      "price": 1543.56
+    },
+    {
+      "id": 252,
+      "name": "Tour 252",
+      "category": "bienestar",
+      "price": 73.77
+    },
+    {
+      "id": 257,
+      "name": "Desayuno 257",
+      "category": "bienestar",
+      "price": 3720.94
+    },
+    {
+      "id": 262,
+      "name": "Upgrade 262",
+      "category": "bienestar",
+      "price": 3214.27
+    },
+    {
+      "id": 267,
+      "name": "Traslado 267",
+      "category": "bienestar",
+      "price": 1979.94
+    },
+    {
+      "id": 272,
+      "name": "Noche 272",
+      "category": "bienestar",
+      "price": 142.99
+    },
+    {
+      "id": 277,
+      "name": "Cena 277",
+      "category": "bienestar",
+      "price": 2329.96
+    },
+    {
+      "id": 282,
+      "name": "Spa 282",
+      "category": "bienestar",
+      "price": 2278.55
+    },
+    {
+      "id": 287,
+      "name": "Late checkout 287",
+      "category": "bienestar",
+      "price": 2502.71
+    },
+    {
+      "id": 292,
+      "name": "Tour 292",
+      "category": "bienestar",
+      "price": 2762.33
+    },
+    {
+      "id": 297,
+      "name": "Desayuno 297",
+      "category": "bienestar",
+      "price": 4916.79
+    }
+  ]
+}

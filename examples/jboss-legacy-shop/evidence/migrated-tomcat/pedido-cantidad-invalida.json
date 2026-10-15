@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": {
+      "customerId": 42,
+      "productId": 7,
+      "quantity": 500
+    }
+  },
+  "status": 400,
+  "contentType": "application/json",
+  "response": {
+    "error": "quantity fuera de rango (1-100)"
+  }
+}

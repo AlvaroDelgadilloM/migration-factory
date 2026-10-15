@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/customers/999999",
+    "body": null
+  },
+  "status": 404,
+  "contentType": "application/json",
+  "response": {
+    "error": "Cliente no encontrado"
+  }
+}

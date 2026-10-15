@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Datasource JBoss desplegable: la aplicación lo busca por JNDI (java:jboss/datasources/ShopDS). -->
+<datasources xmlns="http://www.jboss.org/ironjacamar/schema">
+    <datasource jndi-name="java:jboss/datasources/ShopDS" pool-name="ShopDS" enabled="true" use-java-context="true">
+        <connection-url>jdbc:postgresql://db:5432/shop</connection-url>
+        <driver>postgresql-42.2.27.jar</driver>
+        <pool>
+            <min-pool-size>2</min-pool-size>
+            <max-pool-size>10</max-pool-size>
+        </pool>
+        <security>
+            <user-name>shop</user-name>
+            <password>shop</password>
+        </security>
+    </datasource>
+</datasources>
