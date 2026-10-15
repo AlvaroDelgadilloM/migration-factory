@@ -89,10 +89,9 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    pids_limit: 1024
     deploy:
       resources:
-        limits: {cpus: "2.0", memory: 3g}
+        limits: {cpus: "2.0", memory: 3g, pids: 1024}   # pids here, not pids_limit: newer Compose rejects both
     # No Docker socket is mounted: builds run as subprocesses of this unprivileged container.
 
   # Long jobs (workspace migrations by waves, modernizations) on their own worker: they never delay an analysis.
