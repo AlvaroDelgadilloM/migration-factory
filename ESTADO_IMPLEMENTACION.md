@@ -456,3 +456,15 @@ Fuera de alcance de este entorno (necesitan servicios o decisiones externas): PR
 Vault, S3, runners efímeros (Kubernetes), escaneo de vulnerabilidades (servicio externo), aislamiento de `~/.m2` por proyecto
 (decisión de costo: hoy repositorio compartido + mirror aprobado), botón "Re-ejecutar suites". Ruta Spring Boot: Camel 2→3,
 vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemplazos ciegos).
+
+## Borrado y retención (2026-10-15)
+- `DELETE /executions/{id}` (owner o arquitecto; no en curso): borra la ejecución, sus candidatos, parches, reportes y logs
+  (archivos y registros; diff/validaciones/modernizaciones en cascada).
+- `DELETE /projects/{id}?confirm=<nombre>` (owner; sin trabajos en curso): borra el proyecto y todo lo generado (análisis, planes,
+  ejecuciones, migraciones de workspace, artefactos y ZIP subidos). El origen no se toca.
+- Retención `MF_ARTIFACT_RETENTION_DAYS` (compose: 30; 0 = nunca): el worker de la cola mf-jobs borra al arrancar y cada 6 h los
+  candidatos (zip/war), parches y snapshots de análisis que no son el último de su proyecto con más de N días. Reportes, logs,
+  evidencias y la auditoría se conservan; la ejecución sigue legible.
+- La auditoría nunca se borra (sin FK al proyecto): `execution.delete`, `project.delete`, `retention.purge` (actor `system`).
+- UI: «Eliminar ejecución» (confirmación) en Ejecución; «Eliminar proyecto» (escribir el nombre) al final de Proyecto.
+- Pruebas: `tests/test_purge.py` (3); backend 180, frontend 10.

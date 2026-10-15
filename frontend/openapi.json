@@ -222,6 +222,51 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Delete Project",
+        "description": "Deletes the project and everything it generated (analyses, plans, executions, candidates, uploads). Owner only and\n`confirm` must repeat the project name. The audit trail stays.",
+        "operationId": "delete_project_api_v1_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "title": "Confirm"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/projects/{project_id}/upload": {
@@ -1540,6 +1585,41 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Delete Execution",
+        "description": "Deletes the execution, its candidates, patches, reports and logs (files and records). The audit trail stays.",
+        "operationId": "delete_execution_api_v1_executions__execution_id__delete",
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",

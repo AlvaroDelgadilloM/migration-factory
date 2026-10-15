@@ -71,6 +71,13 @@ docker compose up -d                                                    # volver
 Realm `mf` (`docker/keycloak/realm-mf.json`): cliente público `migration-factory-ui` (Code + PKCE, audiencia `migration-factory`),
 rol de realm `mf-admin` = administrador de la plataforma. Keycloak corre en modo dev: solo para pruebas locales.
 
+## Espacio y borrado
+
+Lo generado vive en volúmenes Docker: `artifacts` (snapshots, candidatos, parches, reportes, logs), `pgdata` (registros),
+`m2` (caché de Maven, se puede borrar sin perder nada) y `work` (temporal, se limpia solo). Desde la UI: «Eliminar ejecución»
+(Ejecución) y «Eliminar proyecto» (Proyecto). Retención automática: `MF_ARTIFACT_RETENTION_DAYS` (30 por defecto; 0 = nunca) borra
+candidatos, parches y snapshots viejos y conserva reportes, logs y auditoría.
+
 ## Validar
 
 ```bash

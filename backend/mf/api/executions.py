@@ -142,6 +142,21 @@ def get_execution(execution_id: uuid.UUID, db: Session = Depends(get_db), me: Pr
     return execution_out(db, load_execution(db, me, execution_id))
 
 
+@router.delete('/executions/{execution_id}', status_code=204)
+def delete_execution(execution_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """Deletes the execution, its candidates, patches, reports and logs (files and records). The audit trail stays."""
+    from .. import purge
+    ex = load_execution(db, me, execution_id, 'plan')
+    try:
+        stats = purge.delete_execution(db, ex)
+    except purge.Busy as e:
+        raise ApiError(409, 'INVALID_STATE', str(e)) from None
+    audit.record(db, actor=me.subject, action='execution.delete', entity_type='execution', entity_id=execution_id, project_id=ex.project_id,
+                 details=stats | {'mode': ex.mode, 'state': ex.state}, request=request)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post('/executions/{execution_id}/cancel', status_code=202, response_model=ExecutionOut)
 def cancel_execution(execution_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     ex = load_execution(db, me, execution_id, 'execute')

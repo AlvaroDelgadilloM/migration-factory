@@ -81,6 +81,8 @@ services:
       MF_MAVEN_OPTS: -Xmx1g
       # Git credentials are referenced as env:MF_CRED_<NAME> (project setting "Referencia de credencial"); values only in .env
       MF_CRED_GITHUB: ${MF_CRED_GITHUB:-}
+      # heavy re-creatable files (candidates, patches, old snapshots) older than N days are deleted; 0 = keep forever
+      MF_ARTIFACT_RETENTION_DAYS: ${MF_ARTIFACT_RETENTION_DAYS:-30}
     volumes: [artifacts:/artifacts, "${MF_HOST_SOURCES_DIR:-./examples}:/sources:ro", work:/work, m2:/m2]
     depends_on:
       api: {condition: service_healthy}

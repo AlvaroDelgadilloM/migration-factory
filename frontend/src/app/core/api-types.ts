@@ -33,7 +33,12 @@ export interface paths {
         get: operations["get_project_api_v1_projects__project_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Project
+         * @description Deletes the project and everything it generated (analyses, plans, executions, candidates, uploads). Owner only and
+         *     `confirm` must repeat the project name. The audit trail stays.
+         */
+        delete: operations["delete_project_api_v1_projects__project_id__delete"];
         options?: never;
         head?: never;
         /** Update Project */
@@ -348,7 +353,11 @@ export interface paths {
         get: operations["get_execution_api_v1_executions__execution_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Execution
+         * @description Deletes the execution, its candidates, patches, reports and logs (files and records). The audit trail stays.
+         */
+        delete: operations["delete_execution_api_v1_executions__execution_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2455,6 +2464,37 @@ export interface operations {
             };
         };
     };
+    delete_project_api_v1_projects__project_id__delete: {
+        parameters: {
+            query: {
+                confirm: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_project_api_v1_projects__project_id__patch: {
         parameters: {
             query?: never;
@@ -3215,6 +3255,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ExecutionOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_execution_api_v1_executions__execution_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

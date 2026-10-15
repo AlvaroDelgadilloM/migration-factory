@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     local_source_roots: str = ''
     # ZIP uploads
     max_upload_mb: int = 200
+    # Days after which heavy re-creatable files (candidates, patches, old snapshots) are deleted; 0 = keep forever
+    artifact_retention_days: int = 0
     zip_max_entries: int = 20000
     zip_max_uncompressed_mb: int = 1024
     zip_max_ratio: int = 200                      # per-entry compression ratio (zip bomb guard)

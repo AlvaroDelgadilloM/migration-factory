@@ -43,6 +43,7 @@ export function executionLabel(e: Execution) {
             <span class="actions">
               <mf-action label="Cancelar" icon="pi pi-stop" severity="danger" [outlined]="true" [disabledReason]="cancelReason()" (run)="cancel(e)" />
               <mf-action label="Descartar candidato (rollback)" icon="pi pi-undo" severity="warn" [outlined]="true" [disabledReason]="rollbackReason()" (run)="confirmRollback(e)" />
+              <mf-action label="Eliminar ejecución" icon="pi pi-trash" severity="danger" [outlined]="true" [disabledReason]="deleteReason()" (run)="confirmDelete(e)" />
               <mf-action label="Reintentar fase" icon="pi pi-replay" severity="secondary" [outlined]="true"
                          disabledReason="Los reintentos técnicos son automáticos (lease); el reintento manual por fase aún no está implementado." />
             </span>
@@ -152,6 +153,12 @@ export class ExecutionPage {
     if (e?.job?.cancelRequested && e.state === 'running') return 'Cancelación solicitada; esperando confirmación del worker';
     return e && ['queued', 'running'].includes(e.state) ? null : 'La ejecución no está en curso';
   });
+  deleteReason = computed(() => {
+    const e = this.ex.data();
+    if (!this.ctx.can('plan')) return `Su rol (${this.ctx.role()}) no permite eliminar ejecuciones (owner o arquitecto)`;
+    if (!e) return 'Sin ejecución';
+    return ['queued', 'running'].includes(e.state) ? 'Cancele la ejecución antes de eliminarla' : null;
+  });
   rollbackReason = computed(() => {
     const e = this.ex.data();
     if (!this.ctx.can('execute')) return `Su rol (${this.ctx.role()}) no permite descartar`;
@@ -192,6 +199,18 @@ export class ExecutionPage {
       acceptLabel: 'Descartar', rejectLabel: 'Cancelar',
       accept: async () => {
         try { await this.api.rollback(e.id); } catch (err) { this.error.set(UiError.from(err)); }
+        this.refresh();
+      },
+    });
+  }
+
+  confirmDelete(e: Execution) {
+    this.confirm.confirm({
+      header: 'Eliminar ejecución',
+      message: 'Se borran la ejecución, sus candidatos, parches, reportes y logs. No se puede deshacer; la auditoría conserva el registro. ¿Continuar?',
+      acceptLabel: 'Eliminar', rejectLabel: 'Cancelar', acceptButtonStyleClass: 'p-button-danger',
+      accept: async () => {
+        try { await this.api.deleteExecution(e.id); } catch (err) { this.error.set(UiError.from(err)); }
         this.refresh();
       },
     });

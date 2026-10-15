@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -150,6 +150,26 @@ def replace_upload(project_id: uuid.UUID, body: UploadReplace, request: Request,
                  after={'upload': upload.sha256, 'filename': upload.filename}, request=request)
     db.commit()
     return project_out(db, p, me)
+
+
+@router.delete('/projects/{project_id}', status_code=204)
+def delete_project(project_id: uuid.UUID, request: Request, confirm: str = Query(..., max_length=200), db: Session = Depends(get_db),
+                   me: Principal = Depends(current_principal)):
+    """Deletes the project and everything it generated (analyses, plans, executions, candidates, uploads). Owner only and
+    `confirm` must repeat the project name. The audit trail stays."""
+    from .. import purge
+    p = authorize(db, me, project_id, 'manage')
+    if confirm != p.name:
+        raise ApiError(422, 'VALIDATION_ERROR', 'Para confirmar, escriba exactamente el nombre del proyecto')
+    name = p.name
+    try:
+        stats = purge.delete_project(db, p)
+    except purge.Busy as e:
+        raise ApiError(409, 'INVALID_STATE', str(e)) from None
+    audit.record(db, actor=me.subject, action='project.delete', entity_type='project', entity_id=project_id, project_id=project_id,
+                 details=stats | {'name': name}, request=request)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get('/projects/{project_id}/members', response_model=list[MemberOut])

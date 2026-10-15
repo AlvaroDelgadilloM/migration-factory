@@ -45,6 +45,8 @@ export class Api {
   permissions(id: string) { return this.get<Permissions>(`/projects/${id}/permissions`); }
   members(id: string) { return this.get<Member[]>(`/projects/${id}/members`); }
   setMember(id: string, subjectId: string, role: string) { return this.send<Member>('PUT', `/projects/${id}/members`, { subjectId, role }); }
+  deleteProject(id: string, confirm: string) { return this.send<void>('DELETE', `/projects/${id}?confirm=${encodeURIComponent(confirm)}`); }
+  deleteExecution(id: string) { return this.send<void>('DELETE', `/executions/${id}`); }
   removeMember(id: string, subjectId: string) { return this.send<void>('DELETE', `/projects/${id}/members/${encodeURIComponent(subjectId)}`); }
 
   // scans & inventory

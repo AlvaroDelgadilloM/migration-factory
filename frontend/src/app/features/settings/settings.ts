@@ -1,4 +1,5 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
@@ -64,7 +65,16 @@ import { ActionButton, PageHeader, StateView } from '../../shared/ui';
           <p-button type="submit" label="Añadir / cambiar rol" icon="pi pi-user-plus" [disabled]="!newSubject" />
         </form>
       }
-    </mf-state>`,
+    </mf-state>
+    @if (ctx.can('manage') && ctx.project(); as p) {
+      <h2 class="danger">Eliminar proyecto</h2>
+      <p class="muted">Borra el proyecto y todo lo que generó: análisis, planes, ejecuciones, candidatos, reportes y archivos subidos.
+        No se puede deshacer. La auditoría conserva el registro. El origen (carpeta, ZIP o repositorio Git) no se toca.</p>
+      <label for="del">Para confirmar, escriba el nombre del proyecto: <strong>{{ p.name }}</strong></label>
+      <input pInputText id="del" [(ngModel)]="deleteName" autocomplete="off" />
+      <mf-action label="Eliminar proyecto" icon="pi pi-trash" severity="danger"
+                 [disabledReason]="deleteName !== p.name ? 'Escriba el nombre exacto del proyecto' : null" (run)="deleteProject(p.id, p.name)" />
+    }`,
 })
 export class Settings {
   projectId = input.required<string>();
@@ -74,6 +84,8 @@ export class Settings {
   error = signal<UiError | null>(null);
   saved = signal(false);
   uploading = signal(false);
+  deleteName = '';
+  private router = inject(Router);
   allGates = ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6'];
   roles = ['owner', 'architect', 'developer', 'reviewer', 'auditor'];
   gates: string[] = [];
@@ -92,6 +104,12 @@ export class Settings {
       const c = (p.prConfig ?? {}) as Record<string, string>;
       this.pr = { repository: c['repository'] ?? '', baseBranch: c['baseBranch'] ?? 'main', credentialRef: c['credentialRef'] ?? '' };
     });
+  }
+
+  async deleteProject(id: string, name: string) {
+    this.error.set(null);
+    try { await this.api.deleteProject(id, name); await this.router.navigateByUrl('/portfolio'); }
+    catch (e) { this.error.set(UiError.from(e)); }
   }
 
   async newVersion(ev: Event) {

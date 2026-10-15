@@ -74,6 +74,24 @@ def dispatcher(stop: threading.Event, interval=3):
             log.exception('dispatcher iteration failed')
 
 
+def retention(stop: threading.Event, interval=6 * 3600):
+    """MF_ARTIFACT_RETENTION_DAYS: deletes heavy re-creatable files older than N days, at start and every 6 h."""
+    from .. import audit, purge
+    while True:
+        try:
+            with session() as db:
+                stats = purge.purge_expired(db)
+                if stats['files']:
+                    audit.record(db, actor='system', action='retention.purge', entity_type='artifact-store', entity_id='artifacts',
+                                 details=stats)
+                    log.info('retención: %s archivos (%s bytes) de más de %s días', stats['files'], stats['bytes'], stats['days'])
+                db.commit()
+        except Exception:
+            log.exception('retention iteration failed')
+        if stop.wait(interval):
+            return
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
     s = get_settings()
@@ -88,6 +106,8 @@ def main():
     # modernizations) go to 'mf-long' so an analysis never waits behind a 30-minute workspace run.
     names = [q.strip() for q in os.environ.get('MF_WORKER_QUEUES', QUEUE).split(',') if q.strip()]
     log.info('consumiendo colas: %s', names)
+    if QUEUE in names and s.artifact_retention_days > 0:  # one worker family does it (the one consuming the default queue)
+        threading.Thread(target=retention, args=(stop,), daemon=True).start()
     SimpleWorker([Queue(n, connection=redis) for n in names], connection=redis, name=f'mf-{uuid.uuid4().hex[:8]}').work(with_scheduler=False)
     stop.set()
 
