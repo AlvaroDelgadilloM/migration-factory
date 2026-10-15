@@ -88,13 +88,14 @@ jobs:
           MF_OIDC_AUDIENCE: ${{ vars.MF_OIDC_AUDIENCE }}
           MF_OIDC_JWKS_URL: ${{ vars.MF_OIDC_JWKS_URL }}
           MF_HOST_SOURCES_DIR: ${{ vars.MF_HOST_SOURCES_DIR || './sources' }}
+          MF_UI_BIND: ${{ vars.MF_UI_BIND || '127.0.0.1' }}
         run: |
           for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET; do
             [ -n "${!v}" ] || { echo "Falta el secret obligatorio $v en el environment"; exit 1; }
           done
           umask 077
           for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_ENV MF_AUTH_MODE MF_OIDC_ISSUER \
-                   MF_OIDC_AUDIENCE MF_OIDC_JWKS_URL MF_HOST_SOURCES_DIR; do
+                   MF_OIDC_AUDIENCE MF_OIDC_JWKS_URL MF_HOST_SOURCES_DIR MF_UI_BIND; do
             printf '%s=%s\n' "$v" "${!v}"
           done > stack.env
           printf 'MF_UI_PORT=3240\nMF_API_PORT=3241\n' >> stack.env
