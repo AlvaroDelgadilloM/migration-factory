@@ -19,7 +19,16 @@ server {
     client_max_body_size 210m;      # ZIP uploads (MF_MAX_UPLOAD_MB=200)
   }
 
+  # Hashed build files (main-XXXX.js, chunk-XXXX.js, styles-XXXX.css): their name changes on every release, cache them long.
+  # `expires` sets Cache-Control without add_header, so the server-level security headers are still inherited.
+  location ~* "-[A-Za-z0-9]{8,}\.(js|css)$" {
+    try_files $uri =404;
+    expires 1y;
+  }
+
+  # index.html and SPA routes: always revalidated, so a new deploy reaches the browser at once (no stale bundle).
   location / {
     try_files $uri $uri/ /index.html;
+    expires -1;
   }
 }
