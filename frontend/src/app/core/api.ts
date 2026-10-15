@@ -16,6 +16,17 @@ function params(p: Params = {}) {
 }
 
 /** Typed access to the Migration Factory API. Components never use HttpClient directly. */
+/** UUID v4 for Idempotency-Key. crypto.randomUUID() exists only in secure contexts (HTTPS or localhost); over plain HTTP
+ *  (e.g. http://<ip>:3240) the browser leaves it undefined, while crypto.getRandomValues() is available everywhere. */
+export function uuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;  // version 4
+  b[8] = (b[8] & 0x3f) | 0x80;  // RFC 4122 variant
+  const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class Api {
   private http = inject(HttpClient);
@@ -23,7 +34,7 @@ export class Api {
   private send<T>(method: string, url: string, body: unknown = null, headers: Record<string, string> = {}) {
     return firstValueFrom(this.http.request<T>(method, B + url, { body, headers }));
   }
-  private key() { return crypto.randomUUID(); }
+  private key() { return uuid(); }
 
   // sources
   capabilities() { return this.get<Capabilities>('/capabilities'); }
