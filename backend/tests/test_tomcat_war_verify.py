@@ -53,8 +53,9 @@ def test_fix_route_keeps_only_the_end_removal_that_restores_the_camel2_tree(tmp_
     Each .end() removal is compiled and dumped (faked here by counting the .end() left); only the one that yields the Camel 2
     tree is accepted, and nothing is accepted when no removal does."""
     src = tmp_path / 'PointsRoute.java'
-    src.write_text('class PointsRoute { void configure() {\n  from("direct:p")\n    .choice().when(x).log("a")\n    .otherwise()'
-                   '\n      .filter(y).setBody(z)\n      .end()\n    .end()\n    .to("direct:restResponse");\n}}\n', encoding='latin-1')
+    # bytes, not write_text: fix_route keeps the file's own line endings and write_text would give \r\n on Windows
+    src.write_bytes('class PointsRoute { void configure() {\n  from("direct:p")\n    .choice().when(x).log("a")\n    .otherwise()'
+                    '\n      .filter(y).setBody(z)\n      .end()\n    .end()\n    .to("direct:restResponse");\n}}\n'.encode('latin-1'))
     base = tmp_path / 'classes'
     base.mkdir()
     monkeypatch.setattr(verify, '_compile', lambda sources, cp, out, *a, **k: (out / 'compiled.txt').write_text(sources[0].read_text('latin-1')) or True)
