@@ -359,6 +359,11 @@ def _mark_subject_cancelled(db, job):
         m = db.get(Modernization if job.kind == 'modernize' else WorkspaceMigration, job.subject_id)
         if m and m.state == 'queued':
             m.state = 'cancelled'
+    elif job.kind == 'http_compare':
+        from ..models import HttpTestRun
+        r = db.get(HttpTestRun, job.subject_id)
+        if r and r.state == 'queued':
+            r.state = 'cancelled'
 
 
 @router.get('/jobs/{job_id}/logs', response_model=list[LogEvent])

@@ -15,6 +15,8 @@ export const routes: Routes = [
       { path: 'p/:projectId/execution', title: 'Ejecución', loadComponent: () => import('./features/execution/execution').then(m => m.ExecutionPage) },
       { path: 'p/:projectId/diff', title: 'Diff', loadComponent: () => import('./features/diff/diff').then(m => m.DiffPage) },
       { path: 'p/:projectId/validation', title: 'Validación', loadComponent: () => import('./features/validation/validation').then(m => m.ValidationPage) },
+      { path: 'p/:projectId/pruebas/automaticas', title: 'Pruebas automáticas', loadComponent: () => import('./features/pruebas/automaticas').then(m => m.PruebasAutomaticas) },
+      { path: 'p/:projectId/pruebas/manuales', title: 'Pruebas manuales', loadComponent: () => import('./features/pruebas/manuales').then(m => m.PruebasManuales) },
       { path: 'p/:projectId/settings', title: 'Proyecto', loadComponent: () => import('./features/settings/settings').then(m => m.Settings) },
       { path: 'rules', title: 'Reglas', loadComponent: () => import('./features/rules/rules').then(m => m.Rules) },
       { path: 'audit', title: 'Auditoría', loadComponent: () => import('./features/audit/audit').then(m => m.Audit) },

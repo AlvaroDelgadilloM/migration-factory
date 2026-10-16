@@ -81,6 +81,20 @@ def test_missing_and_extra_routes_and_dump_errors(tmp_path):
     assert res['onlyOriginal'] == ['A | direct:gone'] and res['onlyMigrated'] == ['A | direct:new'] and errs == ['Broken : NullPointerException: x']
 
 
+def test_xml_routes_become_one_loadable_document():
+    src = ('<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0" xmlns:ns1="http://posadas/x">'
+           '<camelContext xmlns="http://camel.apache.org/schema/blueprint">'
+           '<!-- <route id="old"><from uri="direct:old"/></route> -->'
+           '<route id="a" description="x > y"><from uri="direct:a"/><to uri="mock:a"/></route>'
+           '<routeContext id="rc"><route><from uri="direct:b"/></route></routeContext>'
+           '<camel:route><from uri="direct:c"/></camel:route></camelContext></blueprint>')
+    doc, notes = verify.xml_routes(src)
+    assert doc.startswith('<routes xmlns="http://camel.apache.org/schema/spring" xmlns:ns1="http://posadas/x">')
+    assert 'direct:a' in doc and 'direct:b' in doc and 'direct:old' not in doc and 'routeContext' not in doc and 'direct:c' not in doc
+    assert notes == ['rutas con prefijo de namespace (camel:route) sin comparar']
+    assert verify.xml_routes('<beans><bean id="x"/></beans>') == (None, [])
+
+
 def test_module_graph_from_imports_and_class_names_in_strings(tmp_path):
     def module(name, files):
         d = tmp_path / name

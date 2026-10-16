@@ -12,6 +12,8 @@ const PROJECT_SCREENS = [
   ['inventory', 'Inventario', 'pi-sitemap'], ['findings', 'Hallazgos', 'pi-exclamation-triangle'], ['plan', 'Plan', 'pi-list-check'],
   ['execution', 'Ejecución', 'pi-cog'], ['diff', 'Diff', 'pi-file-edit'], ['validation', 'Validación', 'pi-verified'],
 ] as const;
+// Pruebas: the original system (JBoss) against the migrated one (Tomcat), as a battery of cases or one request at a time
+const TEST_SCREENS = [['automaticas', 'Automáticas', 'pi-sync'], ['manuales', 'Manuales', 'pi-send']] as const;
 
 @Component({
   selector: 'mf-shell',
@@ -30,6 +32,16 @@ const PROJECT_SCREENS = [
             <span class="nav-disabled" title="Seleccione un proyecto en Cartera"><i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</span>
           }
         }
+        <div class="nav-group" role="group" aria-labelledby="nav-pruebas">
+          <span id="nav-pruebas" class="nav-title"><i class="pi pi-check-square" aria-hidden="true"></i> Pruebas</span>
+          @for (s of tests; track s[0]) {
+            @if (ctx.projectId()) {
+              <a class="sub" [routerLink]="['/p', ctx.projectId(), 'pruebas', s[0]]" routerLinkActive="active"><i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
+            } @else {
+              <span class="nav-disabled sub" title="Seleccione un proyecto en Cartera"><i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</span>
+            }
+          }
+        </div>
         <a routerLink="/rules" routerLinkActive="active"><i class="pi pi-book" aria-hidden="true"></i> Reglas</a>
         <a routerLink="/audit" routerLinkActive="active"><i class="pi pi-history" aria-hidden="true"></i> Auditoría</a>
       </nav>
@@ -57,6 +69,7 @@ export class Shell {
   auth = inject(AuthService);
   ctx = inject(ProjectContext);
   screens = PROJECT_SCREENS;
+  tests = TEST_SCREENS;
   private router = inject(Router);
 
   constructor() {

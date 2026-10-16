@@ -55,6 +55,30 @@ def validate_git_url(url: str, resolve=socket.getaddrinfo) -> dict:
     return {'provider': provider, 'url': f'https://{host}{parts.path}', 'host': host}
 
 
+def validate_test_url(url: str) -> str:
+    """Base URL of a system under test (Pruebas). http/https, no credentials, query or fragment, and the host (or host:port)
+    on MF_TEST_ALLOWED_HOSTS. Returns it without the trailing slash."""
+    s = get_settings()
+    if len(url) > 500 or any(c in url for c in '\r\n\t\0 '):
+        raise UnsafeInput('TEST_URL_INVALID', 'URL inválida')
+    parts = urlsplit(url)
+    if parts.scheme not in ('http', 'https') or not parts.hostname:
+        raise UnsafeInput('TEST_URL_SCHEME', 'Solo se admite http o https con un host')
+    if parts.username or parts.password or '@' in parts.netloc:
+        raise UnsafeInput('TEST_URL_CREDENTIALS', 'No incluya credenciales en la URL; use headers en la petición')
+    if parts.query or parts.fragment:
+        raise UnsafeInput('TEST_URL_INVALID', 'La URL base no debe tener query ni fragmento')
+    try:
+        port = parts.port
+    except ValueError:
+        raise UnsafeInput('TEST_URL_INVALID', 'Puerto inválido') from None
+    host = parts.hostname.lower()
+    allowed = s.list_of(s.test_allowed_hosts)
+    if host not in allowed and f'{host}:{port}' not in allowed:
+        raise UnsafeInput('TEST_HOST_NOT_ALLOWED', f'{host} no está en MF_TEST_ALLOWED_HOSTS; el administrador debe agregarlo')
+    return url.rstrip('/')
+
+
 CREDENTIAL_REF = re.compile(r'^(env:MF_CRED_[A-Z0-9_]{1,100}|vault:[\w./-]{1,200})$')
 
 

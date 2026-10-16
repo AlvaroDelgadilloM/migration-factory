@@ -102,6 +102,10 @@ python migrate.py verify responses --old http://localhost:18081 --new http://loc
 
 **`routes`** compila los fuentes originales contra las librerías de Camel 2 del origen, ejecuta `configure()` de cada
 `RouteBuilder` en las dos versiones y compara el árbol resultante (el nivel de anidamiento es parte de la comparación).
+Las rutas definidas en XML (`<route>` dentro de `<camelContext>` o `<routeContext>` de los Blueprint/Spring) se comparan igual:
+los `<route>` del Blueprint original los carga el lector XML de Camel 2 y los del XML convertido el de Camel 4, y se vuelcan
+con el mismo formato (clave `archivo.xml | from`). Las rutas comentadas no cuentan; un `<prefijo:route>` se reporta como no
+comparado.
 
 **`--fix`** (la plataforma lo aplica siempre): Camel 2 y Camel 4 cierran distinto algunos `.end()`. Por ejemplo, un `.end()`
 después de un `filter` dentro de una rama de `choice` regresa a la rama en Camel 2 y al `choice` en Camel 4. Por cada ruta
@@ -110,7 +114,7 @@ solo si todas las rutas de la clase quedan idénticas a Camel 2. El cambio se es
 WAR y queda como «corregida automáticamente (revisar)»: conserva lo que corre hoy, que puede ser un error del original.
 `rules/tomcat-war/route-equivalences.json` lista lo que no cuenta como diferencia: lo que el motor cambia a propósito y lo
 que cada versión solo imprime distinto, cada entrada con su motivo. Una ruta distinta en una clase con parche del cliente
-se reporta como «por parche documentado»; cualquier otra es `FAIL`. Límite: no compara rutas definidas en XML.
+se reporta como «por parche documentado»; cualquier otra es `FAIL`. Límite: no compara `<rest>` definidos en XML.
 
 **`responses`** manda cada caso de `casos.json` a los dos sistemas y compara código HTTP, `Content-Type` y cuerpo (de una
 traza de excepción, solo la primera línea). Una diferencia revisada se registra en el caso con `"accept": "motivo"`: sigue
@@ -138,13 +142,32 @@ algo por revisar.
 
 Estas comprobaciones no sustituyen las pruebas con los sistemas reales del cliente (datos, Oracle, servicios externos).
 
+## Pruebas en la plataforma (menú «Pruebas»)
+
+Dentro de cada proyecto, el menú **Pruebas** tiene dos opciones. Las dos llaman a los sistemas que indique el usuario, por eso
+solo aceptan URLs de los servidores en **`MF_TEST_ALLOWED_HOSTS`** (`host` o `host:port`, por defecto `localhost,127.0.0.1`):
+el administrador agrega ahí el JBoss de pruebas del cliente y el Tomcat migrado. Requieren el permiso `execute` del proyecto.
+
+- **Automáticas** (`POST /projects/{id}/http-tests/runs`, trabajo `http_compare` del worker): la misma batería de casos al
+  original (JBoss) y al migrado (Tomcat). Los casos tienen el formato de `verify responses` (REST, XML o SOAP: `method`,
+  `headers`, `body`, `contentType`); se cargan desde un archivo, se escriben en pantalla, se reutilizan de la última prueba o
+  se traen de «Manuales». El resultado muestra los totales, los casos con diferencias y cada caso con las dos respuestas lado a
+  lado. Artefactos: `pruebas-<id>-evidencia.zip` (el reporte HTML de `verify report`, con capturas si el worker tiene Edge o
+  Chrome) y `pruebas-<id>-responses.json` (respuestas completas). El trabajo termina `partial_success` si hay diferencias.
+- **Manuales** (`POST /projects/{id}/http-tests/manual`, en la API: una sola petición corta): una petición REST, XML o SOAP
+  (plantillas, `SOAPAction`, headers libres) a un sistema, o a los dos para compararlos con las mismas reglas. Nada se guarda;
+  «Guardar en la batería automática» deja la petición en este navegador para agregarla a una prueba automática.
+
+Los headers `Authorization`, `Cookie` y `Proxy-Authorization` de los casos nunca se devuelven ni llegan al reporte (`***`).
+
 ## Verificado (2026-10-08)
 
 - Pruebas: `backend/tests/test_tomcat_war.py` y `test_tomcat_war_verify.py`, 39/39 (fixture sintética `examples/fuse-blueprint`).
 - Repositorio piloto real (36 bundles, 636 clases Java, 67 XML Blueprint): salida idéntica archivo por archivo a la prueba
   de concepto validada (1,382 archivos); `--build` PASS; en Tomcat 10.1.60 arrancan 28 de 28 módulos del contenedor
   probado, con 18/18 `healthz` y 12/12 pruebas de humo de punta a punta sobre un módulo.
-- `verify routes` sobre el piloto: **PASS**, 752 rutas idénticas y 10 distintas por parches documentados. Esta comparación
+- `verify routes` sobre el piloto: **PASS**, 756 rutas idénticas (752 Java y las 4 rutas XML activas; otras 2 están
+  comentadas en el original) y 10 distintas por parches documentados. Esta comparación
   fue la que detectó 3 rutas que cambiaban de estructura en silencio (hoy cubiertas por parches del cliente).
 - `verify baseline-server` + `verify responses` sobre un módulo del piloto (45 casos): **36 idénticos y 9 distintos**
   (`FAIL` hasta que alguien acepte las 9). Todos los casos de éxito coinciden en código, `Content-Type` y cuerpo. De las 9:
@@ -163,12 +186,12 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
 - **Plataforma**: corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war",
   "config": {...}, "verifyRoutes": true}`; pantalla Inventario → destino «Tomcat WAR»). El análisis de workspace lo recomienda
   cuando la mayoría de los proyectos son OSGi/Blueprint. Acepta el archivo del cliente salvo `overlay` (carpeta del servidor)
-  y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. `verify responses` sigue siendo CLI: necesita el
-  original y el WAR levantados y los casos del cliente.
+  y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. La comparación de respuestas está en «Pruebas»,
+  pero el resultado todavía no se registra solo como evidencia del gate G4.
+- **Capturas en la plataforma**: la imagen del worker no trae navegador; sin él la evidencia sale sin PNG (las páginas HTML sí).
 - **Casos de la prueba de respuestas**: los escribe quien conoce el servicio. No se generan desde WSDL/Rest DSL.
   En el piloto solo un módulo de 36 tiene casos.
 - **Un solo comando** que levante el original y el migrado, compare y genere el reporte: hoy son pasos separados y los dos
   servidores se levantan a mano.
 - La línea base nunca se ha comparado contra un JBoss Fuse real.
-- **Rutas en XML** fuera de la comparación de estructura.
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

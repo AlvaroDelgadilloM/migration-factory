@@ -24,7 +24,9 @@ import java.util.stream.Stream;
  * con Camel 2.23 (fuentes originales) y con Camel 4 (fuentes migrados); asi los dos volcados
  * tienen el mismo formato y se pueden comparar linea por linea.
  *
- * Uso: java RouteDump <dirClasesDelModulo> <archivoSalida>
+ * Uso: java RouteDump <dirClasesDelModulo> <archivoSalida> [dirXml]
+ * dirXml: archivos <routes> con las rutas que el modulo define en XML (los prepara verify.py); se
+ * cargan con el lector XML de cada version y se vuelcan igual que las de Java.
  * (el classpath debe traer Camel y las dependencias del modulo)
  */
 public class RouteDump {
@@ -129,6 +131,36 @@ public class RouteDump {
 					cause = cause.getCause();
 				}
 				errors.add(c.getSimpleName() + " : " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
+			}
+		}
+
+		File[] xmls = args.length > 2 ? new File(args[2]).listFiles((d, n) -> n.endsWith(".xml")) : null;
+		if (xmls != null) {
+			java.util.Arrays.sort(xmls);
+			for (File xml : xmls) {
+				try (java.io.InputStream in = new java.io.FileInputStream(xml)) {
+					Object ctx = contextImpl.getConstructor().newInstance();
+					Object defs = camel2 ? contextImpl.getMethod("loadRoutesDefinition", java.io.InputStream.class).invoke(ctx, in)
+							: cl.loadClass("org.apache.camel.xml.jaxb.JaxbHelper")
+									.getMethod("loadRoutesDefinition", contextType, java.io.InputStream.class).invoke(null, ctx, in);
+					for (Object route : (Collection<?>) call(defs, "getRoutes")) {
+						List<String> lines = new ArrayList<>();
+						for (Object o : outputs(route)) {
+							dump(o, "  ", lines);
+						}
+						String key = xml.getName() + " | " + fromUri(route);
+						while (routes.containsKey(key)) {
+							key += " (bis)";
+						}
+						routes.put(key, lines);
+					}
+				} catch (Throwable t) {
+					Throwable cause = t;
+					while (cause.getCause() != null) {
+						cause = cause.getCause();
+					}
+					errors.add(xml.getName() + " : " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
+				}
 			}
 		}
 

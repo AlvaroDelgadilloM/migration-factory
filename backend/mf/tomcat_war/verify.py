@@ -176,6 +176,35 @@ def compare_dumps(old: dict, new: dict) -> dict:
     return {'same': same, 'different': different, 'onlyOriginal': only_old, 'onlyMigrated': only_new}
 
 
+_XML_ROUTE = re.compile(r'<route\b(?:[^>"]|"[^"]*")*?(?:/>|>.*?</route\s*>)', re.S)
+
+
+def xml_routes(text: str) -> tuple[str | None, list]:
+    """The <route> elements of a Blueprint/Spring XML as one <routes> document that either Camel version can load on its
+    own (namespace prefixes declared in the file are kept). Returns (document or None, notes)."""
+    text = re.sub(r'<!--.*?-->', '', text, flags=re.S)
+    notes = [f'rutas con prefijo de namespace ({p}:route) sin comparar' for p in sorted(set(re.findall(r'<([\w-]+):route\b', text)))]
+    found = [re.sub(r'\sxmlns="http://camel\.apache\.org/schema/(?:blueprint|spring)"', '', r) for r in _XML_ROUTE.findall(text)]
+    if not found:
+        return None, notes
+    prefixes = dict(re.findall(r'xmlns:([\w-]+)\s*=\s*"([^"]+)"', text))
+    decl = ''.join(f' xmlns:{k}="{v}"' for k, v in sorted(prefixes.items()))
+    return '<routes xmlns="http://camel.apache.org/schema/spring"' + decl + '>\n' + '\n'.join(found) + '\n</routes>\n', notes
+
+
+def _xml_dir(folder: Path, target: Path) -> tuple[int, list]:
+    """Writes the routes of each XML in folder to target (same file names). Returns (files with routes, notes)."""
+    shutil.rmtree(target, ignore_errors=True)
+    n, notes = 0, []
+    for f in sorted(folder.glob('*.xml')) if folder.is_dir() else []:
+        doc, extra = xml_routes(pipeline.read(f))
+        notes += [f'{f.name}: {x}' for x in extra]
+        if doc:
+            pipeline.write(target / f.name, doc)
+            n += 1
+    return n, notes
+
+
 _END = re.compile(r'\.end(?:Choice)?\(\)')
 
 
@@ -252,13 +281,17 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
         java_dir = src_dirs[m]
         files = sorted(java_dir.rglob('*.java')) if java_dir.is_dir() else []
         new_classes = migrated / 'modules' / m / 'target' / 'classes'
-        if not files or not new_classes.is_dir():
+        # routes defined in XML: the original Blueprint files against the converted ones, loaded by each Camel version
+        xml_old, notes_old = _xml_dir(names[m] / 'src' / 'main' / 'resources' / 'OSGI-INF' / 'blueprint', work / 'xml' / 'camel2' / m)
+        xml_new, notes_new = _xml_dir(migrated / 'modules' / m / 'src' / 'main' / 'resources' / 'META-INF' / 'modules' / m, work / 'xml' / 'camel4' / m)
+        if not (files or xml_old or xml_new) or not new_classes.is_dir():
             continue
         log(f'comparando rutas de {m}')
         chain = _closure(m, deps)
         old_classes = work / 'classes' / m
+        old_classes.mkdir(parents=True, exist_ok=True)
         entry = {'module': m, 'status': 'PASS'}
-        if not _compile(files, [lib2 / '*'] + [work / 'classes' / d for d in chain], old_classes, '8', logs / f'compile-{m}.log'):
+        if files and not _compile(files, [lib2 / '*'] + [work / 'classes' / d for d in chain], old_classes, '8', logs / f'compile-{m}.log'):
             entry |= {'status': 'NOT_EXECUTABLE', 'detail': f"el original no compila contra la línea base; ver {logs / f'compile-{m}.log'}"}
             modules.append(entry)
             totals['notExecutable'] += 1
@@ -269,7 +302,9 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
             dump = work / 'dump' / side / f'{m}.txt'
             dump.parent.mkdir(parents=True, exist_ok=True)
             dump.unlink(missing_ok=True)
-            _run([java, 'RouteDump', classes, dump], logs / f'dump-{side}-{m}.log', classpath=cp)
+            # noOptimize: the JAXB 2.2 of Camel 2 generates accessor classes through a JDK API removed after Java 8
+            _run([java, '-Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true', 'RouteDump', classes, dump, work / 'xml' / side / m],
+                 logs / f'dump-{side}-{m}.log', classpath=cp)
             if not dump.exists():
                 entry |= {'status': 'NOT_EXECUTABLE', 'detail': f"no se pudo volcar ({side}); ver {logs / f'dump-{side}-{m}.log'}"}
                 break
@@ -318,6 +353,7 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
                                          'Revisar si el original era intencional.'} for r in class_routes]
             unexpected = [u for u in unexpected if u['route'] not in {c['route'] for c in corrected}]
         not_dumped = [f'original: {e}' for e in dumps['camel2'][1]] + [f'migrado: {e}' for e in dumps['camel4'][1]]
+        not_dumped += [f'original: {e}' for e in notes_old] + [f'migrado: {e}' for e in notes_new]
         entry |= {'identical': len(res['same']), 'unexpected': unexpected, 'expectedByPatch': expected, 'notDumped': not_dumped,
                   'autoCorrected': corrected, 'status': 'FAIL' if unexpected else 'REVIEW' if not_dumped or corrected else 'PASS'}
         totals['autoCorrected'] += len(corrected)
@@ -330,7 +366,7 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
     result = {'check': 'route-structure', 'status': status,
               'totals': {k: totals[k] for k in ('identical', 'unexpected', 'expectedByPatch', 'autoCorrected', 'notDumped', 'notExecutable')},
               'modules': modules,
-              'limits': ['Solo rutas definidas en RouteBuilder Java; las rutas en XML no se comparan.',
+              'limits': ['Rutas de RouteBuilder Java y elementos <route> de los XML Blueprint/Spring; no se comparan <rest> en XML ni rutas en otros DSL.',
                          'Compara cómo queda armada la ruta, no lo que pasa al ejecutarla (ver la comprobación de respuestas).']}
     _save(out, 'route-structure', result, routes_markdown(result))
     return result
@@ -437,6 +473,19 @@ def _send(base: str, case: dict, timeout: int, hosts: tuple = ()) -> dict:
     return {'status': status, 'type': re.sub(r'\s', '', ctype).lower(), 'body': text}
 
 
+def compare_pair(a: dict, b: dict, accepted: bool = False) -> tuple[str, list, str | None]:
+    """(state, issues, kind) of two answers from _send. kind never changes the state: ERROR_TEXT when both fail with the
+    same HTTP code and only the text of the error (or its charset) differs; DATA for anything else."""
+    if a['status'] == 0 or b['status'] == 0:
+        return 'NOT_EXECUTABLE', [x['body'] for x in (a, b) if x['status'] == 0], None
+    issues = ([f"HTTP {a['status']} -> {b['status']}"] if a['status'] != b['status'] else []) \
+        + ([f"Content-Type '{a['type']}' -> '{b['type']}'"] if a['type'] != b['type'] else []) \
+        + (['cuerpo distinto'] if a['body'] != b['body'] else [])
+    if not issues:
+        return 'SAME', [], None
+    return 'ACCEPTED' if accepted else 'DIFFERENT', issues, 'ERROR_TEXT' if a['status'] == b['status'] >= 400 else 'DATA'
+
+
 def responses(old: str, new: str, cases_file: Path, out: Path, timeout: int = 60, log=lambda m: None) -> dict:
     """cases_file: {"cases": [{"name", "method", "path", "headers", "body", "contentType", "accept": "motivo"}]}.
     `accept` records that a reviewer accepted a known difference for that case (with the reason); it never hides it."""
@@ -450,17 +499,8 @@ def responses(old: str, new: str, cases_file: Path, out: Path, timeout: int = 60
         if not c.get('name') or not c.get('path'):
             raise ToolError(f'Caso sin name o path: {c}')
         a, b = _send(old, c, timeout, hosts), _send(new, c, timeout, hosts)
-        if a['status'] == 0 or b['status'] == 0:
-            state, issues = 'NOT_EXECUTABLE', [x['body'] for x in (a, b) if x['status'] == 0]
-        else:
-            issues = ([f"HTTP {a['status']} -> {b['status']}"] if a['status'] != b['status'] else []) \
-                + ([f"Content-Type '{a['type']}' -> '{b['type']}'"] if a['type'] != b['type'] else []) \
-                + (['cuerpo distinto'] if a['body'] != b['body'] else [])
-            state = 'SAME' if not issues else 'ACCEPTED' if c.get('accept') else 'DIFFERENT'
+        state, issues, kind = compare_pair(a, b, bool(c.get('accept')))
         totals[state] += 1
-        # what kind of difference it is; it never changes the state. ERROR_TEXT: both fail with the same HTTP code and only
-        # the text of the error (or its charset) differs. DATA: anything else.
-        kind = None if state in ('SAME', 'NOT_EXECUTABLE') else 'ERROR_TEXT' if a['status'] == b['status'] >= 400 else 'DATA'
         log(f"{state:<14} {c['name']}" + (f" ({'; '.join(issues)})" if issues and state != 'NOT_EXECUTABLE' else ''))
         sent = {k: ('***' if k.lower() in ('authorization', 'cookie') else v) for k, v in (c.get('headers') or {}).items()}
         results.append({'name': c['name'], 'method': c.get('method', 'GET'), 'path': c['path'], 'state': state, 'kind': kind, 'issues': issues,

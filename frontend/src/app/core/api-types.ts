@@ -1051,6 +1051,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/http-tests/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual */
+        post: operations["manual_api_v1_projects__project_id__http_tests_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/http-tests/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_projects__project_id__http_tests_runs_get"];
+        put?: never;
+        /** Start Run */
+        post: operations["start_run_api_v1_projects__project_id__http_tests_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/http-tests/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_http_tests_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1549,6 +1601,98 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HttpCase
+         * @description One request. Same fields as the cases file of `migrate.py verify responses`.
+         */
+        HttpCase: {
+            /** Name */
+            name: string;
+            /**
+             * Method
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            /** Path */
+            path: string;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            };
+            /** Body */
+            body?: string | null;
+            /** Contenttype */
+            contentType?: string | null;
+            /** Accept */
+            accept?: string | null;
+        };
+        /** HttpTarget */
+        HttpTarget: {
+            /** Label */
+            label: string;
+            /** Url */
+            url: string;
+        };
+        /** HttpTestRunIn */
+        HttpTestRunIn: {
+            /** Name */
+            name: string;
+            original: components["schemas"]["HttpTarget"];
+            migrated: components["schemas"]["HttpTarget"];
+            /** Cases */
+            cases: components["schemas"]["HttpCase"][];
+            /**
+             * Screenshots
+             * @default true
+             */
+            screenshots: boolean;
+        };
+        /** HttpTestRunOut */
+        HttpTestRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Jobid */
+            jobId: string | null;
+            /** State */
+            state: string;
+            /** Name */
+            name: string;
+            /** Original */
+            original: {
+                [key: string]: unknown;
+            };
+            /** Migrated */
+            migrated: {
+                [key: string]: unknown;
+            };
+            /** Cases */
+            cases: {
+                [key: string]: unknown;
+            }[];
+            /** Screenshots */
+            screenshots: boolean;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Createdby */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            job?: components["schemas"]["JobOut"] | null;
+        };
         /** JobOut */
         JobOut: {
             /**
@@ -1596,6 +1740,12 @@ export interface components {
             phase: string | null;
             /** Message */
             message: string;
+        };
+        /** ManualTestIn */
+        ManualTestIn: {
+            request: components["schemas"]["HttpCase"];
+            /** Targets */
+            targets: components["schemas"]["HttpTarget"][];
         };
         /** Me */
         Me: {
@@ -4649,6 +4799,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    manual_api_v1_projects__project_id__http_tests_manual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_projects__project_id__http_tests_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HttpTestRunOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_v1_projects__project_id__http_tests_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "idempotency-key"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HttpTestRunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_http_tests_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HttpTestRunOut"];
                 };
             };
             /** @description Validation Error */

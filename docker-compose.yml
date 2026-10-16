@@ -16,6 +16,7 @@ x-backend-env: &backend-env
   MF_LOCAL_SOURCE_ROOTS: /sources
   MF_MAX_UPLOAD_MB: ${MF_MAX_UPLOAD_MB:-200}
   MF_GIT_ALLOWED_HOSTS: ${MF_GIT_ALLOWED_HOSTS:-github.com,gitlab.com,bitbucket.org}
+  MF_TEST_ALLOWED_HOSTS: ${MF_TEST_ALLOWED_HOSTS:-localhost,127.0.0.1}
   MF_CORS_ORIGINS: http://localhost:${MF_UI_PORT:-3240},http://127.0.0.1:${MF_UI_PORT:-3240}
 
 services:

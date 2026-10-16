@@ -593,3 +593,60 @@ class WorkspaceMigrationOut(Dto):
 
 class WorkspaceRetryIn(Dto):
     projects: list[Annotated[str, Field(pattern=r'^[\w.\-/]{1,200}$')]] = Field(default_factory=list, max_length=100)
+
+
+# --- Pruebas (manual and automatic HTTP tests; docs/19 «Pruebas») ---------------------------------------------------------
+HttpMethod = Literal['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+
+
+class HttpTarget(Dto):
+    label: str = Field(min_length=1, max_length=80)
+    url: str = Field(min_length=8, max_length=500)  # base URL; validated against MF_TEST_ALLOWED_HOSTS
+
+
+class HttpCase(Dto):
+    """One request. Same fields as the cases file of `migrate.py verify responses`."""
+    name: str = Field(min_length=1, max_length=200)
+    method: HttpMethod = 'GET'
+    path: str = Field(pattern=r'^/[^\s]*$', max_length=2000)
+    headers: dict[Annotated[str, Field(pattern=r'^[A-Za-z0-9!#$%&\'*+.^_`|~-]{1,100}$')], Annotated[str, Field(max_length=4000)]] = \
+        Field(default_factory=dict, max_length=40)
+    body: str | None = Field(default=None, max_length=1_000_000)
+    content_type: str | None = Field(default=None, max_length=200)
+    accept: str | None = Field(default=None, min_length=10, max_length=500)  # reviewed difference: recorded with its reason
+
+    @field_validator('headers')
+    @classmethod
+    def no_line_breaks(cls, v):
+        if any(c in x for x in v.values() for c in '\r\n\0'):
+            raise ValueError('un header no puede contener saltos de línea')
+        return v
+
+
+class HttpTestRunIn(Dto):
+    name: str = Field(min_length=1, max_length=200)
+    original: HttpTarget
+    migrated: HttpTarget
+    cases: list[HttpCase] = Field(min_length=1, max_length=500)
+    screenshots: bool = True
+
+
+class HttpTestRunOut(Dto):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    job_id: uuid.UUID | None
+    state: str
+    name: str
+    original: dict
+    migrated: dict
+    cases: list[dict]
+    screenshots: bool
+    summary: dict
+    created_by: str
+    created_at: datetime
+    job: JobOut | None = None
+
+
+class ManualTestIn(Dto):
+    request: HttpCase
+    targets: list[HttpTarget] = Field(min_length=1, max_length=2)

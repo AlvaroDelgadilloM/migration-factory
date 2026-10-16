@@ -3760,7 +3760,7 @@
           "workspace"
         ],
         "summary": "Retry",
-        "description": "Doc 20 \u00a720: retry some projects (or resume every non-successful one); successful projects are reused, not repeated,\nand dependents blocked only by the retried projects become READY.",
+        "description": "Doc 20 §20: retry some projects (or resume every non-successful one); successful projects are reused, not repeated,\nand dependents blocked only by the retried projects become READY.",
         "operationId": "retry_api_v1_workspace_migrations__wm_id__retry_post",
         "parameters": [
           {
@@ -3806,6 +3806,212 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/http-tests/manual": {
+      "post": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Manual",
+        "operationId": "manual_api_v1_projects__project_id__http_tests_manual_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualTestIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/http-tests/runs": {
+      "post": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Start Run",
+        "operationId": "start_run_api_v1_projects__project_id__http_tests_runs_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HttpTestRunIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "List Runs",
+        "operationId": "list_runs_api_v1_projects__project_id__http_tests_runs_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HttpTestRunOut"
+                  },
+                  "title": "Response List Runs Api V1 Projects  Project Id  Http Tests Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/http-tests/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_api_v1_http_tests_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpTestRunOut"
+                }
               }
             }
           },
@@ -5080,6 +5286,247 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HttpCase": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "title": "Method",
+            "default": "GET"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^/[^\\s]*$",
+            "title": "Path"
+          },
+          "headers": {
+            "patternProperties": {
+              "^[A-Za-z0-9!#$%&\\'*+.^_`|~-]{1,100}$": {
+                "type": "string",
+                "maxLength": 4000
+              }
+            },
+            "type": "object",
+            "maxProperties": 40,
+            "title": "Headers"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "contentType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contenttype"
+          },
+          "accept": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accept"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "HttpCase",
+        "description": "One request. Same fields as the cases file of `migrate.py verify responses`."
+      },
+      "HttpTarget": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 8,
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "url"
+        ],
+        "title": "HttpTarget"
+      },
+      "HttpTestRunIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "original": {
+            "$ref": "#/components/schemas/HttpTarget"
+          },
+          "migrated": {
+            "$ref": "#/components/schemas/HttpTarget"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/HttpCase"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Cases"
+          },
+          "screenshots": {
+            "type": "boolean",
+            "title": "Screenshots",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "original",
+          "migrated",
+          "cases"
+        ],
+        "title": "HttpTestRunIn"
+      },
+      "HttpTestRunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "jobId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobid"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "original": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Original"
+          },
+          "migrated": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Migrated"
+          },
+          "cases": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cases"
+          },
+          "screenshots": {
+            "type": "boolean",
+            "title": "Screenshots"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "jobId",
+          "state",
+          "name",
+          "original",
+          "migrated",
+          "cases",
+          "screenshots",
+          "summary",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "HttpTestRunOut"
+      },
       "JobOut": {
         "properties": {
           "id": {
@@ -5231,6 +5678,28 @@
           "message"
         ],
         "title": "LogEvent"
+      },
+      "ManualTestIn": {
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/HttpCase"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/HttpTarget"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Targets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request",
+          "targets"
+        ],
+        "title": "ManualTestIn"
       },
       "Me": {
         "properties": {

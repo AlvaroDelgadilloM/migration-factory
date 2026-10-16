@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Git access policy (SSRF protection)
     git_allowed_hosts: str = 'github.com,gitlab.com,bitbucket.org'
     git_internal_hosts: str = ''                  # hosts allowed to resolve to private IPs (corporate Git)
+    # Pruebas (manual and automatic HTTP tests): the only systems the platform may call, `host` or `host:port`. They are
+    # usually internal test servers (the original JBoss and the migrated Tomcat), so no public-address check applies.
+    test_allowed_hosts: str = 'localhost,127.0.0.1'
+    test_timeout_seconds: int = 60
     # Local folders: comma-separated directories *on the worker/API host* that may be registered as sources.
     # Empty = local folders disabled (remote platform: use ZIP or a local agent).
     local_source_roots: str = ''

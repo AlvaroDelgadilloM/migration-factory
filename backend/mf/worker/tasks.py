@@ -25,7 +25,7 @@ from ..db import session
 from ..models import (Artifact, DiffFile, Endpoint, Execution, Finding, Job, JobEvent, Module, Plan, Project, Repository, Route,
                       RuleCatalog, Scan, TargetProfile, Validation, now)
 from ..planning import evaluate, runnable_recipe_steps
-from ..security import UnsafeInput, find_secrets, redact, resolve_credential, safe_join, secret_files
+from ..security import UnsafeInput, find_secrets, redact, resolve_credential, safe_join, secret_files, validate_test_url
 from ..storage import ArtifactStore
 from .. import preflight, transform
 from . import gitops, mavenops, runner, source
@@ -113,6 +113,9 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'workspace_migrate':
             from ..models import WorkspaceMigration
             s.get(WorkspaceMigration, job.subject_id).state = state
+        elif job.kind == 'http_compare':
+            from ..models import HttpTestRun
+            s.get(HttpTestRun, job.subject_id).state = state
         elif job.kind in ('preview', 'apply'):
             ex = s.get(Execution, job.subject_id)
             ex.state = state
@@ -140,7 +143,8 @@ def run_job(job_id: str):
         ctx.emit('warn', 'retry', f'Reintento {job.attempts}: se descarta el workspace anterior y se repite desde cero')
     try:
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
-                   'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate}[job.kind](job, ctx)
+                   'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
+                   'http_compare': do_http_compare}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -1041,6 +1045,35 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
              f"tomcat-war: {status} · {res['totals']['modules']} módulos · build {build['status']}" + (f' · {reason}' if reason else ''))
     return None if status == 'SUCCEEDED' else (WS_STATE.get(status, 'failed'), reason or f'MIGRATION_{status}',
                                               f"build {build['status']}; {len(res['manualActions'])} punto(s) de revisión manual")
+
+
+def do_http_compare(job: Job, ctx: Context):
+    """Pruebas > Automáticas: the cases of the run to the original and to the migrated system (mf.tomcat_war.http_run).
+    The URLs were validated by the API and are checked again here: the allowlist may have changed since."""
+    from ..models import HttpTestRun
+    from ..tomcat_war import http_run
+    with session() as db:
+        run = db.get(HttpTestRun, job.subject_id)
+        run.state = 'running'
+        db.commit()
+        try:
+            original, migrated = ({'label': t['label'], 'url': validate_test_url(t['url'])} for t in (run.original, run.migrated))
+        except UnsafeInput as e:
+            raise StepFailure(e.code, str(e)) from None
+        set_phase(ctx, 'compare', 10)
+        out = ctx.workdir / 'http-test'
+        summary = http_run.run(original, migrated, run.cases, out, run.screenshots, get_settings().test_timeout_seconds,
+                               log=lambda m: ctx.emit('info', 'compare', m))
+        set_phase(ctx, 'artifacts', 90)
+        ev = _store(db, run.project_id, 'evidence', f'pruebas-{str(run.id)[:8]}-evidencia.zip', (out / 'evidence.zip').read_bytes(), 'application/zip', commit=False)
+        rs = _store(db, run.project_id, 'report-json', f'pruebas-{str(run.id)[:8]}-responses.json', (out / 'responses.json').read_text(encoding='utf-8'),
+                    'application/json', ctx, commit=False)
+        run.summary = summary | {'artifacts': {'evidence': str(ev.id), 'responses': str(rs.id)}}
+        db.commit()
+        if summary['status'] in ('PASS', 'PASS_WITH_ACCEPTED'):
+            return None
+        return ('partial_success', 'DIFFERENCES', f"{summary['totals']['different']} caso(s) distinto(s), "
+                f"{summary['totals']['notExecutable']} sin ejecutar") if summary['status'] != 'NOT_EXECUTABLE' else             ('failed', 'NOT_EXECUTABLE', 'Ningún caso obtuvo respuesta de los dos sistemas')
 
 
 def do_workspace_migrate(job: Job, ctx: Context):

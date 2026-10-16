@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
   Artifact, AuditEvent, Catalog, DiffFile, DiffFileDetail, Execution, Finding, FindingDetail, LogEvent, Member, Module,
-  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, Modernization, WorkspaceMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, Upload, Validation,
+  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, HttpCase, HttpTestRun, ManualResult, Modernization, WorkspaceMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, Upload, Validation,
 } from './models';
 
 const B = '/api/v1';
@@ -130,6 +130,16 @@ export class Api {
     const blob = await firstValueFrom(this.http.get(`${B}/artifacts/${id}/download`, { responseType: 'blob' }));
     saveBlob(blob, name);
   }
+
+  // pruebas (manual and automatic HTTP tests)
+  manualTest(projectId: string, body: { request: HttpCase; targets: { label: string; url: string }[] }) {
+    return this.send<ManualResult>('POST', `/projects/${projectId}/http-tests/manual`, body);
+  }
+  startHttpRun(projectId: string, body: unknown) {
+    return this.send<{ httpTestRunId: string; jobId: string }>('POST', `/projects/${projectId}/http-tests/runs`, body, { 'Idempotency-Key': this.key() });
+  }
+  httpRuns(projectId: string) { return this.get<HttpTestRun[]>(`/projects/${projectId}/http-tests/runs`); }
+  httpRun(id: string) { return this.get<HttpTestRun>(`/http-tests/runs/${id}`); }
 
   // catalog & audit
   catalogs() { return this.get<Catalog[]>('/rules'); }

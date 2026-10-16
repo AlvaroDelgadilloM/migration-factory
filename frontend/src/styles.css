@@ -13,6 +13,8 @@ a { color: #0a5f73; }
 .sidebar nav a, .sidebar nav .nav-disabled { display: flex; gap: .6rem; align-items: center; padding: 10px 12px; border-radius: 7px; color: #c6d6e2; text-decoration: none; margin: 2px 0; }
 .sidebar nav a.active, .sidebar nav a:hover { background: var(--mf-navy-2); color: #fff; }
 .sidebar nav .nav-disabled { opacity: .5; cursor: not-allowed; }
+.sidebar .nav-group { margin: 6px 0; } .sidebar .nav-title { display: flex; gap: .6rem; align-items: center; padding: 10px 12px 4px; color: #9bb7c9; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+.sidebar nav .sub { padding-left: 30px; }
 .sidebar .hint { color: #9bb7c9; font-size: 12px; margin-top: 16px; }
 .main-col { margin-left: 232px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 12px 32px; border-bottom: 1px solid var(--mf-line); background: #fff; color: var(--mf-muted); flex-wrap: wrap; }
