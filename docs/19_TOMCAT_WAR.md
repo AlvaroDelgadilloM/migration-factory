@@ -27,7 +27,7 @@ El origen solo se lee; la salida no puede estar dentro de él.
 ```text
 migrated-workspace/
   pom.xml                 padre: versiones del perfil (Camel, Spring, CXF, Tomcat)
-  compat/                 capa de compatibilidad (código nuevo, 13 clases)
+  compat/                 capa de compatibilidad (código nuevo, 15 clases)
   modules/<bundle>/       cada bundle como jar; sus XML en META-INF/modules/<bundle>/
   webapp/                 el WAR: web.xml, contexto raíz
 ```
@@ -55,8 +55,12 @@ Para levantarlo: `mvn -Prun -DskipTests verify -Dmf.etc=<carpeta etc> [-Dmf.cont
 | `xslt` | opción `saxon=true` del componente `xslt` |
 | `osgi` | registro de servicios OSGi |
 | `spring` | un contexto Spring y un CamelContext por módulo (aislamiento de cada bundle); filtro por contenedor |
-| `servlet` | Tomcat entrega los headers HTTP en minúsculas: se restaura el nombre que esperan las rutas |
+| `servlet` | Tomcat entrega los headers HTTP en minúsculas: se restaura el nombre que esperan las rutas. Una petición sin cuerpo llega con cuerpo vacío, no nulo (`LegacyHttpBinding`) |
 | `cxf` | `setFaultBody` (se lanza el fault guardado) |
+| `sql` | consulta `SelectOne` sin filas: se conserva el cuerpo del mensaje, como en Camel 2 (Camel 4 lo deja en null y la ruta toma otra rama sin dar error) |
+| `spring` (`LegacyCamelSettings`) | `Content-Type` de una respuesta REST que la ruta no fija: primero el `produces` del servicio, como en Camel 2 (Camel 4 mira primero el `Accept`) |
+
+Las tres últimas filas salieron de la prueba de respuestas: son cambios de Camel 4 que no dan error al compilar ni al arrancar.
 
 Es código que el equipo debe mantener. Pruebas JUnit en `compat/src/test` (direct-vm entre contextos, registro OSGi, xmljson, nombres de headers): viajan con el workspace migrado (`mvn -pl compat test`) y el CI las corre en cada push (job `tomcat-compat`).
 
@@ -113,6 +117,21 @@ traza de excepción, solo la primera línea). Una diferencia revisada se registr
 apareciendo en el reporte, como aceptada. La línea base no es Karaf: los beans se cablean con Spring; rutas, procesadores,
 XSLT, WSDL y versión de Camel son los originales.
 
+Cada diferencia lleva su tipo, que no cambia el resultado: `ERROR_TEXT` (los dos sistemas fallan con el mismo código HTTP y
+cambia solo el texto del error o su charset) o `DATA` (cambia el código, el tipo o los datos).
+
+```bash
+# 3. Reporte para revisar y adjuntar: original junto al migrado, caso por caso, con capturas de pantalla
+python migrate.py verify report --output <salida> [--browser <msedge|chrome>] [--no-screenshots] \
+       [--old-label "JBoss"] [--new-label "Tomcat"]
+```
+
+**`report`** no prueba nada: muestra lo que guardaron los dos pasos anteriores. Escribe `reports/evidence/index.html` (resumen
+y tabla de casos), una página por caso con la petición enviada y las dos respuestas lado a lado (las líneas que no coinciden
+van resaltadas) y `reports/evidence/screenshots/*.png`, una captura por página tomada con Edge o Chrome en modo headless.
+Sin navegador las páginas se escriben igual y el resultado avisa que faltan las capturas. Los headers `Authorization` y
+`Cookie` de los casos no se copian al reporte.
+
 Salida en `reports/`: `route-structure.{md,json}`, `responses.{md,json}` y `equivalence-evidence.json`, que resume ambas
 para el gate G4 (`PASS` exige las dos; `PASS_WITH_ACCEPTED`, `REVIEW` o `FAIL` en otro caso). Código de salida 3 si queda
 algo por revisar.
@@ -121,14 +140,17 @@ Estas comprobaciones no sustituyen las pruebas con los sistemas reales del clien
 
 ## Verificado (2026-10-08)
 
-- Pruebas: `backend/tests/test_tomcat_war.py` y `test_tomcat_war_verify.py`, 35/35 (fixture sintética `examples/fuse-blueprint`).
+- Pruebas: `backend/tests/test_tomcat_war.py` y `test_tomcat_war_verify.py`, 39/39 (fixture sintética `examples/fuse-blueprint`).
 - Repositorio piloto real (36 bundles, 636 clases Java, 67 XML Blueprint): salida idéntica archivo por archivo a la prueba
   de concepto validada (1,382 archivos); `--build` PASS; en Tomcat 10.1.60 arrancan 28 de 28 módulos del contenedor
   probado, con 18/18 `healthz` y 12/12 pruebas de humo de punta a punta sobre un módulo.
 - `verify routes` sobre el piloto: **PASS**, 752 rutas idénticas y 10 distintas por parches documentados. Esta comparación
   fue la que detectó 3 rutas que cambiaban de estructura en silencio (hoy cubiertas por parches del cliente).
-- `verify baseline-server` + `verify responses` sobre un módulo del piloto (45 casos): 25 idénticos y 20 distintos
-  (`FAIL`). Los casos de éxito coinciden; las diferencias están en errores y encabezados y nadie las ha aceptado todavía.
+- `verify baseline-server` + `verify responses` sobre un módulo del piloto (45 casos): **36 idénticos y 9 distintos**
+  (`FAIL` hasta que alguien acepte las 9). Todos los casos de éxito coinciden en código, `Content-Type` y cuerpo. De las 9:
+  8 son `ERROR_TEXT` (texto de excepciones y de validaciones que imprime cada versión de Camel, páginas 404/405 del
+  contenedor) y 1 es `DATA`: un header enviado en minúsculas que el original no reconoce (404) y el migrado sí (200).
+- `verify report` sobre ese resultado: 46 páginas y 46 capturas con Edge headless.
 
 ## Claves de configuración
 
@@ -144,5 +166,9 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
   y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. `verify responses` sigue siendo CLI: necesita el
   original y el WAR levantados y los casos del cliente.
 - **Casos de la prueba de respuestas**: los escribe quien conoce el servicio. No se generan desde WSDL/Rest DSL.
+  En el piloto solo un módulo de 36 tiene casos.
+- **Un solo comando** que levante el original y el migrado, compare y genere el reporte: hoy son pasos separados y los dos
+  servidores se levantan a mano.
+- La línea base nunca se ha comparado contra un JBoss Fuse real.
 - **Rutas en XML** fuera de la comparación de estructura.
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

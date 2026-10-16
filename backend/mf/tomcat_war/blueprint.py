@@ -179,6 +179,11 @@ def convert(text: str, file: str, report: list, compat: str, etc_property: str =
     text = re.sub(r'xmlns="http://camel\.apache\.org/schema/blueprint"', 'xmlns="http://camel.apache.org/schema/spring"', text, flags=re.I)
     if not camel2:
         text = re.sub(r'org\.apache\.activemq\.camel\.component\.ActiveMQComponent', 'org.apache.camel.component.activemq.ActiveMQComponent', text, flags=re.I)
+        # same component, Camel 2 result when a query returns no row (Camel 4 sets the body to null)
+        n = len(re.findall(r'class="org\.apache\.camel\.component\.sql\.SqlComponent"', text))
+        if n:
+            text = text.replace('class="org.apache.camel.component.sql.SqlComponent"', f'class="{compat}.sql.LegacySqlComponent"')
+            report.append(f'  [xml] {file} : {n} SqlComponent -> LegacySqlComponent (consulta sin filas como en Camel 2)')
     if is_servlet_registration(text):
         report.append(f'  [MANUAL] {file} : OsgiServletRegisterer -> declarar los servlets en web.xml')
     if UNSUPPORTED.search(text):

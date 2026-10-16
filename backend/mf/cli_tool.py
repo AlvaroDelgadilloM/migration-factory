@@ -1244,7 +1244,12 @@ def verify_cmd(args, log) -> int:
                                           Path(args.etc), args.port, [c for c in args.classpath.split(os.pathsep) if c], log)
             log(f'línea base en http://localhost:{args.port} (Ctrl+C para detener)')
             return subprocess.run(cmd, env=env).returncode
-        if args.check == 'routes':
+        if args.check == 'report':
+            from .tomcat_war import evidence
+            res = evidence.report(out, args.browser, not args.no_screenshots, (args.old_label, args.new_label), log)
+            print(f"Reporte: {res['report']}\nCapturas: {res['screenshots']} de {res['pages']} en {res['screenshotsDir']}"
+                  + (f"\nAVISO: {res['problem']}" if res['problem'] else ''))
+        elif args.check == 'routes':
             res = verify.routes(Path(args.project), Path(args.migrated), out, Path(args.config).resolve() if args.config else None, log,
                                 fix=args.fix)
             print(verify.routes_markdown(res))
@@ -1349,6 +1354,11 @@ def main(argv=None):
     vp = vsub.add_parser('responses', help='misma petición al original y al migrado; compara código, Content-Type y cuerpo')
     vp.add_argument('--old', required=True); vp.add_argument('--new', required=True); vp.add_argument('--cases', required=True)
     vp.add_argument('--output', required=True); vp.add_argument('--timeout', type=int, default=60)
+    vv = vsub.add_parser('report', help='reporte HTML con el original junto al migrado, caso por caso, y capturas de pantalla')
+    vv.add_argument('--output', required=True, help='la misma carpeta de salida de verify routes / verify responses')
+    vv.add_argument('--browser', help='ejecutable de Edge o Chrome para las capturas (por defecto se busca uno instalado)')
+    vv.add_argument('--no-screenshots', action='store_true'); vv.add_argument('--old-label', default='ORIGINAL (Camel 2)')
+    vv.add_argument('--new-label', default='MIGRADO (Tomcat, Camel 4)')
     args = ap.parse_args(argv)
     log = (lambda m: print(f'[mf] {m}', file=sys.stderr))
     try:

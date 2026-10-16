@@ -458,14 +458,19 @@ def responses(old: str, new: str, cases_file: Path, out: Path, timeout: int = 60
                 + (['cuerpo distinto'] if a['body'] != b['body'] else [])
             state = 'SAME' if not issues else 'ACCEPTED' if c.get('accept') else 'DIFFERENT'
         totals[state] += 1
+        # what kind of difference it is; it never changes the state. ERROR_TEXT: both fail with the same HTTP code and only
+        # the text of the error (or its charset) differs. DATA: anything else.
+        kind = None if state in ('SAME', 'NOT_EXECUTABLE') else 'ERROR_TEXT' if a['status'] == b['status'] >= 400 else 'DATA'
         log(f"{state:<14} {c['name']}" + (f" ({'; '.join(issues)})" if issues and state != 'NOT_EXECUTABLE' else ''))
-        results.append({'name': c['name'], 'method': c.get('method', 'GET'), 'path': c['path'], 'state': state, 'issues': issues,
-                        'accept': c.get('accept'), 'original': a if issues else {'status': a['status']}, 'migrated': b if issues else {'status': b['status']}})
+        sent = {k: ('***' if k.lower() in ('authorization', 'cookie') else v) for k, v in (c.get('headers') or {}).items()}
+        results.append({'name': c['name'], 'method': c.get('method', 'GET'), 'path': c['path'], 'state': state, 'kind': kind, 'issues': issues,
+                        'accept': c.get('accept'), 'request': {'headers': sent, 'body': c.get('body')}, 'original': a, 'migrated': b})
     status = ('NOT_EXECUTABLE' if totals['NOT_EXECUTABLE'] == len(cases) else 'FAIL' if totals['DIFFERENT'] or totals['NOT_EXECUTABLE']
               else 'PASS_WITH_ACCEPTED' if totals['ACCEPTED'] else 'PASS')
     result = {'check': 'responses', 'status': status, 'original': old, 'migrated': new,
               'totals': {'cases': len(cases), 'same': totals['SAME'], 'different': totals['DIFFERENT'], 'accepted': totals['ACCEPTED'],
-                         'notExecutable': totals['NOT_EXECUTABLE']}, 'cases': results}
+                         'notExecutable': totals['NOT_EXECUTABLE']},
+              'differencesByKind': dict(Counter(r['kind'] for r in results if r['state'] == 'DIFFERENT')), 'cases': results}
     _save(out, 'responses', result, responses_markdown(result))
     return result
 
@@ -475,7 +480,8 @@ def responses_markdown(r: dict) -> str:
     out = ['# Respuestas: original contra migrado', '', f"Estado: **{r['status']}** — {t['cases']} casos: {t['same']} idénticos, {t['different']} distintos, "
            f"{t['accepted']} con diferencia aceptada, {t['notExecutable']} sin ejecutar.", '', f"Original: `{r['original']}` · Migrado: `{r['migrated']}`", '',
            '| Caso | Resultado | Diferencia |', '|---|---|---|']
-    out += [f"| {c['name']} | {c['state']} | {'; '.join(c['issues']) or '—'}{' — aceptada: ' + c['accept'] if c['state'] == 'ACCEPTED' else ''} |" for c in r['cases']]
+    out += [f"| {c['name']} | {c['state']} | {'; '.join(c['issues']) or '—'}{' (solo el texto del error)' if c.get('kind') == 'ERROR_TEXT' else ''}"
+            f"{' — aceptada: ' + c['accept'] if c['state'] == 'ACCEPTED' else ''} |" for c in r['cases']]
     diff = [c for c in r['cases'] if c['state'] in ('DIFFERENT', 'ACCEPTED')]
     if diff:
         out += ['', '## Detalle de las diferencias', '']

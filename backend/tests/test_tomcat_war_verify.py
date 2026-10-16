@@ -201,6 +201,56 @@ def test_cli_verify_responses_exit_codes(tmp_path, two_servers, capsys):
     assert 'DIFFERENT' in capsys.readouterr().out
 
 
+def test_error_text_differences_are_told_apart_from_data_differences(tmp_path, two_servers):
+    old, new = two_servers
+    a, b = server(lambda p, h: (400, 'text/plain', 'Validation failed for Predicate[header{x}]')), server(lambda p, h: (400, 'text/plain', 'Validation failed for Predicate[x]'))
+    try:
+        res = verify.responses(a[1], b[1], write_cases(tmp_path, [{'name': 'validacion', 'path': '/v'}]), tmp_path / 'o1')
+    finally:
+        a[0].shutdown()
+        b[0].shutdown()
+    assert res['status'] == 'FAIL' and res['cases'][0]['kind'] == 'ERROR_TEXT' and res['differencesByKind'] == {'ERROR_TEXT': 1}
+    res = verify.responses(old, new, write_cases(tmp_path, [{'name': 'sin resultado', 'path': '/missing'}, {'name': 'puntos', 'path': '/points/1'}]), tmp_path / 'o2')
+    assert [c['kind'] for c in res['cases']] == ['DATA', None]
+
+
+# --- evidence report ---------------------------------------------------------------------------------------------------
+def test_report_shows_both_answers_side_by_side(tmp_path, two_servers):
+    from mf.tomcat_war import evidence
+    old, new = two_servers
+    cases = [{'name': 'puntos', 'path': '/points/1', 'headers': {'Authorization': 'Bearer secreto', 'memberNumber': '1'}}, {'name': 'sin <resultado>', 'path': '/missing'}]
+    verify.responses(old, new, write_cases(tmp_path, cases), tmp_path / 'out')
+    res = evidence.report(tmp_path / 'out', screenshots=False, labels=('JBOSS', 'TOMCAT'))
+    target = tmp_path / 'out/reports/evidence'
+    index = (target / 'index.html').read_text(encoding='utf-8')
+    assert res['pages'] == 3 and res['screenshots'] == 0 and res['problem'] is None
+    assert 'caso-001.html' in index and 'sin &lt;resultado&gt;' in index and 'No se ha ejecutado' in index
+    same, diff = (target / 'caso-001.html').read_text(encoding='utf-8'), (target / 'caso-002.html').read_text(encoding='utf-8')
+    assert 'JBOSS' in same and 'TOMCAT' in same and '&quot;points&quot;: 801' in same and 'class="d"' not in same
+    assert 'memberNumber: 1' in same and 'secreto' not in same  # credentials of the request never reach the report
+    assert 'HTTP <b>500</b>' in diff and 'HTTP <b>200</b>' in diff and 'class="d"' in diff and 'Not found' in diff
+
+
+def test_report_needs_results_and_says_when_there_is_no_browser(tmp_path, two_servers):
+    from mf.tomcat_war import evidence
+    with pytest.raises(verify.ToolError, match='verify responses'):
+        evidence.report(tmp_path / 'vacio')
+    old, new = two_servers
+    verify.responses(old, new, write_cases(tmp_path, [{'name': 'puntos', 'path': '/points/1'}]), tmp_path / 'out')
+    res = evidence.report(tmp_path / 'out', browser=str(tmp_path / 'no-existe.exe'))
+    assert res['screenshots'] == 0 and 'navegador' not in (res['problem'] or '') and '--browser' in res['problem']
+    assert (tmp_path / 'out/reports/evidence/index.html').exists()
+
+
+def test_sql_component_keeps_the_camel2_result_only_in_the_migrated_code():
+    src = ('<blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"><bean id="sql" class="org.apache.camel.component.sql.SqlComponent">'
+           '<property name="dataSource" ref="ds"/></bean></blueprint>')
+    report = []
+    assert 'class="org.migrationfactory.compat.sql.LegacySqlComponent"' in blueprint.convert(src, 'beans.xml', report, 'org.migrationfactory.compat')
+    assert any('LegacySqlComponent' in x for x in report)
+    assert 'class="org.apache.camel.component.sql.SqlComponent"' in blueprint.convert(src, 'beans.xml', [], 'org.migrationfactory.compat', camel2=True)
+
+
 def test_routes_refuses_a_workspace_that_was_not_built(tmp_path):
     res = pipeline.migrate(FIXTURE, tmp_path / 'out')
     with pytest.raises(verify.ToolError, match='no está compilado'):
