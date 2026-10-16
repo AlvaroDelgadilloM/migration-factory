@@ -119,7 +119,7 @@ def finish(job_id, state, code=None, message=None):
             ex.steps = [st | ({'state': 'cancelled'} if st['state'] in ('pending', 'running') and state in ('cancelled', 'timed_out', 'failed') else {})
                         for st in ex.steps]
         s.add(JobEvent(job_id=job.id, level='info' if state == 'succeeded' else ('warn' if state == 'partial_success' else 'error'), phase=state,
-                       message=f'Trabajo {state}' + (f': {code} {message or ""}' if code else '')))
+                       message=f'Trabajo {state}' + (f': {code}' + (f' {message}' if message and message != code else '') if code else '')))
         s.commit()
 
 
