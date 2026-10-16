@@ -486,3 +486,13 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
 - Evidencia (mismo estado de BD antes de cada corrida): `evidence/legacy` (WildFly) = `evidence/migrated` (jar, `java -jar`) =
   `evidence/migrated-tomcat` (WAR en `tomcat:10.1.48-jdk21-temurin`): 9/9 casos con el mismo status y la misma respuesta.
 - Pruebas: `tests/test_jboss_runtime.py` (2) y autoverificación de `jboss_facts.py`; backend 182, frontend 12.
+
+## Corrección automática de rutas guiada por `verify` (Tomcat WAR) — 2026-10-16
+- `verify routes --fix` (y siempre en la plataforma): por cada ruta con otra estructura, prueba a quitar cada `.end()`/`.endChoice()`
+  de uno en uno; recompila la clase, la vuelca y acepta el cambio solo si todas las rutas de la clase quedan idénticas a Camel 2.
+  Escribe el fuente corregido, recompila el WAR y lo reporta como «corregida automáticamente (revisar)»; el proyecto queda
+  PARTIAL_SUCCESS hasta que alguien confirme que el comportamiento del original era el buscado.
+- Sobre el snapshot real (34 módulos): `PointsRoute` (member-santander) y `RequestValidator` (booking-mob y booking-web)
+  corregidos; volver a correr `verify routes` da **PASS, 505/505 rutas idénticas**; el WAR compila.
+- Límite: solo prueba quitar un `.end()`; agregar uno o hacer dos cambios a la vez no se intenta (queda como diferencia).
+- Pruebas: `test_fix_route_keeps_only_the_end_removal_that_restores_the_camel2_tree`; backend 183.

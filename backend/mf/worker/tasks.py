@@ -955,6 +955,7 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                    'responses': {'status': 'NOT_RUN', 'detail': 'requiere el original y el WAR levantados y casos del cliente: '
                                                                   'migrate.py verify baseline-server + verify responses'}}
     route_diffs = {}  # artifactId -> routes Camel 4 builds differently (unexpected, not covered by a client patch)
+    route_fixes = {}  # artifactId -> routes corrected to the Camel 2 structure by verify (reviewed by a person before deploying)
     if build['status'] == 'PASS' and verify_routes:  # G4 evidence: route structure, original Camel 2 vs migrated Camel 4
         set_phase(ctx, 'verify-routes', 75)
         from ..tomcat_war import verify
@@ -964,9 +965,12 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
         # their own 30 min timeout but not this job's cancellation (upgrade: route them through runner).
         os.environ.update(env)
         try:
-            rs = verify.routes(src, ws_dir, out, cfg_path, log=lambda m: ctx.emit('info', 'verify', m))
-            equivalence['routeStructure'] = {'status': rs['status'], 'totals': rs['totals']}
+            rs = verify.routes(src, ws_dir, out, cfg_path, log=lambda m: ctx.emit('info', 'verify', m), fix=True)
+            equivalence['routeStructure'] = {'status': rs['status'], 'totals': rs['totals'],
+                                             'autoCorrected': [c for m in rs['modules'] for c in m.get('autoCorrected', [])]}
             route_diffs = {m['module']: [u['route'] for u in m['unexpected']] for m in rs['modules'] if m.get('unexpected')}
+            route_fixes = {m['module']: [f"{c['route']}: se quitó {c['removed']} en {c['file']}:{c['line']} (revisar)" for c in m['autoCorrected']]
+                           for m in rs['modules'] if m.get('autoCorrected')}
         except (verify.ToolError, tw.InvalidInput, subprocess.TimeoutExpired) as e:
             equivalence['routeStructure'] = {'status': 'NOT_EXECUTABLE', 'detail': str(e)[:500]}
         finally:
@@ -975,6 +979,14 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
+        if equivalence['routeStructure'].get('autoCorrected'):  # the sources changed: the WAR must carry the corrected modules
+            set_phase(ctx, 'build', 85)
+            r = mavenops.mvn(ctx, ws_dir, ['-DskipTests', 'package'], 'tomcat-war-package-fixed', timeout=get_settings().workspace_timeout_seconds)
+            if r.exit_code != 0:
+                status, reason = 'FAILED', 'CANDIDATE_COMPILE_FAILED'
+                build = res['build'] = build | {'status': 'FAIL', 'exitCode': r.exit_code, 'afterRouteFix': True}
+        if route_fixes and status == 'SUCCEEDED':  # equivalent to Camel 2 again, but a person confirms the original was intended
+            status, reason = 'PARTIAL_SUCCESS', 'MANUAL_ACTIONS_PENDING'
         if equivalence['routeStructure']['status'] == 'FAIL' and status == 'SUCCEEDED':
             status = 'PARTIAL_SUCCESS'
         if equivalence['routeStructure']['status'] == 'FAIL':
@@ -1006,9 +1018,11 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
     results = {}
     for m in res['modules']:
         diffs = route_diffs.get(m['artifactId'], [])
-        st = 'FAILED' if build['status'] != 'PASS' else ('PARTIAL_SUCCESS' if m.get('manual') or diffs else 'SUCCEEDED')
-        why = reason if st == 'FAILED' else ('ROUTE_STRUCTURE_DIFFERENCES' if diffs else 'MANUAL_REVIEW' if m.get('manual') else '')
-        results[m['source']] = {'project': m['source'], 'status': st, 'artifactId': m['artifactId'], 'manual': m.get('manual', []),
+        fixes = route_fixes.get(m['artifactId'], [])
+        st = 'FAILED' if build['status'] != 'PASS' else ('PARTIAL_SUCCESS' if m.get('manual') or diffs or fixes else 'SUCCEEDED')
+        why = reason if st == 'FAILED' else ('ROUTE_STRUCTURE_DIFFERENCES' if diffs else 'MANUAL_REVIEW' if m.get('manual') or fixes else '')
+        results[m['source']] = {'project': m['source'], 'status': st, 'artifactId': m['artifactId'],
+                                'manual': m.get('manual', []) + route_fixes.get(m['artifactId'], []),
                                 'reason': why, 'routeDifferences': diffs, 'artifacts': {}}
     ws_scan = (scan.summary or {}).get('workspace') or {}
     wave_status = {'SUCCEEDED': 'WAVE_SUCCEEDED', 'PARTIAL_SUCCESS': 'WAVE_PARTIAL_SUCCESS'}.get(status, 'WAVE_FAILED')

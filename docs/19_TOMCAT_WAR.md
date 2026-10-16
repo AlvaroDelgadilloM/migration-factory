@@ -88,7 +88,7 @@ migrado contra el **original corriendo en su versión de Camel**, sin acceso a l
 
 ```bash
 # 1. Estructura de las rutas (no levanta nada)
-python migrate.py verify routes <workspace> --migrated <salida>/migrated-workspace [--config cliente.json] --output <salida>
+python migrate.py verify routes <workspace> --migrated <salida>/migrated-workspace [--config cliente.json] --output <salida> [--fix]
 
 # 2. Respuestas: misma petición al original y al migrado
 python migrate.py verify baseline-server <workspace> --modules a,b,c --servlets Nombre=/alias --etc <etc> \
@@ -98,6 +98,12 @@ python migrate.py verify responses --old http://localhost:18081 --new http://loc
 
 **`routes`** compila los fuentes originales contra las librerías de Camel 2 del origen, ejecuta `configure()` de cada
 `RouteBuilder` en las dos versiones y compara el árbol resultante (el nivel de anidamiento es parte de la comparación).
+
+**`--fix`** (la plataforma lo aplica siempre): Camel 2 y Camel 4 cierran distinto algunos `.end()`. Por ejemplo, un `.end()`
+después de un `filter` dentro de una rama de `choice` regresa a la rama en Camel 2 y al `choice` en Camel 4. Por cada ruta
+distinta se prueba quitar cada `.end()`/`.endChoice()`, de uno en uno; se recompila la clase y se vuelca otra vez. Se acepta
+solo si todas las rutas de la clase quedan idénticas a Camel 2. El cambio se escribe en el workspace migrado, se recompila el
+WAR y queda como «corregida automáticamente (revisar)»: conserva lo que corre hoy, que puede ser un error del original.
 `rules/tomcat-war/route-equivalences.json` lista lo que no cuenta como diferencia: lo que el motor cambia a propósito y lo
 que cada versión solo imprime distinto, cada entrada con su motivo. Una ruta distinta en una clase con parche del cliente
 se reporta como «por parche documentado»; cualquier otra es `FAIL`. Límite: no compara rutas definidas en XML.

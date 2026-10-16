@@ -176,8 +176,47 @@ def compare_dumps(old: dict, new: dict) -> dict:
     return {'same': same, 'different': different, 'onlyOriginal': only_old, 'onlyMigrated': only_new}
 
 
-def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, log=lambda m: None) -> dict:
-    """Route-structure comparison. migrated: the built `migrated-workspace` (modules/*/target/classes and the WAR lib)."""
+_END = re.compile(r'\.end(?:Choice)?\(\)')
+
+
+def fix_route(java_file: Path, cls: str, from_uri: str, expected: dict, trial: Path, compile_cp: list, dump_cp: list,
+              equivalences: list, logs: Path, base_classes: Path, release: str = '17') -> dict | None:
+    """Camel 2 and Camel 4 close blocks differently on some `.end()`/`.endChoice()` (e.g. `.end()` after a filter inside a
+    choice branch returns to the branch in Camel 2 and to the choice in Camel 4): the same source builds another tree without
+    any error. Tries removing each `.end()`/`.endChoice()` of the route, one at a time, recompiles that class and re-dumps it;
+    a removal is accepted only when EVERY route of the class then has exactly the Camel 2 structure. Returns the edit or None.
+    ponytail: single removals only (the cases seen on real code); adding an end() or two edits at once is not tried."""
+    text = pipeline.read(java_file)
+    m = re.search(r'\bfrom\(\s*"' + re.escape(from_uri) + r'"', text)
+    if not m:
+        return None
+    end = re.compile(r'\)\s*;').search(text, m.end())
+    if not end:
+        return None
+    for i, tok in enumerate(_END.finditer(text, m.start(), end.end())):
+        candidate = text[:tok.start()] + text[tok.end():]
+        if trial.exists():
+            shutil.rmtree(trial)
+        shutil.copytree(base_classes, trial)
+        src = trial.parent / f'{trial.name}-src' / java_file.name
+        pipeline.write(src, candidate)
+        if not _compile([src], compile_cp + [trial], trial, release, logs / f'fix-{cls}-{i}.log', encoding='ISO-8859-1'):
+            continue
+        dump = trial.parent / f'{trial.name}.txt'
+        dump.unlink(missing_ok=True)
+        _run([_java('java'), 'RouteDump', trial, dump], logs / f'fix-dump-{cls}-{i}.log', classpath=dump_cp)
+        if not dump.exists():
+            continue
+        got = {k: v for k, v in read_dump(dump, equivalences)[0].items() if k.split(' | ', 1)[0] == cls}
+        if got and got.keys() == expected.keys() and all(Counter(got[k]) == Counter(expected[k]) for k in got):
+            return {'text': candidate, 'line': text.count('\n', 0, tok.start()) + 1, 'removed': tok.group(0)}
+    return None
+
+
+def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, log=lambda m: None, fix: bool = False) -> dict:
+    """Route-structure comparison. migrated: the built `migrated-workspace` (modules/*/target/classes and the WAR lib).
+    fix=True: unexplained differences that a single `.end()` removal makes identical to Camel 2 are corrected in the migrated
+    sources (and target/classes); the caller rebuilds the WAR. Listed as `autoCorrected` for review."""
     source, migrated, out = Path(source).resolve(), Path(migrated).resolve(), Path(out).resolve()
     work = out / '.verify'
     projects = pipeline.discover(source)
@@ -250,16 +289,46 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
                for k in ks if not reviewed(k)]
         expected = [{'route': d['route'], 'patches': reviewed(d['route'])} for d in res['different'] if reviewed(d['route'])] \
             + [{'route': k, 'patches': reviewed(k)} for k in res['onlyOriginal'] + res['onlyMigrated'] if reviewed(k)]
+        corrected = []
+        if fix and unexpected:
+            release = (re.search(r'<maven.compiler.release>(\d+)<', pipeline.read(migrated / 'pom.xml')) or [None, '17'])[1]
+            src_root = migrated / 'modules' / m / 'src' / 'main' / 'java'
+            for cls in sorted({u['route'].split(' | ', 1)[0] for u in unexpected}):
+                files = sorted(src_root.rglob(f'{cls}.java')) if src_root.is_dir() else []
+                class_routes = [u['route'] for u in unexpected if u['route'].split(' | ', 1)[0] == cls]
+                if len(files) != 1 or any(' | ' not in r for r in class_routes):
+                    continue
+                want = {k: v for k, v in dumps['camel2'][0].items() if k.split(' | ', 1)[0] == cls}
+                done = None
+                for r in class_routes:  # the from() whose statement holds the end() to remove
+                    done = fix_route(files[0], cls, r.split(' | ', 1)[1], want, work / 'fix' / m,
+                                     lib4 + [migrated / 'modules' / d / 'target' / 'classes' for d in chain],
+                                     [tool] + lib4 + [migrated / 'modules' / d / 'target' / 'classes' for d in chain],
+                                     equivalences, logs, new_classes, release)
+                    if done:
+                        break
+                if not done:
+                    continue
+                pipeline.write(files[0], done['text'])
+                shutil.copytree(work / 'fix' / m, new_classes, dirs_exist_ok=True)  # dependants and the rebuild see the fix
+                rel = files[0].relative_to(migrated).as_posix()
+                log(f"corregido {rel}:{done['line']} (se quitó {done['removed']})")
+                corrected += [{'route': r, 'file': rel, 'line': done['line'], 'removed': done['removed'],
+                               'detail': 'Camel 2 armaba esta ruta con otra anidación; se conserva la de Camel 2 (lo que corre hoy). '
+                                         'Revisar si el original era intencional.'} for r in class_routes]
+            unexpected = [u for u in unexpected if u['route'] not in {c['route'] for c in corrected}]
         not_dumped = [f'original: {e}' for e in dumps['camel2'][1]] + [f'migrado: {e}' for e in dumps['camel4'][1]]
         entry |= {'identical': len(res['same']), 'unexpected': unexpected, 'expectedByPatch': expected, 'notDumped': not_dumped,
-                  'status': 'FAIL' if unexpected else 'REVIEW' if not_dumped else 'PASS'}
+                  'autoCorrected': corrected, 'status': 'FAIL' if unexpected else 'REVIEW' if not_dumped or corrected else 'PASS'}
+        totals['autoCorrected'] += len(corrected)
         totals['identical'] += len(res['same'])
         totals['unexpected'] += len(unexpected)
         totals['expectedByPatch'] += len(expected)
         totals['notDumped'] += len(not_dumped)
         modules.append(entry)
-    status = 'FAIL' if totals['unexpected'] else 'REVIEW' if totals['notDumped'] or totals['notExecutable'] else 'PASS'
-    result = {'check': 'route-structure', 'status': status, 'totals': {k: totals[k] for k in ('identical', 'unexpected', 'expectedByPatch', 'notDumped', 'notExecutable')},
+    status = 'FAIL' if totals['unexpected'] else 'REVIEW' if totals['notDumped'] or totals['notExecutable'] or totals['autoCorrected'] else 'PASS'
+    result = {'check': 'route-structure', 'status': status,
+              'totals': {k: totals[k] for k in ('identical', 'unexpected', 'expectedByPatch', 'autoCorrected', 'notDumped', 'notExecutable')},
               'modules': modules,
               'limits': ['Solo rutas definidas en RouteBuilder Java; las rutas en XML no se comparan.',
                          'Compara cómo queda armada la ruta, no lo que pasa al ejecutarla (ver la comprobación de respuestas).']}
@@ -271,7 +340,8 @@ def routes_markdown(r: dict) -> str:
     t = r['totals']
     out = ['# Estructura de las rutas: original contra migrado', '', f"Estado: **{r['status']}**", '',
            '| Medida | Rutas |', '|---|---|', f"| Idénticas | {t['identical']} |", f"| Distintas por un parche documentado | {t['expectedByPatch']} |",
-           f"| Distintas sin explicación | {t['unexpected']} |", f"| Clases que no se pudieron volcar | {t['notDumped']} |",
+           f"| Distintas sin explicación | {t['unexpected']} |", f"| Corregidas automáticamente (revisar) | {t.get('autoCorrected', 0)} |",
+           f"| Clases que no se pudieron volcar | {t['notDumped']} |",
            f"| Módulos no ejecutables | {t['notExecutable']} |", '']
     for m in r['modules']:
         if m.get('unexpected'):
@@ -280,6 +350,9 @@ def routes_markdown(r: dict) -> str:
                 out += [f"- `{d['route']}`"] + [f"  - {x['side']} (nivel {x['depth']}): `{x['node'][:200]}`" for x in d['lines']]
             out.append('')
     for m in r['modules']:
+        if m.get('autoCorrected'):
+            out += [f"## {m['module']}: corregidas automáticamente", '']
+            out += [f"- `{c['route']}`: se quitó `{c['removed']}` en `{c['file']}:{c['line']}`. {c['detail']}" for c in m['autoCorrected']] + ['']
         if m.get('expectedByPatch'):
             out += [f"## {m['module']}: diferencias por parche", ''] + [f"- `{e['route']}` — {'; '.join(e['patches'])}" for e in m['expectedByPatch']] + ['']
         if m.get('notDumped') or m.get('detail'):

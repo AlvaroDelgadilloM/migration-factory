@@ -1245,8 +1245,16 @@ def verify_cmd(args, log) -> int:
             log(f'línea base en http://localhost:{args.port} (Ctrl+C para detener)')
             return subprocess.run(cmd, env=env).returncode
         if args.check == 'routes':
-            res = verify.routes(Path(args.project), Path(args.migrated), out, Path(args.config).resolve() if args.config else None, log)
+            res = verify.routes(Path(args.project), Path(args.migrated), out, Path(args.config).resolve() if args.config else None, log,
+                                fix=args.fix)
             print(verify.routes_markdown(res))
+            if res['totals'].get('autoCorrected'):
+                build = tw.build(Path(args.migrated).resolve(), log)  # the WAR still carries the uncorrected module jars
+                print(f"Build tras la corrección: {build['status']}")
+                if build['status'] != 'PASS':
+                    return EXIT_BUILD
+            if res['status'] == 'REVIEW' and res['totals'].get('autoCorrected') and not res['totals']['unexpected']:
+                return EXIT_OK if not (res['totals']['notDumped'] or res['totals']['notExecutable']) else EXIT_CRITICAL
         else:
             res = verify.responses(args.old, args.new, Path(args.cases), out, args.timeout, log)
             print(verify.responses_markdown(res).split('## Detalle de las diferencias')[0])
@@ -1330,6 +1338,8 @@ def main(argv=None):
     vr = vsub.add_parser('routes', help='estructura de las rutas: original (Camel 2) contra migrado')
     vr.add_argument('project'); vr.add_argument('--migrated', required=True, help='migrated-workspace ya compilado (migrate --build)')
     vr.add_argument('--config'); vr.add_argument('--output', required=True)
+    vr.add_argument('--fix', action='store_true', help='corregir en el workspace migrado las rutas que quitando un .end() quedan '
+                    'idénticas a Camel 2, y recompilar el WAR')
     vb = vsub.add_parser('baseline-server', help='levanta el código ORIGINAL sobre Camel 2 + Jetty (primer plano)')
     vb.add_argument('project'); vb.add_argument('--modules', required=True, help='artifactId separados por coma')
     vb.add_argument('--servlets', required=True, help='Nombre=/alias,... (los que registraba OsgiServletRegisterer)')

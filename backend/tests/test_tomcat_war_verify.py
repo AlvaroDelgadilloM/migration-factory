@@ -48,6 +48,31 @@ def test_a_node_that_moved_under_another_parent_is_a_difference(tmp_path):
     assert [(x['side'], x['depth'], x['node']) for x in diff[0]['lines']] == [('original', 3, 'to uri=direct:response'), ('migrado', 1, 'to uri=direct:response')]
 
 
+def test_fix_route_keeps_only_the_end_removal_that_restores_the_camel2_tree(tmp_path, monkeypatch):
+    """PointsRoute (member-santander): Camel 2 kept `.to(direct:restResponse)` inside the otherwise branch; Camel 4 moves it out.
+    Each .end() removal is compiled and dumped (faked here by counting the .end() left); only the one that yields the Camel 2
+    tree is accepted, and nothing is accepted when no removal does."""
+    src = tmp_path / 'PointsRoute.java'
+    src.write_text('class PointsRoute { void configure() {\n  from("direct:p")\n    .choice().when(x).log("a")\n    .otherwise()'
+                   '\n      .filter(y).setBody(z)\n      .end()\n    .end()\n    .to("direct:restResponse");\n}}\n', encoding='latin-1')
+    base = tmp_path / 'classes'
+    base.mkdir()
+    monkeypatch.setattr(verify, '_compile', lambda sources, cp, out, *a, **k: (out / 'compiled.txt').write_text(sources[0].read_text('latin-1')) or True)
+
+    def run(cmd, log, **k):  # second .end() removed -> restResponse stays in the otherwise branch (depth 3), as Camel 2 built it
+        code = (cmd[2] / 'compiled.txt').read_text()
+        depth = 3 if code.count('.end()') == 1 and '      .end()' in code else 1
+        cmd[3].write_text(f'ROUTE PointsRoute | direct:p\n{"  " * depth}to uri=direct:restResponse\n')
+    monkeypatch.setattr(verify, '_run', run)
+    camel2 = {'PointsRoute | direct:p': ['      to uri=direct:restResponse']}
+    args = (tmp_path / 'trial', [], [], [], tmp_path, base)
+    done = verify.fix_route(src, 'PointsRoute', 'direct:p', camel2, *args)
+    assert done['removed'] == '.end()' and done['line'] == 7
+    assert done['text'].count('.end()') == 1 and '      .end()\n    \n    .to("direct:restResponse")' in done['text']
+    assert verify.fix_route(src, 'PointsRoute', 'direct:p', {'PointsRoute | direct:p': ['    to uri=x']}, *args) is None
+    assert verify.fix_route(src, 'PointsRoute', 'direct:other', camel2, *args) is None
+
+
 def test_missing_and_extra_routes_and_dump_errors(tmp_path):
     old, errs = dump(tmp_path, 'c2.txt', 'ROUTE A | direct:a\n  to uri=mock:a\nROUTE A | direct:gone\n  to uri=mock:b\nERROR Broken : NullPointerException: x\n')
     new, _ = dump(tmp_path, 'c4.txt', 'ROUTE A | direct:a\n  to uri=mock:a\nROUTE A | direct:new\n  to uri=mock:c\n')
