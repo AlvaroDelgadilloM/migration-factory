@@ -180,6 +180,12 @@ def test_platform_datastage_project_upload_job_and_artifacts(client, token, tmp_
     up = client.post('/api/v1/uploads', content=buf.getvalue(), headers=hdr | {'X-Migration-Type': 'DATASTAGE_AIRFLOW'})
     assert up.status_code == 201, up.text
     assert up.json()['structure']['dsxFiles'] == ['bibes-like/shop_flow.dsx']
+    md = io.BytesIO()
+    with zipfile.ZipFile(md, 'w') as zf:
+        zf.writestr('docs/51.md', '# x')
+        zf.writestr('docs/52.md', '# y')
+    bad = client.post('/api/v1/uploads', content=md.getvalue(), headers=hdr | {'X-Migration-Type': 'DATASTAGE_AIRFLOW'})
+    assert bad.status_code == 422 and 'trae: 2 .md' in bad.text                      # says what the ZIP does contain
     body = {'name': f'BIBES {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': up.json()['id'], 'targetRuntime': 'spring',
             'migrationType': 'DATASTAGE_AIRFLOW'}
     assert client.post('/api/v1/projects', headers=token('ana.arquitecta'), json=body).status_code == 422  # airflow target only

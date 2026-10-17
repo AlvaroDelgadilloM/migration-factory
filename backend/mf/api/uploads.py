@@ -90,9 +90,14 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             datastage = x_migration_type == 'DATASTAGE_AIRFLOW'
             structure = inspect_zip(Path(tmp), require_maven=not datastage)  # metadata only: nothing is extracted here
             if datastage:
-                dsx = [f for f in structure.pop('files') if f.lower().endswith('.dsx')]
+                dsx = [f for f in structure['files'] if f.lower().endswith('.dsx')]
                 if not dsx:
-                    raise UnsafeInput('NO_DSX', 'El ZIP no contiene exportaciones DataStage (.dsx)')
+                    from collections import Counter
+                    kinds = Counter((Path(f).suffix.lower() or 'sin extensión') for f in structure.get('files', []) if not f.endswith('/'))
+                    found = ', '.join(f'{n} {ext}' for ext, n in kinds.most_common(5)) or 'nada'
+                    raise UnsafeInput('NO_DSX', f'El ZIP no contiene exportaciones DataStage (.dsx); trae: {found}. '
+                                                'Suba el ZIP con los .dsx exportados de DataStage.')
+                structure.pop('files')
                 structure['dsxFiles'] = dsx[:500]
         except UnsafeInput as e:
             raise ApiError(422, e.code, str(e)) from None
