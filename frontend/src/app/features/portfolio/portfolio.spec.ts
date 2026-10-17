@@ -48,7 +48,7 @@ describe('Portfolio · registro de proyecto por origen', () => {
     c.form.repositoryUrl = 'https://github.com/x/y.git';  // ignored for zip
     const done = c.create();
     const req = http.expectOne('/api/v1/projects');
-    expect(req.request.body).toEqual({ name: 'Piloto', sourceType: 'zip', targetRuntime: 'spring', description: '', uploadId: 'u1' });
+    expect(req.request.body).toEqual({ name: 'Piloto', sourceType: 'zip', migrationType: 'JAVA_CAMEL', targetRuntime: 'spring', description: '', uploadId: 'u1' });
     req.flush({ message: 'x', code: 'X' }, { status: 422, statusText: 'x' });
     await done;
   });

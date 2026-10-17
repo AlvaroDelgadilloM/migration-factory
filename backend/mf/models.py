@@ -69,6 +69,8 @@ class Project(Entity, Base):
     repository_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('repository.id'))
     default_branch: Mapped[str] = mapped_column(String(255), default='main')
     target_runtime: Mapped[str | None] = mapped_column(String(20))
+    # JAVA_CAMEL (Camel 2 -> 4) | DATASTAGE_AIRFLOW (DSX -> Airflow): selects the adapter; both share sources, jobs, artifacts and audit
+    migration_type: Mapped[str] = mapped_column(String(30), default='JAVA_CAMEL', server_default='JAVA_CAMEL')
     required_gates: Mapped[list] = mapped_column(Json, default=lambda: ['G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6'])
     independent_review: Mapped[bool] = mapped_column(Boolean, default=True)
     pr_config: Mapped[dict | None] = mapped_column(Json)       # {provider, repository, baseBranch, credentialRef}
@@ -428,4 +430,16 @@ class HttpTestRun(Entity, Base):
     cases: Mapped[list] = mapped_column(Json)      # same format as `migrate.py verify responses --cases`
     screenshots: Mapped[bool] = mapped_column(Boolean, default=True)
     summary: Mapped[dict] = mapped_column(Json, default=dict)
+    created_by: Mapped[str] = mapped_column(String(255))
+
+
+class DataStageMigration(Entity, Base):
+    """IBM DataStage -> Apache Airflow run (migration-factory-datastage-airflow 51-68) over a project's DSX/ZIP source."""
+    __tablename__ = 'datastage_migration'
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    state: Mapped[str] = mapped_column(String(20), default='queued')
+    options: Mapped[dict] = mapped_column(Json, default=dict)     # timezone, name
+    summary: Mapped[dict] = mapped_column(Json, default=dict)     # status, counts, gates, pilot, waves, artifacts
+    results: Mapped[dict] = mapped_column(Json, default=dict)     # job -> {complexity, migratability, state, steps}
     created_by: Mapped[str] = mapped_column(String(255))

@@ -40,7 +40,8 @@ class ProjectCreate(Dto):
     name: str = Field(min_length=2, max_length=200, pattern=r'^[\w .\-()]+$')
     description: str = Field(default='', max_length=2000)
     source_type: Literal['local', 'zip', 'git']
-    target_runtime: Literal['spring', 'quarkus']
+    migration_type: Literal['JAVA_CAMEL', 'DATASTAGE_AIRFLOW'] = 'JAVA_CAMEL'
+    target_runtime: Literal['spring', 'quarkus', 'airflow']
     # git
     repository_url: str | None = Field(default=None, max_length=1000)
     default_branch: str | None = Field(default=None, pattern=r'^[\w./-]{1,200}$')
@@ -52,6 +53,8 @@ class ProjectCreate(Dto):
 
     @model_validator(mode='after')
     def _per_source(self):
+        if (self.migration_type == 'DATASTAGE_AIRFLOW') != (self.target_runtime == 'airflow'):
+            raise ValueError('DATASTAGE_AIRFLOW va con target airflow; JAVA_CAMEL con spring o quarkus')
         given = {f for f in ('repository_url', 'default_branch', 'credential_ref', 'local_path', 'upload_id') if getattr(self, f)}
         missing = REQUIRED_SOURCE_FIELDS[self.source_type] - given
         if missing:
@@ -91,6 +94,7 @@ class ProjectOut(Dto):
     upload: dict | None = None
     default_branch: str
     target_runtime: str | None
+    migration_type: str = 'JAVA_CAMEL'
     required_gates: list[str]
     independent_review: bool
     pr_config: dict | None
@@ -650,3 +654,20 @@ class HttpTestRunOut(Dto):
 class ManualTestIn(Dto):
     request: HttpCase
     targets: list[HttpTarget] = Field(min_length=1, max_length=2)
+
+
+class DataStageMigrationIn(Dto):
+    timezone: str = Field(default='America/Mexico_City', pattern=r'^[A-Za-z_]+(/[A-Za-z_+-]+){0,2}$')
+
+
+class DataStageMigrationOut(Dto):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    job_id: uuid.UUID | None
+    state: str
+    options: dict
+    summary: dict
+    results: dict
+    created_by: str
+    created_at: datetime
+    job: JobOut | None = None

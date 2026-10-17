@@ -76,6 +76,15 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
     <p-dialog header="Registrar proyecto" [(visible)]="dialog" [modal]="true" [style]="{ width: '44rem' }">
       <form class="form" (ngSubmit)="create()" #f="ngForm">
         <fieldset class="source">
+          <legend>Tipo de migración</legend>
+          @for (t of migrationTypes; track t.value) {
+            <label class="radio">
+              <input type="radio" name="migrationType" [value]="t.value" [(ngModel)]="form.migrationType" (ngModelChange)="typeChanged()" />
+              <span><strong>{{ t.label }}</strong><br /><small class="muted">{{ t.hint }}</small></span>
+            </label>
+          }
+        </fieldset>
+        <fieldset class="source">
           <legend>Origen del proyecto <span class="req" aria-hidden="true">*</span></legend>
           @for (o of sourceOptions(); track o.value) {
             <label class="radio" [class.disabled]="o.disabled">
@@ -87,8 +96,12 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
 
         <label for="name">Nombre</label>
         <input pInputText id="name" name="name" required minlength="2" [(ngModel)]="form.name" />
-        <label for="rt">Runtime objetivo</label>
-        <p-select inputId="rt" name="rt" [options]="runtimes" optionLabel="label" optionValue="value" [(ngModel)]="form.targetRuntime" />
+        @if (form.migrationType === 'JAVA_CAMEL') {
+          <label for="rt">Runtime objetivo</label>
+          <p-select inputId="rt" name="rt" [options]="runtimes" optionLabel="label" optionValue="value" [(ngModel)]="form.targetRuntime" />
+        } @else {
+          <small class="muted">Destino: Apache Airflow 2.10.5 (DAGs, SQL para Oracle, Connections y Variables). Origen: exportaciones DSX.</small>
+        }
 
         @switch (form.sourceType) {
           @case ('local') {
@@ -111,8 +124,12 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
             <small class="muted">La carpeta se comprime en su navegador (sin .git, target ni node_modules) y se sube como ZIP; no se envía su ruta.</small>
             @if (uploading()) { <small class="muted"><i class="pi pi-spin pi-spinner"></i> {{ progress() || 'Subiendo y validando estructura…' }}</small> }
             @if (uploaded(); as u) {
-              <p-message severity="success"><span>{{ u.filename }} · raíz Maven <code>{{ u.structure['root'] }}</code> ·
-                módulos: {{ $any(u.structure['modules']).join(', ') }} · sha256 {{ u.sha256.slice(0, 12) }}…</span></p-message>
+              @if (u.structure['dsxFiles']) {
+                <p-message severity="success"><span>{{ u.filename }} · {{ $any(u.structure['dsxFiles']).length }} archivo(s) DSX · sha256 {{ u.sha256.slice(0, 12) }}…</span></p-message>
+              } @else {
+                <p-message severity="success"><span>{{ u.filename }} · raíz Maven <code>{{ u.structure['root'] }}</code> ·
+                  módulos: {{ $any(u.structure['modules']).join(', ') }} · sha256 {{ u.sha256.slice(0, 12) }}…</span></p-message>
+              }
             }
             <small class="muted">Se rechazan rutas fuera del archivo, enlaces simbólicos, cifrado y compresión excesiva. La extracción ocurre aislada en el worker.</small>
           }
@@ -167,6 +184,10 @@ export class Portfolio {
     ];
   });
   runtimes = [{ label: 'Spring Boot', value: 'spring' }, { label: 'Quarkus', value: 'quarkus' }];
+  migrationTypes = [
+    { value: 'JAVA_CAMEL', label: 'Java / Camel', hint: 'JBoss o Fuse con Camel 2 → Camel 4 (Spring Boot, Quarkus o Tomcat).' },
+    { value: 'DATASTAGE_AIRFLOW', label: 'DataStage → Airflow', hint: 'Exportaciones DSX de IBM DataStage → DAGs de Apache Airflow.' },
+  ];
   short = short;
   sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git' };
   analyzed = computed(() => (this.list.data()?.items ?? []).filter(p => p.lastScan?.['status'] === 'succeeded').length);
@@ -175,8 +196,12 @@ export class Portfolio {
   constructor() { this.load(); }
 
   emptyForm() {
-    return { sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
+    return { migrationType: 'JAVA_CAMEL' as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW', sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
              localPath: '', repositoryUrl: '', defaultBranch: 'main', credentialRef: '' };
+  }
+  typeChanged() {  // the upload is validated for one type: a new type needs a new upload
+    this.form.targetRuntime = this.form.migrationType === 'DATASTAGE_AIRFLOW' ? 'airflow' : 'spring';
+    this.uploaded.set(null);
   }
   urlOk() { return URL_RE.test(this.form.repositoryUrl.trim()); }
   pathOk() {
@@ -200,7 +225,7 @@ export class Portfolio {
     const max = (this.caps()?.maxUploadMb ?? 200) * 1024 * 1024;
     if (file.size > max) { this.createError.set(new UiError(413, 'UPLOAD_TOO_LARGE', `El archivo supera ${this.caps()?.maxUploadMb} MB`)); return; }
     this.uploading.set(true);
-    try { this.uploaded.set(await this.api.uploadZip(file, file.name)); }
+    try { this.uploaded.set(await this.api.uploadZip(file, file.name, this.form.migrationType)); }
     catch (e) { this.createError.set(UiError.from(e)); }
     finally { this.uploading.set(false); }
   }
@@ -218,7 +243,7 @@ export class Portfolio {
       if (zip.size > (this.caps()?.maxUploadMb ?? 200) * 1024 * 1024) throw new UiError(413, 'UPLOAD_TOO_LARGE', 'La carpeta comprimida supera el máximo permitido');
       this.progress.set('Subiendo y validando estructura…');
       const folder = files[0].path.split('/')[0] || 'proyecto';
-      this.uploaded.set(await this.api.uploadZip(zip, `${folder}.zip`));
+      this.uploaded.set(await this.api.uploadZip(zip, `${folder}.zip`, this.form.migrationType));
     } catch (e) {
       this.createError.set(e instanceof Error && !(e instanceof UiError) ? new UiError(422, 'FOLDER_INVALID', e.message) : UiError.from(e));
     } finally {
@@ -242,7 +267,7 @@ export class Portfolio {
     this.createError.set(null);
     try {
       const f = this.form;
-      const common = { name: f.name, sourceType: f.sourceType, targetRuntime: f.targetRuntime, description: f.description };
+      const common = { name: f.name, sourceType: f.sourceType, migrationType: f.migrationType, targetRuntime: f.targetRuntime, description: f.description };
       // only the fields of the selected source are sent; the API rejects the others
       const body = f.sourceType === 'local' ? { ...common, localPath: f.localPath.trim() }
         : f.sourceType === 'zip' ? { ...common, uploadId: this.uploaded()!.id }

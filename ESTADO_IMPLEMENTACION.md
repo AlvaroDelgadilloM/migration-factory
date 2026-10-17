@@ -496,3 +496,21 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
   corregidos; volver a correr `verify routes` da **PASS, 505/505 rutas idénticas**; el WAR compila.
 - Límite: solo prueba quitar un `.end()`; agregar uno o hacer dos cambios a la vez no se intenta (queda como diferencia).
 - Pruebas: `test_fix_route_keeps_only_the_end_removal_that_restores_the_camel2_tree`; backend 183.
+
+## IBM DataStage → Apache Airflow (migration-factory-datastage-airflow 51–68) — 2026-10-16
+- Adaptador nuevo en `backend/mf/datastage/` sobre la misma plataforma: `Project.migration_type` (`JAVA_CAMEL` |
+  `DATASTAGE_AIRFLOW`), tabla `datastage_migration` (alembic 0012), job `datastage_migrate` (cola larga), API
+  `/projects/{id}/datastage-migrations`, subida de ZIP DSX (`X-Migration-Type`) con las mismas defensas sin exigir Maven,
+  UI: tipo de migración al registrar y panel DataStage en Inventario. CLI `migrate.py datastage analyze|migrate`.
+- Parser por tokens con IR persistido, registry por evidencia, grafo con oleadas, complejidad/migrabilidad, piloto del doc 67,
+  pushdown SQL a Oracle (incluye LAG para «fila anterior» y Merge), DAG por secuencia con TaskGroups, ramas, manejador de
+  excepciones y terminadores, Connections/Variables/params, DDL de staging, reconciliación generada y 9 gates.
+- Probado con el corpus real BIBES (55 jobs, 10 secuencias; fuera del repositorio): 100 % parseado y clasificado, sin ciclos,
+  10 DAGs que importan en DagBag de Airflow 2.10.5 sin errores, sin secretos en la salida, PARTIAL_SUCCESS
+  (FUNCTIONALLY_UNVERIFIED hasta reconciliar). El proyecto generado pasa su propia prueba `tests/dags` con Airflow real.
+- Hallazgos corregidos al probar con el corpus: aristas productor/consumidor que contradecían el orden de la secuencia,
+  cargas de archivo duplicadas (DagBag), contraseñas literales que llegaban al IR (ahora redactadas en el parseo).
+- Worker: Airflow 2.10.5 en `/opt/airflow-venv` (constraints oficiales) solo para `DAG_PARSE_GATE`.
+- Pendiente: fallback con IA (doc 58, Sprint 4), ejecutar la reconciliación contra DataStage, programación (no viene en el DSX).
+- Pruebas: `tests/test_datastage.py` (10; 2 se activan con `MF_AIRFLOW_PYTHON` y `MF_DATASTAGE_CORPUS`); frontend 12.
+- Detalle: `docs/20_DATASTAGE_AIRFLOW.md`.

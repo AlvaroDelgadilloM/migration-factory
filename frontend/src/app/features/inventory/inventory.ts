@@ -13,11 +13,16 @@ import { CursorPager, Loader } from '../../shared/state';
 import { ActionButton, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
 import { WorkspacePanel } from './workspace';
 import { WorkspaceMigrationPanel } from './ws-migration';
+import { DataStagePanel } from './datastage';
 
 @Component({
   selector: 'mf-inventory',
-  imports: [FormsModule, InputTextModule, MessageModule, SelectModule, TableModule, TabsModule, ActionButton, JobLog, PageHeader, StateView, StatusTag, WorkspacePanel, WorkspaceMigrationPanel],
+  imports: [FormsModule, InputTextModule, MessageModule, SelectModule, TableModule, TabsModule, ActionButton, JobLog, PageHeader, StateView, StatusTag, WorkspacePanel, WorkspaceMigrationPanel, DataStagePanel],
   template: `
+    @if (ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW') {
+      <mf-page-header title="DataStage → Airflow" crumb="INVENTARIO" [subtitle]="ctx.project()?.name" />
+      <mf-datastage [projectId]="ctx.project()!.id" />
+    } @else {
     <mf-page-header title="Inventario" crumb="INVENTARIO" [subtitle]="ctx.project()?.name">
       @if (ctx.project()?.sourceType === 'git') {
         <label class="sr-only" for="ref">Rama, tag o SHA</label>
@@ -148,7 +153,8 @@ import { WorkspaceMigrationPanel } from './ws-migration';
           </p-tabs>
         }
       }
-    </mf-state>`,
+    </mf-state>
+    }`,
 })
 export class Inventory {
   projectId = input.required<string>();

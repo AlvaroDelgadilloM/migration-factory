@@ -220,8 +220,9 @@ def classify_source(rel_files: list[str], read_modules=None) -> dict:
     return info
 
 
-def inspect_zip(path: Path) -> dict:
-    """Validate a ZIP without extracting: entries, sizes, ratios, names, symlinks, encryption, Maven root."""
+def inspect_zip(path: Path, require_maven: bool = True) -> dict:
+    """Validate a ZIP without extracting: entries, sizes, ratios, names, symlinks, encryption, Maven root (unless
+    require_maven=False: a DataStage export is a folder of .dsx files, same safety checks, no Maven root)."""
     s = get_settings()
     try:
         zf = _zipfile.ZipFile(path)
@@ -251,6 +252,9 @@ def inspect_zip(path: Path) -> dict:
                 raise UnsafeInput('ZIP_TOO_LARGE', f'Supera {s.zip_max_uncompressed_mb} MB descomprimido')
             if name.split('/')[0] not in IGNORED_TOP:
                 files.append(name)
+        if not require_maven:
+            return {'root': '.', 'modules': [], 'entries': len(infos), 'uncompressedBytes': total, 'repositoryType': None,
+                    'projects': [], 'files': files}
         info = classify_source(files)
         root = info['root'] or info['workspaceRoot']
         prefix = '' if root == '.' else root + '/'
@@ -259,9 +263,9 @@ def inspect_zip(path: Path) -> dict:
                 'repositoryType': info['repositoryType'], 'projects': [p['name'] for p in info['projects']]}
 
 
-def safe_extract_zip(path: Path, dest: Path) -> str:
+def safe_extract_zip(path: Path, dest: Path, require_maven: bool = True) -> str:
     """Extract after inspect_zip; every target re-checked under dest. Returns the project root (relative)."""
-    info = inspect_zip(path)
+    info = inspect_zip(path, require_maven)
     dest.mkdir(parents=True, exist_ok=True)
     base = dest.resolve()
     with _zipfile.ZipFile(path) as zf:

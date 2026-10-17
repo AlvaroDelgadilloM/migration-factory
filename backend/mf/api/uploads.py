@@ -63,6 +63,7 @@ def browse(path: str | None = Query(None, max_length=1000), _: Principal = Depen
 
 @router.post('/uploads', response_model=UploadOut, status_code=201)
 async def upload_zip(request: Request, x_filename: str = Header('project.zip', max_length=255),
+                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW)$'),
                      content_length: int | None = Header(None), db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     """Body = the ZIP bytes (Content-Type: application/zip). Size enforced while streaming, structure validated before storing."""
     s = get_settings()
@@ -86,7 +87,13 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
         if size == 0:
             raise ApiError(422, 'ZIP_INVALID', 'Archivo vacío')
         try:
-            structure = inspect_zip(Path(tmp))  # metadata only: nothing is extracted in the API process
+            datastage = x_migration_type == 'DATASTAGE_AIRFLOW'
+            structure = inspect_zip(Path(tmp), require_maven=not datastage)  # metadata only: nothing is extracted here
+            if datastage:
+                dsx = [f for f in structure.pop('files') if f.lower().endswith('.dsx')]
+                if not dsx:
+                    raise UnsafeInput('NO_DSX', 'El ZIP no contiene exportaciones DataStage (.dsx)')
+                structure['dsxFiles'] = dsx[:500]
         except UnsafeInput as e:
             raise ApiError(422, e.code, str(e)) from None
         os.replace(tmp, target)

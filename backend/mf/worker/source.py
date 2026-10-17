@@ -71,7 +71,8 @@ def copy_local(src: Path, dest: Path):
         shutil.copy2(f, target)
 
 
-def materialize(ctx, repo, ref, dest: Path, token=None, upload_path: Path | None = None, select: str | None = None):
+def materialize(ctx, repo, ref, dest: Path, token=None, upload_path: Path | None = None, select: str | None = None,
+                require_maven: bool = True):
     """Return (root_dir, root_rel, commit_sha_or_None, repository info). dest is created inside the job workspace.
     Doc 17: a multi-project repository is materialized as a workspace (root = workspaceRoot) unless one project is selected."""
     if repo.source_type == 'git':
@@ -83,10 +84,15 @@ def materialize(ctx, repo, ref, dest: Path, token=None, upload_path: Path | None
     elif repo.source_type == 'zip':
         if upload_path is None or not upload_path.exists():
             raise UnsafeInput('UPLOAD_MISSING', 'El archivo ZIP del proyecto ya no está disponible')
-        safe_extract_zip(upload_path, dest)
+        safe_extract_zip(upload_path, dest, require_maven)
         commit = None
     else:
         raise UnsafeInput('SOURCE_TYPE', f'Origen no soportado: {repo.source_type}')
+    if not require_maven:  # DataStage export: no Maven layout, same symlink containment
+        bad = [str(p) for p in _walk(dest) if p.is_symlink() and not p.resolve().is_relative_to(dest.resolve())]
+        if bad:
+            raise UnsafeInput('SYMLINK_ESCAPE', f'Enlaces simbólicos fuera del origen: {bad[:5]}')
+        return dest, '.', commit, {}
     files = [p.relative_to(dest).as_posix() for p in _walk(dest) if p.name == 'pom.xml']
     from ..analysis import maven
 

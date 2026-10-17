@@ -116,6 +116,9 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'http_compare':
             from ..models import HttpTestRun
             s.get(HttpTestRun, job.subject_id).state = state
+        elif job.kind == 'datastage_migrate':
+            from ..models import DataStageMigration
+            s.get(DataStageMigration, job.subject_id).state = state
         elif job.kind in ('preview', 'apply'):
             ex = s.get(Execution, job.subject_id)
             ex.state = state
@@ -144,7 +147,8 @@ def run_job(job_id: str):
     try:
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
                    'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
-                   'http_compare': do_http_compare}[job.kind](job, ctx)
+                   'http_compare': do_http_compare,
+                   'datastage_migrate': do_datastage_migrate}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -198,7 +202,7 @@ def _worktree_diff(ctx, repo):
     return gitops._git(ctx, ['diff', '--cached', '--no-color', '--no-ext-diff'], repo, 'git-diff-preview')
 
 
-def _materialize(db, repo, ref, dest, ctx, select=None):
+def _materialize(db, repo, ref, dest, ctx, select=None, require_maven=True):
     """Isolated working copy of the project source; the original is only read."""
     from ..models import Upload
     upload_path = None
@@ -214,7 +218,7 @@ def _materialize(db, repo, ref, dest, ctx, select=None):
         upload_path.write_bytes(data)
     token = _token(repo, ctx) if repo.source_type == 'git' else None
     try:
-        return source.materialize(ctx, repo, ref, dest, token, upload_path, select)
+        return source.materialize(ctx, repo, ref, dest, token, upload_path, select, require_maven)
     except UnsafeInput as e:
         raise StepFailure(e.code, str(e)) from None
 
@@ -1170,6 +1174,63 @@ ROOT_CAUSE_ORDER = ('ORCHESTRATION_ERROR', 'STUB_LEAK_DETECTED', 'CAMEL_2_TO_3_D
                     'ARCHITECTURAL_MIGRATION_REQUIRED', 'INVALID_CAMEL_COMPONENT_MAPPING', 'REMOVED_CAMEL_COMPONENT', 'ARTIFACT_REPLACEMENT_REQUIRED',
                     'UNSUPPORTED_TARGET_ARTIFACT', 'DEPENDENCY_VALIDATION_FAILED', 'DEPENDENCY_RESOLUTION_ERROR', 'JAVA_COMPILATION_ERROR',
                     'TEST_FAILURE')
+
+
+DS_STATE = {'SUCCEEDED': 'succeeded', 'PARTIAL_SUCCESS': 'partial_success', 'BLOCKED': 'blocked', 'FAILED': 'failed'}
+
+
+def do_datastage_migrate(job: Job, ctx: Context):
+    """DataStage -> Airflow (migration-factory-datastage-airflow 51-68): the same engine as `migrate.py datastage migrate`.
+    The DSX is untrusted: parsed only, nothing in it runs. The DagBag gate imports the GENERATED DAGs in a separate
+    interpreter (MF_AIRFLOW_PYTHON) with a minimal environment."""
+    from ..datastage import adapter
+    from ..models import DataStageMigration
+    with session() as db:
+        dm = db.get(DataStageMigration, job.subject_id)
+        project = db.get(Project, dm.project_id)
+        repo = db.get(Repository, project.repository_id)
+        dm.state = 'running'
+        db.commit()
+        set_phase(ctx, 'snapshot', 10)
+        src, _, sha, _ = _materialize(db, repo, project.default_branch if repo.source_type == 'git' else None,
+                                      ctx.workdir / 'source', ctx, require_maven=False)
+        ctx.emit('info', 'snapshot', f'Origen {repo.source_type}' + (f' · commit {sha}' if sha else ''))
+        set_phase(ctx, 'datastage', 30)
+        out = ctx.workdir / 'out'
+        try:
+            rep = adapter.migrate(src, out, project.name, os.environ.get('MF_AIRFLOW_PYTHON'), dm.options.get('timezone', 'America/Mexico_City'),
+                                  log=lambda m: ctx.emit('info', 'datastage', m))
+        except adapter.InvalidInput as e:
+            raise StepFailure('DSX_INVALID', str(e)) from None
+        set_phase(ctx, 'artifacts', 90)
+        tag, arts = str(dm.id)[:8], {}
+        proj = Path(rep['output']['project'])
+
+        def keep(path, name, kind, ctype, text=True):
+            if path.exists():
+                data = redact(path.read_text(errors='replace'), ctx.secrets) if text else path.read_bytes()
+                arts[name] = str(_store(db, dm.project_id, kind, name, data, ctype, ctx if text else None, commit=False).id)
+        keep(Path(rep['output']['zip']), f'ds-{tag}.{Path(rep["output"]["zip"]).name}', 'candidate-zip', 'application/zip', text=False)
+        for f, kind, ctype in (('migration-report.md', 'report-md', 'text/markdown; charset=utf-8'),
+                               ('migration-report.json', 'report-json', 'application/json'),
+                               ('manual-actions.md', 'report-md', 'text/markdown; charset=utf-8'),
+                               ('datastage-ir.json', 'report-json', 'application/json')):
+            keep(proj / 'migration-report' / f, f'ds-{tag}.{f}', kind, ctype)
+        dm.results = {n: {k: j.get(k) for k in ('jobType', 'complexity', 'score', 'migratability', 'confidence', 'reasons',
+                                                    'dependsOn', 'calls', 'stages', 'sourceFile')}
+                      | {'state': j['migration']['state'], 'dag': j['migration'].get('dag'), 'manualActions': j['manualActions'],
+                         'steps': j['migration'].get('steps', [])}
+                      for n, j in rep['jobs'].items()}
+        dm.summary = {k: rep[k] for k in ('status', 'functionalValidation', 'technicalValidation', 'parse', 'counts', 'gates', 'pilot',
+                                          'manualActions', 'airflow')} | {
+            'waves': rep['graph']['waves'], 'droppedEdges': rep['graph']['droppedEdges'], 'masterSequences': rep['graph']['masterSequences'],
+            'dags': rep['dags'], 'artifacts': arts}
+        db.commit()
+        log.info("[datastage] %s · %s jobs · %s", rep["status"], rep["parse"]["jobs"], rep["counts"])
+        ctx.emit('info', 'datastage', f"{rep['status']}: {rep['counts']}")
+        state = DS_STATE.get(rep['status'], 'failed')
+        return (state, None if state == 'succeeded' else rep['status'],
+                None if state == 'succeeded' else 'Validación funcional pendiente: reconciliación y acciones manuales')
 
 
 def build_root_causes(compile_status, test_status, classified_errors, java_errors) -> list[str]:

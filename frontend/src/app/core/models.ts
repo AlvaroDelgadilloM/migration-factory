@@ -28,6 +28,7 @@ export type Browse = S['BrowseOut'];
 export interface EffortRow { category: string; label: string; unit: string; units: number; findings: number;
   hoursPerUnit: number | null; source: string; subtotalHours: number | null; detail: string[] }
 export type Modernization = S['ModernizationOut'];
+export type DataStageMigration = S['DataStageMigrationOut'];
 export type WorkspaceMigration = S['WorkspaceMigrationOut'];
 export interface ExecutionResult {
   executionId: string; sourceType: 'LOCAL' | 'GIT_REMOTE'; status: string;

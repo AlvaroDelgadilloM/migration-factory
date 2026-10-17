@@ -27,7 +27,7 @@ def project_out(db, p: Project, principal: Principal) -> dict:
                    repository_provider=repo.provider, credential_ref=repo.credential_ref, local_path=repo.local_path,
                    upload={'id': str(up.id), 'filename': up.filename, 'sha256': up.sha256, 'sizeBytes': up.size_bytes,
                            'structure': up.structure} if up else None,
-                   default_branch=p.default_branch, target_runtime=p.target_runtime,
+                   default_branch=p.default_branch, target_runtime=p.target_runtime, migration_type=p.migration_type,
                    required_gates=p.required_gates, independent_review=p.independent_review, pr_config=p.pr_config,
                    my_role='admin' if principal.is_admin and not role_in(db, principal, p.id) else role_in(db, principal, p.id),
                    version=p.version, created_at=p.created_at).model_dump()
@@ -58,8 +58,12 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
             repo = Repository(source_type='git', provider=info['provider'], url=info['url'], credential_ref=body.credential_ref)
         elif body.source_type == 'local':
             path = validate_local_path(body.local_path)
-            files = [str(f.relative_to(path)) for f in path.rglob('pom.xml') if 'target' not in f.relative_to(path).parts][:5000]
-            classify_source(files)  # several projects without aggregator = workspace (doc 17), not an error
+            if body.migration_type == 'DATASTAGE_AIRFLOW':
+                if not any(path.rglob('*.dsx')):
+                    raise UnsafeInput('NO_DSX', 'La carpeta no contiene exportaciones DataStage (.dsx)')
+            else:
+                files = [str(f.relative_to(path)) for f in path.rglob('pom.xml') if 'target' not in f.relative_to(path).parts][:5000]
+                classify_source(files)  # several projects without aggregator = workspace (doc 17), not an error
             repo = Repository(source_type='local', provider='local', local_path=str(path))
         else:
             upload = db.get(Upload, body.upload_id)
@@ -67,13 +71,16 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
                 raise ApiError(404, 'NOT_FOUND', 'Archivo subido no encontrado')
             if upload.project_id:
                 raise ApiError(409, 'UPLOAD_IN_USE', 'Este archivo ya está asociado a otro proyecto')
+            if (body.migration_type == 'DATASTAGE_AIRFLOW') != bool((upload.structure or {}).get('dsxFiles')):
+                raise ApiError(422, 'UPLOAD_TYPE_MISMATCH', 'El ZIP no corresponde al tipo de migración (DSX para DataStage, Maven para Java/Camel)')
             repo = Repository(source_type='zip', provider='zip', upload_id=upload.id)
     except UnsafeInput as e:
         raise ApiError(422, e.code, str(e)) from None
     db.add(repo)
     db.flush()
     p = Project(organization_id=default_org(db).id, name=body.name, description=body.description, repository_id=repo.id,
-                default_branch=body.default_branch or '-', target_runtime=body.target_runtime, created_by=me.subject)
+                default_branch=body.default_branch or '-', target_runtime=body.target_runtime, migration_type=body.migration_type,
+                created_by=me.subject)
     db.add(p)
     try:
         db.flush()
@@ -215,6 +222,8 @@ def delete_member(project_id: uuid.UUID, subject_id: str, request: Request, db: 
 def create_scan(project_id: uuid.UUID, body: ScanCreate, request: Request, idempotency_key: str | None = Header(None),
                 db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     p = authorize(db, me, project_id, 'scan')
+    if p.migration_type == 'DATASTAGE_AIRFLOW':
+        raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'Proyecto DataStage → Airflow: use POST /projects/{id}/datastage-migrations')
     endpoint = f'POST /projects/{project_id}/scans'
     payload = body.model_dump(mode='json')
     replay = jobs.idempotent_replay(db, me.subject, idempotency_key, endpoint, payload)

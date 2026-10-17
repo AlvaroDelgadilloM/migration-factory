@@ -1268,6 +1268,48 @@ def verify_cmd(args, log) -> int:
     return EXIT_OK if res['status'] in ('PASS', 'PASS_WITH_ACCEPTED') else EXIT_CRITICAL
 
 
+def datastage_cmd(args, log) -> int:
+    """DataStage -> Airflow. Exit: 0 SUCCEEDED/PARTIAL_SUCCESS (see the report), 1 FAILED, 3 BLOCKED, 4 invalid input."""
+    import tempfile
+    from .datastage import adapter
+    from .security import UnsafeInput, safe_extract_zip
+    source = Path(args.source).resolve()
+    with tempfile.TemporaryDirectory(prefix='mf-dsx-') as tmp:
+        if source.is_file() and source.suffix.lower() == '.zip':
+            try:
+                safe_extract_zip(source, Path(tmp), require_maven=False)
+            except UnsafeInput as e:
+                raise InvalidInput(str(e)) from None
+            work = Path(tmp)
+        elif source.exists():
+            work = source
+        else:
+            raise InvalidInput(f'No existe: {source}')
+        name = args.name or source.stem
+        try:
+            if args.action == 'analyze':
+                project, analysis, files, _ = adapter.analyze_only(work, name)
+                summary = {'parse': project.metadata['status'], 'files': len(files), 'jobs': len(project.jobs),
+                           'sequences': len(project.sequences), 'pilot': analysis['pilot'],
+                           'complexity': {k: sum(1 for j in analysis['jobs'] if j['complexity'] == k) for k in ('LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH')},
+                           'migratability': {k: sum(1 for j in analysis['jobs'] if j['migratability'] == k)
+                                             for k in ('AUTO_MIGRATABLE', 'SEMIAUTOMATIC', 'MANUAL_REVIEW', 'ARCHITECTURAL_REDESIGN')},
+                           'waves': [w['jobs'] for w in analysis['graph']['waves']]}
+                if args.output:
+                    o = Path(args.output).resolve()
+                    o.mkdir(parents=True, exist_ok=True)
+                    write_json(o / 'datastage-ir.json', project.to_dict())
+                    write_json(o / 'datastage-analysis.json', analysis)
+                print(json.dumps(summary, ensure_ascii=False, indent=2))
+                return EXIT_OK if project.metadata['status'] != 'FAILED' else EXIT_ERROR
+            rep = adapter.migrate(work, Path(args.output), name, args.airflow_python, args.timezone, log)
+        except adapter.InvalidInput as e:
+            raise InvalidInput(str(e)) from None
+    print(Path(rep['output']['project'], 'migration-report', 'migration-report.md').read_text().split('## Oleadas')[0])
+    print(f"Proyecto: {rep['output']['project']}\nZIP: {rep['output']['zip']}")
+    return {'FAILED': EXIT_ERROR, 'BLOCKED': EXIT_CRITICAL}.get(rep['status'], EXIT_OK)
+
+
 def tomcat_war(source: Path, args, log) -> int:
     """Profile tomcat-war (docs/19_TOMCAT_WAR.md): the whole workspace becomes one WAR; `plan` only writes the reports."""
     from .tomcat_war import pipeline as tw
@@ -1334,6 +1376,16 @@ def main(argv=None):
             p.add_argument('--modernize', action='store_true', help='tras migrar, modernizar el proyecto migrado (salida en modernization/)')
     v = sub.add_parser('validate', parents=[common]); v.add_argument('project')
     sub.add_parser('plugins', help='contrato de plugins del motor (id, versión, capacidades, orígenes, destinos)')
+    ds = sub.add_parser('datastage', help='IBM DataStage (DSX) → Apache Airflow (docs migration-factory-datastage-airflow 51-68)')
+    dsub = ds.add_subparsers(dest='action', required=True)
+    for action, text in (('analyze', 'parsear, inventariar y clasificar (sin generar nada)'),
+                         ('migrate', 'generar el proyecto Airflow, validarlo y empaquetarlo')):
+        dp = dsub.add_parser(action, help=text)
+        dp.add_argument('source', help='archivo .dsx, carpeta con .dsx o ZIP')
+        dp.add_argument('--output', required=action == 'migrate')
+        dp.add_argument('--name')
+        dp.add_argument('--airflow-python', help='intérprete con Apache Airflow para el DAG_PARSE_GATE (o MF_AIRFLOW_PYTHON)')
+        dp.add_argument('--timezone', default='America/Mexico_City')
     mo = sub.add_parser('modernize', parents=[common], help='modernizar código ya migrado (SAFE / REFACTOR / ARCHITECTURE)')
     mo.add_argument('project'); mo.add_argument('--output'); mo.add_argument('--target', choices=sorted(TARGETS))
     mo.add_argument('--approve', action='append', default=[], metavar='REGLA', help='aprobar un refactor que cambia contratos, p. ej. MOD_FIELD_INJECTION')
@@ -1364,6 +1416,8 @@ def main(argv=None):
     try:
         if args.cmd == 'verify':
             return verify_cmd(args, log)
+        if args.cmd == 'datastage':
+            return datastage_cmd(args, log)
         if args.cmd == 'plugins':
             from .plugins import PLUGINS
             print(json.dumps(PLUGINS, ensure_ascii=False, indent=2))

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import errors
-from .api import catalog, effort, executions, http_tests, metrics, modernization, projects, results, scans, uploads, workspace_migrations
+from .api import catalog, datastage, effort, executions, http_tests, metrics, modernization, projects, results, scans, uploads, workspace_migrations
 from .config import get_settings
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
@@ -18,10 +18,10 @@ def create_app() -> FastAPI:
     errors.install(app)
     app.add_middleware(CORSMiddleware, allow_origins=s.list_of(s.cors_origins), allow_credentials=False,
                        allow_methods=['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
-                       allow_headers=['Authorization', 'Content-Type', 'If-Match', 'Idempotency-Key', 'Last-Event-ID', 'X-Request-Id', 'X-Filename'],
+                       allow_headers=['Authorization', 'Content-Type', 'If-Match', 'Idempotency-Key', 'Last-Event-ID', 'X-Request-Id', 'X-Filename', 'X-Migration-Type'],
                        expose_headers=['ETag', 'X-Request-Id'])
     for r in (projects.router, scans.router, executions.router, catalog.router, uploads.router, effort.router, metrics.router, modernization.router, results.router,
-              workspace_migrations.router, http_tests.router):
+              workspace_migrations.router, http_tests.router, datastage.router):
         app.include_router(r, prefix='/api/v1')
 
     @app.get('/healthz', include_in_schema=False)

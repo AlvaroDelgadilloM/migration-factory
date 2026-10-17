@@ -1103,6 +1103,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/datastage-migrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List For Project */
+        get: operations["list_for_project_api_v1_projects__project_id__datastage_migrations_get"];
+        put?: never;
+        /** Start */
+        post: operations["start_api_v1_projects__project_id__datastage_migrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datastage-migrations/{dm_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get One */
+        get: operations["get_one_api_v1_datastage_migrations__dm_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1244,6 +1279,51 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+        };
+        /** DataStageMigrationIn */
+        DataStageMigrationIn: {
+            /**
+             * Timezone
+             * @default America/Mexico_City
+             */
+            timezone: string;
+        };
+        /** DataStageMigrationOut */
+        DataStageMigrationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Jobid */
+            jobId: string | null;
+            /** State */
+            state: string;
+            /** Options */
+            options: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Results */
+            results: {
+                [key: string]: unknown;
+            };
+            /** Createdby */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            job?: components["schemas"]["JobOut"] | null;
         };
         /** DevLogin */
         DevLogin: {
@@ -2132,10 +2212,16 @@ export interface components {
              */
             sourceType: "local" | "zip" | "git";
             /**
+             * Migrationtype
+             * @default JAVA_CAMEL
+             * @enum {string}
+             */
+            migrationType: "JAVA_CAMEL" | "DATASTAGE_AIRFLOW";
+            /**
              * Targetruntime
              * @enum {string}
              */
-            targetRuntime: "spring" | "quarkus";
+            targetRuntime: "spring" | "quarkus" | "airflow";
             /** Repositoryurl */
             repositoryUrl?: string | null;
             /** Defaultbranch */
@@ -2176,6 +2262,11 @@ export interface components {
             defaultBranch: string;
             /** Targetruntime */
             targetRuntime: string | null;
+            /**
+             * Migrationtype
+             * @default JAVA_CAMEL
+             */
+            migrationType: string;
             /** Requiredgates */
             requiredGates: string[];
             /** Independentreview */
@@ -4335,6 +4426,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-filename"?: string;
+                "x-migration-type"?: string;
                 "content-length"?: number | null;
             };
             path?: never;
@@ -4933,6 +5025,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HttpTestRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_for_project_api_v1_projects__project_id__datastage_migrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataStageMigrationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_v1_projects__project_id__datastage_migrations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "idempotency-key"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataStageMigrationIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_api_v1_datastage_migrations__dm_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataStageMigrationOut"];
                 };
             };
             /** @description Validation Error */
