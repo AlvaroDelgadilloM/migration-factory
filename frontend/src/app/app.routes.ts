@@ -9,6 +9,10 @@ export const routes: Routes = [
     path: '', component: Shell, canActivate: [authGuard], children: [
       { path: '', pathMatch: 'full', redirectTo: 'portfolio' },
       { path: 'portfolio', title: 'Cartera', loadComponent: () => import('./features/portfolio/portfolio').then(m => m.Portfolio) },
+      { path: 'p/:projectId/ds', title: 'Resumen · DataStage', loadComponent: () => import('./features/datastage/overview').then(m => m.DsOverview) },
+      { path: 'p/:projectId/ds/jobs', title: 'Jobs · DataStage', loadComponent: () => import('./features/datastage/jobs').then(m => m.DsJobs) },
+      { path: 'p/:projectId/ds/oleadas', title: 'Oleadas · DataStage', loadComponent: () => import('./features/datastage/waves').then(m => m.DsWaves) },
+      { path: 'p/:projectId/ds/acciones', title: 'Acciones · DataStage', loadComponent: () => import('./features/datastage/actions').then(m => m.DsActions) },
       { path: 'p/:projectId/inventory', title: 'Inventario', loadComponent: () => import('./features/inventory/inventory').then(m => m.Inventory) },
       { path: 'p/:projectId/findings', title: 'Hallazgos', loadComponent: () => import('./features/findings/findings').then(m => m.Findings) },
       { path: 'p/:projectId/plan', title: 'Plan', loadComponent: () => import('./features/plan/plan').then(m => m.PlanPage) },

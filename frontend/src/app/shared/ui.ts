@@ -85,6 +85,15 @@ const SEVERITY: Record<string, { s: 'success' | 'info' | 'warn' | 'danger' | 'se
   PASS_WITH_ACCEPTED: { s: 'warn', icon: 'pi-check-circle' },
   high: { s: 'danger', icon: 'pi-arrow-up' }, medium: { s: 'warn', icon: 'pi-minus' }, low: { s: 'info', icon: 'pi-arrow-down' }, info: { s: 'secondary', icon: 'pi-info-circle' },
   'maven-effective': { s: 'success', icon: 'pi-check' }, 'static-local': { s: 'info', icon: 'pi-file' }, 'static-partial': { s: 'warn', icon: 'pi-exclamation-circle' },
+  // overall / per-job results (DataStage → Airflow, workspace migrations)
+  SUCCEEDED: { s: 'success', icon: 'pi-check' }, PARTIAL_SUCCESS: { s: 'warn', icon: 'pi-exclamation-circle' }, FAILED: { s: 'danger', icon: 'pi-times' },
+  AUTO_MIGRATED: { s: 'success', icon: 'pi-check' }, SEMIAUTOMATIC: { s: 'info', icon: 'pi-eye' }, MANUAL_REVIEW: { s: 'warn', icon: 'pi-user-edit' },
+  AUTO_MIGRATABLE: { s: 'success', icon: 'pi-bolt' }, ARCHITECTURAL_REDESIGN: { s: 'danger', icon: 'pi-sitemap' },
+  TECHNICALLY_VALID: { s: 'success', icon: 'pi-verified' }, NOT_VERIFIED: { s: 'secondary', icon: 'pi-question-circle' },
+  FUNCTIONALLY_UNVERIFIED: { s: 'warn', icon: 'pi-question-circle' }, FUNCTIONALLY_VALIDATED: { s: 'success', icon: 'pi-verified' },
+  LOW: { s: 'success', icon: 'pi-circle-fill' }, MEDIUM: { s: 'info', icon: 'pi-circle-fill' }, HIGH: { s: 'warn', icon: 'pi-circle-fill' },
+  VERY_HIGH: { s: 'danger', icon: 'pi-circle-fill' }, PARALLEL: { s: 'secondary', icon: 'pi-cog' }, SEQUENCE: { s: 'contrast', icon: 'pi-share-alt' },
+  manual: { s: 'danger', icon: 'pi-user-edit' }, review: { s: 'info', icon: 'pi-eye' },
 };
 const LABEL: Record<string, string> = {
   succeeded: 'Correcto', running: 'En curso', queued: 'En cola', failed: 'Fallido', cancelled: 'Cancelado', timed_out: 'Tiempo agotado',
@@ -99,15 +108,30 @@ const LABEL: Record<string, string> = {
   NOT_EXECUTABLE: 'No ejecutable',
   SAME: 'Idéntico', DIFFERENT: 'Distinto', ACCEPTED: 'Diferencia aceptada', PASS_WITH_ACCEPTED: 'Aprobado con diferencias aceptadas',
   'maven-effective': 'Resuelto con Maven', 'static-local': 'Resuelto localmente', 'static-partial': 'Resolución parcial',
+  SUCCEEDED: 'Completado', PARTIAL_SUCCESS: 'Migrado con pendientes', FAILED: 'Falló',
+  AUTO_MIGRATED: 'Automático', SEMIAUTOMATIC: 'Revisar', MANUAL_REVIEW: 'Trabajo manual',
+  AUTO_MIGRATABLE: 'Automático', ARCHITECTURAL_REDESIGN: 'Rediseño',
+  TECHNICALLY_VALID: 'Técnicamente válido', NOT_VERIFIED: 'Sin verificar', FUNCTIONALLY_UNVERIFIED: 'Falta reconciliar',
+  FUNCTIONALLY_VALIDATED: 'Datos reconciliados', LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', VERY_HIGH: 'Muy alta',
+  PARALLEL: 'Job', SEQUENCE: 'Secuencia', manual: 'Manual', review: 'Revisar',
+};
+/** One line under a status where the code alone does not say what to do. */
+export const STATUS_HINT: Record<string, string> = {
+  PARTIAL_SUCCESS: 'Se generó y valida técnicamente, pero hay acciones manuales o falta comparar los datos.',
+  FUNCTIONALLY_UNVERIFIED: 'Falta ejecutar la reconciliación contra la salida de DataStage.',
+  AUTO_MIGRATED: 'Generado sin intervención.', SEMIAUTOMATIC: 'Generado; algunos pasos llevan una nota para confirmar.',
+  MANUAL_REVIEW: 'Al menos un paso no se ejecuta hasta completarlo a mano.',
 };
 
 /** Status never conveyed by color alone: icon + text. */
 @Component({
   selector: 'mf-status',
   imports: [TagModule],
-  template: `<p-tag [severity]="meta().s" [value]="label()"><i [class]="'pi ' + meta().icon" aria-hidden="true" style="margin-right:.35rem"></i></p-tag>`,
+  template: `<p-tag [severity]="meta().s" [value]="label()" [attr.title]="title()"><i [class]="'pi ' + meta().icon" aria-hidden="true" style="margin-right:.35rem"></i></p-tag>`,
 })
 export class StatusTag {
+  /** the technical code stays reachable (tooltip) without being what the reader has to decode */
+  title = computed(() => [this.value(), STATUS_HINT[this.value() ?? '']].filter(Boolean).join(' · '));
   value = input<string | null | undefined>('');
   meta = computed(() => SEVERITY[this.value() ?? ''] ?? { s: 'secondary' as const, icon: 'pi-circle' });
   label = computed(() => LABEL[this.value() ?? ''] ?? this.value() ?? '—');

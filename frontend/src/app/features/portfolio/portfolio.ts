@@ -6,6 +6,7 @@ import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
+import { SelectButtonModule } from 'primeng/selectbutton';
 import { TableModule } from 'primeng/table';
 import { TextareaModule } from 'primeng/textarea';
 import { Api } from '../../core/api';
@@ -21,7 +22,7 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
 
 @Component({
   selector: 'mf-portfolio',
-  imports: [FormsModule, RouterLink, ButtonModule, DialogModule, InputTextModule, MessageModule, SelectModule, TableModule, TextareaModule,
+  imports: [FormsModule, RouterLink, ButtonModule, DialogModule, InputTextModule, MessageModule, SelectModule, SelectButtonModule, TableModule, TextareaModule,
             PageHeader, StateView, StatusTag, FolderBrowser],
   template: `
     <mf-page-header title="Cartera" crumb="CARTERA" subtitle="Aplicaciones e integraciones visibles para su usuario">
@@ -40,6 +41,8 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
         <input pInputText id="q" placeholder="Buscar por nombre" [(ngModel)]="q" (keyup.enter)="search()" />
       </span>
       <p-button label="Buscar" icon="pi pi-search" [outlined]="true" (onClick)="search()" />
+      <p-selectbutton [options]="typeOptions" optionLabel="label" optionValue="value" [ngModel]="typeFilter()"
+                      (ngModelChange)="typeFilter.set($event ?? 'ALL'); search()" aria-label="Filtrar por tipo de migración" />
     </div>
 
     <mf-state [loading]="list.loading()" [error]="list.error()" [hasData]="!!list.data()" [empty]="list.data()?.items?.length === 0"
@@ -47,15 +50,16 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       <div class="panel">
         <p-table [value]="list.data()?.items ?? []" [loading]="list.loading()" dataKey="id" [tableStyle]="{ 'min-width': '52rem' }">
           <ng-template #header>
-            <tr><th scope="col">Proyecto</th><th scope="col">Origen</th><th scope="col">Runtime</th><th scope="col">Rol</th>
+            <tr><th scope="col">Proyecto</th><th scope="col">Tipo</th><th scope="col">Origen</th><th scope="col">Destino</th><th scope="col">Rol</th>
                 <th scope="col">Último análisis</th><th scope="col">Commit / snapshot</th><th scope="col">Hallazgos</th><th scope="col"></th></tr>
           </ng-template>
           <ng-template #body let-p>
             <tr>
-              <td><a [routerLink]="['/p', p.id, 'inventory']"><strong>{{ p.name }}</strong></a><br /><small class="muted">{{ p.description }}</small></td>
+              <td><a [routerLink]="['/p', p.id, p.migrationType === 'DATASTAGE_AIRFLOW' ? 'ds' : 'inventory']"><strong>{{ p.name }}</strong></a><br /><small class="muted">{{ p.description }}</small></td>
+              <td><span class="chip" [class.ds]="p.migrationType === 'DATASTAGE_AIRFLOW'">{{ p.migrationType === 'DATASTAGE_AIRFLOW' ? 'DataStage → Airflow' : 'Java / Camel' }}</span></td>
               <td class="small"><span class="chip">{{ sourceLabel[p.sourceType] }}</span>
                 <span class="mono">{{ p.repositoryUrl ?? p.localPath ?? p.upload?.['filename'] }}</span></td>
-              <td>{{ p.targetRuntime ?? '—' }}</td>
+              <td>{{ runtimeLabel[p.targetRuntime ?? ''] ?? '—' }}</td>
               <td>{{ p.myRole ?? '—' }}</td>
               <td>@if (p.lastScan) { <mf-status [value]="p.lastScan.status" /> } @else { <span class="muted">No ejecutado</span> }</td>
               <td class="mono">{{ p.lastScan?.commitSha ? short(p.lastScan?.commitSha) : (p.lastScan?.snapshotHash ? 'snap ' + short(p.lastScan?.snapshotHash) : '—') }}</td>
@@ -73,89 +77,111 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       </div>
     </mf-state>
 
-    <p-dialog header="Registrar proyecto" [(visible)]="dialog" [modal]="true" [style]="{ width: '44rem' }">
-      <form class="form" (ngSubmit)="create()" #f="ngForm">
-        <fieldset class="source">
-          <legend>Tipo de migración</legend>
-          @for (t of migrationTypes; track t.value) {
-            <label class="radio">
-              <input type="radio" name="migrationType" [value]="t.value" [(ngModel)]="form.migrationType" (ngModelChange)="typeChanged()" />
-              <span><strong>{{ t.label }}</strong><br /><small class="muted">{{ t.hint }}</small></span>
-            </label>
-          }
-        </fieldset>
-        <fieldset class="source">
-          <legend>Origen del proyecto <span class="req" aria-hidden="true">*</span></legend>
-          @for (o of sourceOptions(); track o.value) {
-            <label class="radio" [class.disabled]="o.disabled">
-              <input type="radio" name="sourceType" [value]="o.value" [(ngModel)]="form.sourceType" [disabled]="o.disabled" required />
-              <span><strong>{{ o.label }}</strong><br /><small class="muted">{{ o.hint }}</small></span>
-            </label>
-          }
-        </fieldset>
-
-        <label for="name">Nombre</label>
-        <input pInputText id="name" name="name" required minlength="2" [(ngModel)]="form.name" />
-        @if (form.migrationType === 'JAVA_CAMEL') {
-          <label for="rt">Runtime objetivo</label>
-          <p-select inputId="rt" name="rt" [options]="runtimes" optionLabel="label" optionValue="value" [(ngModel)]="form.targetRuntime" />
-        } @else {
-          <small class="muted">Destino: Apache Airflow 2.10.5 (DAGs, SQL para Oracle, Connections y Variables). Origen: exportaciones DSX.</small>
+    <p-dialog header="Registrar proyecto" [(visible)]="dialog" [modal]="true" [style]="{ width: '46rem' }" [breakpoints]="{ '720px': '96vw' }">
+      <ol class="wsteps" aria-label="Pasos">
+        @for (t of stepTitles; track $index) {
+          <li [class.on]="step() === $index + 1" [class.done]="step() > $index + 1"><span>{{ step() > $index + 1 ? '✓' : $index + 1 }}</span> {{ t }}</li>
         }
-
-        @switch (form.sourceType) {
-          @case ('local') {
-            <label for="path">Ruta del proyecto</label>
-            <span class="row">
-              <input pInputText id="path" name="path" required [(ngModel)]="form.localPath" [placeholder]="(caps()?.localSourceRoots?.[0] ?? '/sources') + '/mi-proyecto'" />
-              <p-button label="Examinar…" icon="pi pi-folder-open" [outlined]="true" (onClick)="browsing.set(true)" />
-            </span>
-            <small class="muted">Ruta en el equipo donde corre el worker (no en su navegador). Directorios autorizados:
-              <code>{{ caps()?.localSourceRoots?.join(', ') }}</code>. Se analiza una copia (snapshot); la carpeta nunca se modifica.</small>
-            @if (form.localPath && !pathOk()) { <small class="err">Use una ruta absoluta dentro de un directorio autorizado</small> }
-          }
-          @case ('zip') {
-            <span class="row two">
-              <span><label for="zip">Archivo ZIP (máx. {{ caps()?.maxUploadMb ?? 200 }} MB)</label>
-                <input id="zip" type="file" accept=".zip,application/zip" (change)="pick($event)" /></span>
-              <span><label for="dir">o una carpeta de mi equipo</label>
-                <input id="dir" type="file" webkitdirectory multiple (change)="pickFolder($event)" /></span>
-            </span>
-            <small class="muted">La carpeta se comprime en su navegador (sin .git, target ni node_modules) y se sube como ZIP; no se envía su ruta.</small>
-            @if (uploading()) { <small class="muted"><i class="pi pi-spin pi-spinner"></i> {{ progress() || 'Subiendo y validando estructura…' }}</small> }
-            @if (uploaded(); as u) {
-              @if (u.structure['dsxFiles']) {
-                <p-message severity="success"><span>{{ u.filename }} · {{ $any(u.structure['dsxFiles']).length }} archivo(s) DSX · sha256 {{ u.sha256.slice(0, 12) }}…</span></p-message>
+      </ol>
+      <form class="form" (ngSubmit)="create()" #f="ngForm">
+        @if (step() === 1) {
+          <fieldset class="source">
+            <legend>¿De dónde viene el proyecto? <span class="req" aria-hidden="true">*</span></legend>
+            @for (o of sourceOptions(); track o.value) {
+              <label class="radio" [class.disabled]="o.disabled">
+                <input type="radio" name="sourceType" [value]="o.value" [(ngModel)]="form.sourceType" [disabled]="o.disabled" required />
+                <span><strong>{{ o.label }}</strong><br /><small class="muted">{{ o.hint }}</small></span>
+              </label>
+            }
+          </fieldset>
+          @switch (form.sourceType) {
+            @case ('local') {
+              <label for="path">Ruta del proyecto</label>
+              <span class="row">
+                <input pInputText id="path" name="path" required [(ngModel)]="form.localPath" [placeholder]="(caps()?.localSourceRoots?.[0] ?? '/sources') + '/mi-proyecto'" />
+                <p-button label="Examinar…" icon="pi pi-folder-open" [outlined]="true" (onClick)="browsing.set(true)" />
+              </span>
+              <small class="muted">En el equipo donde corre la plataforma, dentro de <code>{{ caps()?.localSourceRoots?.join(', ') }}</code>.
+                Se analiza una copia; la carpeta nunca se modifica.</small>
+              @if (form.localPath && !pathOk()) { <small class="err">Use una ruta absoluta dentro de un directorio autorizado</small> }
+            }
+            @case ('zip') {
+              <span class="row two">
+                <span><label for="zip">Archivo ZIP (máx. {{ caps()?.maxUploadMb ?? 200 }} MB)</label>
+                  <input id="zip" type="file" accept=".zip,application/zip" (change)="pick($event)" /></span>
+                <span><label for="dir">o una carpeta de mi equipo</label>
+                  <input id="dir" type="file" webkitdirectory multiple (change)="pickFolder($event)" /></span>
+              </span>
+              @if (uploading()) { <small class="muted"><i class="pi pi-spin pi-spinner"></i> {{ progress() || 'Subiendo y revisando el contenido…' }}</small> }
+              @if (uploaded(); as u) {
+                <p-message severity="success"><span><strong>{{ u.filename }}</strong> · {{ detectedText(u) }}</span></p-message>
               } @else {
-                <p-message severity="success"><span>{{ u.filename }} · raíz Maven <code>{{ u.structure['root'] }}</code> ·
-                  módulos: {{ $any(u.structure['modules']).join(', ') }} · sha256 {{ u.sha256.slice(0, 12) }}…</span></p-message>
+                <small class="muted">Proyecto Java/Maven o exportaciones DSX de DataStage: el tipo se detecta del contenido.</small>
               }
             }
-            <small class="muted">Se rechazan rutas fuera del archivo, enlaces simbólicos, cifrado y compresión excesiva. La extracción ocurre aislada en el worker.</small>
-          }
-          @case ('git') {
-            <label for="url">URL HTTPS del repositorio</label>
-            <input pInputText id="url" name="url" required [(ngModel)]="form.repositoryUrl" placeholder="https://github.com/org/repo.git" />
-            <small class="muted">Hosts permitidos: {{ caps()?.gitAllowedHosts?.join(', ') }}. Sin credenciales en la URL.</small>
-            @if (form.repositoryUrl && !urlOk()) { <small class="err">Solo https://host/ruta (no file://, ssh ni http)</small> }
-            <label for="branch">Rama o referencia</label>
-            <input pInputText id="branch" name="branch" [(ngModel)]="form.defaultBranch" />
-            <label for="cred">Referencia de credencial (opcional)</label>
-            <input pInputText id="cred" name="cred" [(ngModel)]="form.credentialRef" placeholder="env:MF_CRED_GITHUB" />
-            <small class="muted">Nunca el token: env:MF_CRED_* o vault:ruta (adaptador vault pendiente).</small>
+            @case ('git') {
+              <label for="url">URL HTTPS del repositorio</label>
+              <input pInputText id="url" name="url" required [(ngModel)]="form.repositoryUrl" placeholder="https://github.com/org/repo.git" />
+              @if (form.repositoryUrl && !urlOk()) { <small class="err">Solo https://host/ruta (no file://, ssh ni http)</small> }
+              <span class="row two">
+                <span><label for="branch">Rama o referencia</label><input pInputText id="branch" name="branch" [(ngModel)]="form.defaultBranch" /></span>
+                <span><label for="cred">Credencial (opcional)</label>
+                  <input pInputText id="cred" name="cred" [(ngModel)]="form.credentialRef" placeholder="env:MF_CRED_GITHUB" /></span>
+              </span>
+              <small class="muted">Hosts permitidos: {{ caps()?.gitAllowedHosts?.join(', ') }}. Nunca el token: una referencia env:MF_CRED_*.</small>
+            }
           }
         }
-
-        <label for="desc">Descripción (opcional)</label>
-        <textarea pTextarea id="desc" name="desc" rows="2" [(ngModel)]="form.description"></textarea>
+        @if (step() === 2) {
+          @if (detected(); as d) {
+            <p-message severity="info"><span>Detectado en el ZIP: <strong>{{ typeLabel(d) }}</strong>. Puede cambiarlo si no es correcto.</span></p-message>
+          }
+          <fieldset class="source">
+            <legend>Tipo de migración</legend>
+            @for (t of migrationTypes; track t.value) {
+              <label class="radio" [class.disabled]="!!detected() && detected() !== t.value">
+                <input type="radio" name="migrationType" [value]="t.value" [(ngModel)]="form.migrationType" (ngModelChange)="typeChanged()"
+                       [disabled]="!!detected() && detected() !== t.value" />
+                <span><strong>{{ t.label }}</strong><br /><small class="muted">{{ t.hint }}</small></span>
+              </label>
+            }
+          </fieldset>
+          @if (form.migrationType === 'JAVA_CAMEL') {
+            <label for="rt">Runtime objetivo</label>
+            <p-select inputId="rt" name="rt" [options]="runtimes" optionLabel="label" optionValue="value" [(ngModel)]="form.targetRuntime" />
+          } @else {
+            <small class="muted">Destino: Apache Airflow 2.10.5 — DAGs, SQL para Oracle, Connections y Variables, validados con DagBag.</small>
+          }
+        }
+        @if (step() === 3) {
+          <label for="name">Nombre del proyecto</label>
+          <input pInputText id="name" name="name" required minlength="2" [(ngModel)]="form.name" autofocus />
+          <label for="desc">Descripción (opcional)</label>
+          <textarea pTextarea id="desc" name="desc" rows="2" [(ngModel)]="form.description"></textarea>
+          <dl class="kv review">
+            <dt>Origen</dt><dd>{{ sourceLabel[form.sourceType] }} {{ uploaded()?.filename ?? form.repositoryUrl ?? '' }}{{ form.sourceType === 'local' ? form.localPath : '' }}</dd>
+            <dt>Tipo</dt><dd>{{ typeLabel(form.migrationType) }} · {{ runtimeLabel[form.targetRuntime] }}</dd>
+          </dl>
+        }
         @if (createError(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
         <div class="dialog-actions">
+          @if (step() > 1) { <p-button label="Atrás" icon="pi pi-arrow-left" [text]="true" (onClick)="step.set(step() - 1)" /> }
+          <span class="grow"></span>
           <p-button label="Cancelar" [text]="true" (onClick)="dialog = false" />
-          <p-button type="submit" label="Registrar" [disabled]="!f.valid || !sourceReady()" [loading]="creating()" />
+          @if (step() < 3) {
+            <p-button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" [disabled]="step() === 1 && !sourceReady()" (onClick)="next()" />
+          } @else {
+            <p-button type="submit" label="Registrar" icon="pi pi-check" [disabled]="!f.valid || !sourceReady()" [loading]="creating()" />
+          }
         </div>
       </form>
     </p-dialog>
     <mf-folder-browser [visible]="browsing()" [start]="form.localPath || null" (selected)="form.localPath = $event; browsing.set(false)" (closed)="browsing.set(false)" />`,
+  styles: [`.wsteps{display:flex;gap:8px;list-style:none;padding:0;margin:0 0 14px}.wsteps li{flex:1;display:flex;gap:8px;align-items:center;color:var(--mf-muted);
+    padding:8px 10px;border-radius:8px;background:#f3f6fa;font-size:13px}.wsteps li span{width:22px;height:22px;border-radius:50%;display:inline-grid;
+    place-items:center;background:#dfe7ee;font-weight:600;font-size:12px}.wsteps li.on{background:#e6f2f3;color:var(--mf-ink);font-weight:600}
+    .wsteps li.on span{background:var(--mf-teal);color:#fff}.wsteps li.done span{background:#12b76a;color:#fff}.grow{flex:1}
+    .review{margin-top:10px;font-size:13px}.chip.ds{background:#fff1e0}`],
 })
 export class Portfolio {
   private api = inject(Api);
@@ -165,6 +191,11 @@ export class Portfolio {
   pager = new CursorPager();
   q = signal('');
   dialog = false;
+  step = signal(1);
+  stepTitles = ['Origen', 'Tipo', 'Datos'];
+  typeFilter = signal<'ALL' | 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW'>('ALL');
+  typeOptions = [{ label: 'Todos', value: 'ALL' }, { label: 'Java / Camel', value: 'JAVA_CAMEL' }, { label: 'DataStage → Airflow', value: 'DATASTAGE_AIRFLOW' }];
+  runtimeLabel: Record<string, string> = { spring: 'Spring Boot', quarkus: 'Quarkus', airflow: 'Apache Airflow' };
   creating = signal(false);
   createError = signal<UiError | null>(null);
   form = this.emptyForm();
@@ -199,9 +230,25 @@ export class Portfolio {
     return { migrationType: 'JAVA_CAMEL' as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW', sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
              localPath: '', repositoryUrl: '', defaultBranch: 'main', credentialRef: '' };
   }
-  typeChanged() {  // the upload is validated for one type: a new type needs a new upload
+  typeChanged() {
     this.form.targetRuntime = this.form.migrationType === 'DATASTAGE_AIRFLOW' ? 'airflow' : 'spring';
-    this.uploaded.set(null);
+  }
+  /** Type found in the uploaded ZIP (.dsx = DataStage, pom.xml = Java/Camel); git and local sources choose it by hand. */
+  detected = computed(() => this.uploadedType());
+  private uploadedType = computed(() => (this.uploaded()?.structure?.['migrationType'] as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | undefined) ?? null);
+  private applyDetected() {
+    const t = this.uploadedType();
+    if (t && this.form.sourceType === 'zip') { this.form.migrationType = t; this.typeChanged(); }
+  }
+  next() {
+    if (this.step() === 1) this.applyDetected();
+    this.step.update(v => Math.min(3, v + 1));
+  }
+  typeLabel(t: string | null | undefined) { return this.migrationTypes.find(x => x.value === t)?.label ?? '—'; }
+  detectedText(u: Upload) {
+    const st = u.structure as Record<string, any>;
+    return st['dsxFiles'] ? `DataStage → Airflow · ${st['dsxFiles'].length} exportación(es) DSX`
+      : `Java / Camel · raíz Maven ${st['root']} · ${(st['modules'] ?? []).length} módulo(s)`;
   }
   urlOk() { return URL_RE.test(this.form.repositoryUrl.trim()); }
   pathOk() {
@@ -225,7 +272,7 @@ export class Portfolio {
     const max = (this.caps()?.maxUploadMb ?? 200) * 1024 * 1024;
     if (file.size > max) { this.createError.set(new UiError(413, 'UPLOAD_TOO_LARGE', `El archivo supera ${this.caps()?.maxUploadMb} MB`)); return; }
     this.uploading.set(true);
-    try { this.uploaded.set(await this.api.uploadZip(file, file.name, this.form.migrationType)); }
+    try { this.uploaded.set(await this.api.uploadZip(file, file.name, 'AUTO')); this.applyDetected(); }
     catch (e) { this.createError.set(UiError.from(e)); }
     finally { this.uploading.set(false); }
   }
@@ -243,7 +290,8 @@ export class Portfolio {
       if (zip.size > (this.caps()?.maxUploadMb ?? 200) * 1024 * 1024) throw new UiError(413, 'UPLOAD_TOO_LARGE', 'La carpeta comprimida supera el máximo permitido');
       this.progress.set('Subiendo y validando estructura…');
       const folder = files[0].path.split('/')[0] || 'proyecto';
-      this.uploaded.set(await this.api.uploadZip(zip, `${folder}.zip`, this.form.migrationType));
+      this.uploaded.set(await this.api.uploadZip(zip, `${folder}.zip`, 'AUTO'));
+      this.applyDetected();
     } catch (e) {
       this.createError.set(e instanceof Error && !(e instanceof UiError) ? new UiError(422, 'FOLDER_INVALID', e.message) : UiError.from(e));
     } finally {
@@ -251,16 +299,23 @@ export class Portfolio {
       this.progress.set('');
     }
   }
-  load() { this.list.load(() => this.api.projects({ q: this.q(), limit: 20, cursor: this.pager.current() })); }
+  load() {
+    const t = this.typeFilter();
+    this.list.load(() => this.api.projects({ q: this.q(), limit: 20, cursor: this.pager.current(), ...(t === 'ALL' ? {} : { migrationType: t }) }));
+  }
   search() { this.pager.reset(); this.load(); }
   openNew() {
     this.form = this.emptyForm();
+    this.step.set(1);
     this.uploaded.set(null);
     this.createError.set(null);
     this.dialog = true;
     this.api.capabilities().then(c => this.caps.set(c)).catch(e => this.createError.set(UiError.from(e)));
   }
-  open(p: Project) { this.ctx.select(p.id); this.router.navigate(['/p', p.id, 'inventory']); }
+  open(p: Project) {
+    this.ctx.select(p.id);
+    this.router.navigate(['/p', p.id, p.migrationType === 'DATASTAGE_AIRFLOW' ? 'ds' : 'inventory']);
+  }
 
   async create() {
     this.creating.set(true);

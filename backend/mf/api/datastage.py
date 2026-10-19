@@ -10,8 +10,8 @@ from .. import audit, jobs
 from ..auth import Principal, authorize, current_principal
 from ..db import get_db
 from ..errors import ApiError
-from ..models import DataStageMigration, Job
-from ..schemas import DataStageMigrationIn, DataStageMigrationOut, JobOut
+from ..models import DataStageMigration, Job, now
+from ..schemas import DataStageActionIn, DataStageMigrationIn, DataStageMigrationOut, JobOut
 
 router = APIRouter(tags=['datastage'])
 
@@ -37,7 +37,10 @@ def start(project_id: uuid.UUID, body: DataStageMigrationIn, request: Request, i
     if db.scalar(select(DataStageMigration.id).where(DataStageMigration.project_id == p.id,
                                                      DataStageMigration.state.in_(('queued', 'running')))):
         raise ApiError(409, 'INVALID_STATE', 'Ya hay una migración DataStage en curso para este proyecto')
-    dm = DataStageMigration(project_id=p.id, options=payload, created_by=me.subject)
+    prev = db.scalar(select(DataStageMigration).where(DataStageMigration.project_id == p.id)
+                     .order_by(DataStageMigration.created_at.desc()).limit(1))
+    # the worklist progress follows the project: same job|stage|text = same key, so a re-run keeps what was done
+    dm = DataStageMigration(project_id=p.id, options=payload, created_by=me.subject, action_state=dict(prev.action_state) if prev else {})
     db.add(dm)
     db.flush()
     job = jobs.create_job(db, kind='datastage_migrate', project_id=p.id, subject_id=dm.id, actor=me.subject)
@@ -64,4 +67,23 @@ def get_one(dm_id: uuid.UUID, db: Session = Depends(get_db), me: Principal = Dep
     if dm is None:
         raise ApiError(404, 'NOT_FOUND', 'Recurso no encontrado')
     authorize(db, me, dm.project_id, 'view')
+    return _out(db, dm)
+
+
+@router.patch('/datastage-migrations/{dm_id}/actions', response_model=DataStageMigrationOut)
+def set_action(dm_id: uuid.UUID, body: DataStageActionIn, request: Request, db: Session = Depends(get_db),
+               me: Principal = Depends(current_principal)):
+    """Mark one manual action of the worklist done / pending (who and when are recorded; audited)."""
+    dm = db.get(DataStageMigration, dm_id)
+    if dm is None:
+        raise ApiError(404, 'NOT_FOUND', 'Recurso no encontrado')
+    authorize(db, me, dm.project_id, 'execute')
+    if body.key not in {a['key'] for a in (dm.summary or {}).get('actions', [])}:
+        raise ApiError(404, 'NOT_FOUND', 'Acción inexistente en esta migración')
+    state = dict(dm.action_state or {})
+    state[body.key] = {'done': body.done, 'by': me.subject, 'at': now().isoformat(timespec='seconds'), 'note': body.note}
+    dm.action_state = state
+    audit.record(db, actor=me.subject, action='datastage_action.' + ('done' if body.done else 'reopen'), entity_type='datastage_migration',
+                 entity_id=dm.id, project_id=dm.project_id, details={'key': body.key, 'note': body.note}, request=request)
+    db.commit()
     return _out(db, dm)

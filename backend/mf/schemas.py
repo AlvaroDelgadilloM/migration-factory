@@ -668,6 +668,13 @@ class DataStageMigrationOut(Dto):
     options: dict
     summary: dict
     results: dict
+    action_state: dict = {}
     created_by: str
     created_at: datetime
     job: JobOut | None = None
+
+
+class DataStageActionIn(Dto):
+    key: str = Field(pattern=r'^[0-9a-f]{16}$')
+    done: bool
+    note: str | None = Field(default=None, max_length=1000)

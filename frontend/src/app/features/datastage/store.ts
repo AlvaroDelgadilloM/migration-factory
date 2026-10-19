@@ -1,0 +1,78 @@
+import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import { Api } from '../../core/api';
+import { UiError } from '../../core/errors';
+import { DataStageMigration } from '../../core/models';
+import { ProjectContext } from '../../core/project-context';
+import { Loader } from '../../shared/state';
+
+export interface DsJob {
+  name: string; jobType: string; complexity: string; score: number; migratability: string; confidence: string; state: string;
+  dependsOn: string[]; calls: string[]; manualActions: string[]; dag: string | null; reasons: string[]; stages: number; sourceFile: string;
+  steps: { task: string; kind: string; stage: string; status: string; issues: string[]; sqlFile: string | null }[];
+}
+export interface DsAction { key: string; job: string; stage: string; category: string; severity: 'manual' | 'review'; source: string; text: string }
+
+/** Latest DataStage → Airflow run of the selected project, shared by the Resumen / Jobs / Oleadas / Acciones pages. */
+@Injectable({ providedIn: 'root' })
+export class DataStageStore {
+  private api = inject(Api);
+  readonly ctx = inject(ProjectContext);
+  readonly list = new Loader<DataStageMigration[]>();
+  readonly busy = signal(false);
+  readonly error = signal<UiError | null>(null);
+  readonly current = computed(() => this.list.data()?.[0] ?? null);
+  readonly running = computed(() => ['queued', 'running'].includes(this.current()?.state ?? ''));
+  // free-form report written by the engine
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly summary = computed<any>(() => this.current()?.summary ?? null);
+  readonly jobs = computed<DsJob[]>(() => Object.entries((this.current()?.results ?? {}) as Record<string, any>).map(([name, r]) => ({
+    name, jobType: r.jobType, complexity: r.complexity, score: r.score, migratability: r.migratability, confidence: r.confidence,
+    state: r.state, dependsOn: r.dependsOn ?? [], calls: r.calls ?? [], manualActions: r.manualActions ?? [], dag: r.dag ?? null,
+    reasons: r.reasons ?? [], stages: r.stages ?? 0, sourceFile: r.sourceFile ?? '', steps: r.steps ?? [] })));
+  readonly actions = computed<DsAction[]>(() => this.summary()?.actions ?? []);
+  readonly actionState = computed(() => (this.current()?.actionState ?? {}) as Record<string, { done: boolean; by: string; at: string; note?: string }>);
+  readonly pilot = computed(() => Object.fromEntries(Object.entries((this.summary()?.pilot ?? {}) as Record<string, string>).map(([k, v]) => [v, k])));
+  readonly artifacts = computed(() => Object.entries((this.summary()?.artifacts ?? {}) as Record<string, string>)
+    .map(([k, v]) => ({ name: k.replace(/^ds-[0-9a-f]+\./, ''), id: v })));
+  readonly airflowZip = computed(() => this.artifacts().find(a => a.name.endsWith('.zip')) ?? null);
+  readonly startReason = computed(() => {
+    if (!this.ctx.can('execute')) return `Su rol (${this.ctx.role()}) no permite migrar`;
+    if (this.running()) return 'Ya hay una migración en curso';
+    return null;
+  });
+  private loadedFor: string | null = null;
+
+  constructor() {
+    effect(() => {
+      const id = this.ctx.projectId();
+      if (id && id !== this.loadedFor && this.ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW') {
+        this.loadedFor = id;
+        this.list.data.set(null);
+        this.list.load(() => this.api.dataStageMigrations(id));
+      }
+    });
+  }
+
+  reload() { return this.list.reload(); }
+
+  async start(timezone: string) {
+    const id = this.ctx.projectId();
+    if (!id) return;
+    this.error.set(null);
+    this.busy.set(true);
+    try { await this.api.startDataStageMigration(id, { timezone: timezone.trim() }); await this.reload(); }
+    catch (e) { this.error.set(UiError.from(e)); }
+    finally { this.busy.set(false); }
+  }
+
+  async setAction(key: string, done: boolean) {
+    const m = this.current();
+    if (!m) return;
+    try {
+      const updated = await this.api.setDataStageAction(m.id, key, done);
+      this.list.data.update(l => l ? [updated, ...l.slice(1)] : l);
+    } catch (e) { this.error.set(UiError.from(e)); }
+  }
+}
+
+export const STATE_ORDER = ['MANUAL_REVIEW', 'SEMIAUTOMATIC', 'AUTO_MIGRATED', 'BLOCKED', 'FAILED'];

@@ -514,3 +514,19 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
 - Pendiente: fallback con IA (doc 58, Sprint 4), ejecutar la reconciliación contra DataStage, programación (no viene en el DSX).
 - Pruebas: `tests/test_datastage.py` (10; 2 se activan con `MF_AIRFLOW_PYTHON` y `MF_DATASTAGE_CORPUS`); frontend 12.
 - Detalle: `docs/20_DATASTAGE_AIRFLOW.md`.
+
+## Interfaz: detección de tipo, menú por tipo, estados legibles y lista de trabajo (2026-10-19)
+- Registrar proyecto es un asistente de 3 pasos (Origen → Tipo → Datos). El ZIP se sube con `X-Migration-Type: AUTO` y la
+  plataforma detecta el tipo por su contenido (`.dsx` = DataStage, `pom.xml` = Java/Camel); si no trae ninguno, el error dice
+  qué contiene. Git y carpeta local eligen el tipo a mano.
+- Menú lateral según el tipo de proyecto: Java/Camel conserva Inventario…Validación y Pruebas; DataStage muestra Resumen,
+  Jobs, Oleadas y Acciones manuales (rutas `/p/:id/ds…`; el antiguo panel dentro de Inventario se eliminó).
+- Resumen DataStage: estado en palabras, «siguiente paso», avance, controles de calidad con nombre legible, piloto y una
+  descarga principal del proyecto Airflow. Jobs: tabla a todo el ancho con filtros y detalle lateral (pasos generados, SQL,
+  dependencias). Oleadas: columnas por oleada con el estado de cada job. Acciones: lista de trabajo agrupada por categoría,
+  con casillas persistidas (`PATCH /datastage-migrations/{id}/actions`, auditado; alembic 0013 `action_state`) que se
+  conservan al volver a migrar.
+- Estados con etiqueta en español y el código técnico en el tooltip (PARTIAL_SUCCESS → «Migrado con pendientes», etc.).
+- Cartera: columna y filtro por tipo de migración (`GET /projects?migrationType=`), destino legible, ancho máximo 1840 px.
+- Pruebas: backend 203, frontend 17. Revisión visual en navegador pendiente: la extensión de Chrome se desconectó por el
+  cambio de cuenta.

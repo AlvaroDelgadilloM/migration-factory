@@ -1222,7 +1222,7 @@ def do_datastage_migrate(job: Job, ctx: Context):
                          'steps': j['migration'].get('steps', [])}
                       for n, j in rep['jobs'].items()}
         dm.summary = {k: rep[k] for k in ('status', 'functionalValidation', 'technicalValidation', 'parse', 'counts', 'gates', 'pilot',
-                                          'manualActions', 'airflow')} | {
+                                          'manualActions', 'actions', 'airflow')} | {
             'waves': rep['graph']['waves'], 'droppedEdges': rep['graph']['droppedEdges'], 'masterSequences': rep['graph']['masterSequences'],
             'dags': rep['dags'], 'artifacts': arts}
         db.commit()

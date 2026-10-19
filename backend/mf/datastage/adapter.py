@@ -90,7 +90,8 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
               'parse': {'status': project.metadata['status'], 'files': len(files), 'jobs': len(project.jobs),
                         'sequences': len(project.sequences), 'dataStageVersion': project.metadata['dataStageVersion']},
               'counts': counts, 'gates': gates, 'jobs': {x['job']: x | {'migration': results[x['job']]} for x in analysis['jobs']},
-              'graph': analysis['graph'], 'pilot': analysis['pilot'], 'manualActions': manual, 'dags': gen.dags,
+              'graph': analysis['graph'], 'pilot': analysis['pilot'], 'manualActions': manual, 'actions': worklist(analysis, results),
+              'dags': gen.dags,
               'airflow': AIRFLOW, 'generatedAt': datetime.now(timezone.utc).isoformat(timespec='seconds')}
     (report_dir / 'inventory.json').write_text(json.dumps(analysis['jobs'], ensure_ascii=False, indent=1))
     (report_dir / 'dependency-graph.json').write_text(json.dumps(analysis['graph'], ensure_ascii=False, indent=1))
@@ -124,6 +125,50 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
     (report_dir / 'migration-report.md').write_text(markdown(report))
     report['output'] = {'project': str(proj_dir), 'zip': str(zip_path)}
     return report
+
+
+CATEGORIES = (  # first match wins; the UI groups the worklist by these
+    ('PL/SQL', r'PL/SQL|WriteMode 8'),
+    ('Lógica entre filas', r'fila anterior|estado acumulado|entre filas|orden de filas|LAG\(|@PARTITION'),
+    ('Rutinas de DataStage', r'rutina|reimplementar'),
+    ('Archivos planos', r'archivo|files\.yaml|delimitador'),
+    ('Join / Merge', r'Merge|JOIN|join|maestro|rechazo'),
+    ('Duplicados y orden', r'duplicad|RemDup|Sort previo|«first»'),
+    ('Expresiones del Transformer', r'expresi[oó]n'),
+    ('Comandos de shell', r'comando|BashOperator'),
+    ('Generadores de datos', r'Generator|generad'),
+    ('Condiciones y filtros', r'condici|WHERE|Filter'),
+    ('Rediseño', r'sin equivalente|rediseñ|sin mapeo'),
+    ('Tablas y SQL', r'TableAction|SQL|tabla|clave'),
+)
+
+
+def worklist(analysis: dict, results: dict) -> list[dict]:
+    """Manual actions as a structured worklist (job, stage, category, severity) with a stable key, so a team can mark them
+    done across runs of the same project. manual = the step does not run until it is done; review = runs, confirm it."""
+    import re
+    out, seen = [], set()
+
+    def add(job, stage, text, severity, source):
+        if text.startswith(stage + ': '):  # the stage is its own column
+            text = text[len(stage) + 2:]
+        key = hashlib.sha1(f'{job}|{stage}|{text}'.encode()).hexdigest()[:16]
+        if key in seen:
+            return
+        seen.add(key)
+        cat = next((c for c, rx in CATEGORIES if re.search(rx, text)), 'Otros')
+        out.append({'key': key, 'job': job, 'stage': stage, 'category': cat, 'severity': severity, 'source': source, 'text': text})
+    for job, decisions in analysis['decisions'].items():
+        for d in decisions:
+            for m in d['manual_actions']:
+                add(job, d['stage'], m.split(': ', 1)[-1] if m.startswith(d['stage'] + ':') else m,
+                    'manual' if d['status'] in ('MANUAL_REVIEW', 'UNSUPPORTED', 'ARCHITECTURAL_REDESIGN') else 'review', 'registry')
+    for job, r in results.items():
+        for s in r.get('steps', []):
+            if s['status'] in ('MANUAL', 'REVIEW'):
+                for issue in s['issues']:
+                    add(job, s['stage'], issue, 'manual' if s['status'] == 'MANUAL' else 'review', 'generation')
+    return sorted(out, key=lambda a: (a['severity'] != 'manual', a['category'], a['job'], a['stage']))
 
 
 def markdown(r: dict) -> str:

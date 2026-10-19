@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
@@ -13,16 +14,11 @@ import { CursorPager, Loader } from '../../shared/state';
 import { ActionButton, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
 import { WorkspacePanel } from './workspace';
 import { WorkspaceMigrationPanel } from './ws-migration';
-import { DataStagePanel } from './datastage';
 
 @Component({
   selector: 'mf-inventory',
-  imports: [FormsModule, InputTextModule, MessageModule, SelectModule, TableModule, TabsModule, ActionButton, JobLog, PageHeader, StateView, StatusTag, WorkspacePanel, WorkspaceMigrationPanel, DataStagePanel],
+  imports: [FormsModule, InputTextModule, MessageModule, SelectModule, TableModule, TabsModule, ActionButton, JobLog, PageHeader, StateView, StatusTag, WorkspacePanel, WorkspaceMigrationPanel],
   template: `
-    @if (ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW') {
-      <mf-page-header title="DataStage → Airflow" crumb="INVENTARIO" [subtitle]="ctx.project()?.name" />
-      <mf-datastage [projectId]="ctx.project()!.id" />
-    } @else {
     <mf-page-header title="Inventario" crumb="INVENTARIO" [subtitle]="ctx.project()?.name">
       @if (ctx.project()?.sourceType === 'git') {
         <label class="sr-only" for="ref">Rama, tag o SHA</label>
@@ -154,12 +150,13 @@ import { DataStagePanel } from './datastage';
         }
       }
     </mf-state>
-    }`,
+`,
 })
 export class Inventory {
   projectId = input.required<string>();
   ctx = inject(ProjectContext);
   private api = inject(Api);
+  private router = inject(Router);
   scans = new Loader<Page<Scan>>();
   scan = new Loader<Scan>();
   modules = new Loader<Module[]>();
@@ -181,6 +178,10 @@ export class Inventory {
   constructor() {
     effect(() => { const id = this.projectId(); this.ctx.select(id); this.loadScans(true); });
     effect(() => { const p = this.ctx.project(); if (p?.targetRuntime) this.target.set(p.targetRuntime as 'spring' | 'quarkus'); });
+    effect(() => {  // a DataStage project has its own screens (old links to its inventory land on its summary)
+      const p = this.ctx.project();
+      if (p?.migrationType === 'DATASTAGE_AIRFLOW') this.router.navigate(['/p', p.id, 'ds'], { replaceUrl: true });
+    });
     effect(() => { const id = this.scanId(); if (id) this.loadScan(id); });
   }
 

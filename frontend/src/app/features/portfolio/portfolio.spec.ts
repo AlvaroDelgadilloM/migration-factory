@@ -59,4 +59,17 @@ describe('Portfolio · registro de proyecto por origen', () => {
     expect(local.disabled).toBe(true);
     expect(local.hint).toContain('agente local');
   });
+
+  it('zip: el tipo se detecta del contenido y el asistente avanza por pasos', () => {
+    c.form.sourceType = 'zip';
+    expect(c.step()).toBe(1);
+    c.uploaded.set({ id: 'u2', filename: 'bibes.zip', sha256: 'y'.repeat(64), sizeBytes: 10,
+                     structure: { root: '.', dsxFiles: ['a.dsx', 'b.dsx'], migrationType: 'DATASTAGE_AIRFLOW' }, createdAt: '' });
+    expect(c.detected()).toBe('DATASTAGE_AIRFLOW');
+    c.next();
+    expect(c.step()).toBe(2);
+    expect(c.form.migrationType).toBe('DATASTAGE_AIRFLOW');
+    expect(c.form.targetRuntime).toBe('airflow');
+    expect(c.detectedText(c.uploaded()!)).toContain('2 exportación(es) DSX');
+  });
 });

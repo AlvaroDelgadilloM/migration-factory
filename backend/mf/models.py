@@ -442,4 +442,6 @@ class DataStageMigration(Entity, Base):
     options: Mapped[dict] = mapped_column(Json, default=dict)     # timezone, name
     summary: Mapped[dict] = mapped_column(Json, default=dict)     # status, counts, gates, pilot, waves, artifacts
     results: Mapped[dict] = mapped_column(Json, default=dict)     # job -> {complexity, migratability, state, steps}
+    # worklist progress: action key -> {done, by, at, note}; keys are stable across runs (job|stage|text), carried to the next run
+    action_state: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')
     created_by: Mapped[str] = mapped_column(String(255))

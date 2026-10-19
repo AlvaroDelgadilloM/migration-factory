@@ -99,6 +99,7 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
 
 @router.get('/projects', response_model=Page[ProjectOut])
 def list_projects(q: str | None = None, limit: int = limit_param(), cursor: str | None = None,
+                  migration_type: str | None = Query(None, alias='migrationType', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW)$'),
                   db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     stmt = select(Project).order_by(Project.name, Project.id)
     ids = visible_project_ids(db, me)
@@ -106,6 +107,8 @@ def list_projects(q: str | None = None, limit: int = limit_param(), cursor: str 
         stmt = stmt.where(Project.id.in_(ids))
     if q:
         stmt = stmt.where(Project.name.ilike(f'%{q[:100]}%'))
+    if migration_type:
+        stmt = stmt.where(Project.migration_type == migration_type)
     return paginate(db, stmt, limit, cursor, lambda p: project_out(db, p, me))
 
 

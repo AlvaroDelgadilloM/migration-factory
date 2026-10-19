@@ -61,9 +61,16 @@ def browse(path: str | None = Query(None, max_length=1000), _: Principal = Depen
                      entries=entries, truncated=len(entries) >= BROWSE_MAX)
 
 
+def _kinds(files) -> str:
+    """What a ZIP contains, by extension (for error messages that say what was found, not only what is missing)."""
+    from collections import Counter
+    kinds = Counter((Path(f).suffix.lower() or 'sin extensión') for f in files if not f.endswith('/'))
+    return ', '.join(f'{n} {ext}' for ext, n in kinds.most_common(5)) or 'nada'
+
+
 @router.post('/uploads', response_model=UploadOut, status_code=201)
 async def upload_zip(request: Request, x_filename: str = Header('project.zip', max_length=255),
-                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW)$'),
+                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW)$'),
                      content_length: int | None = Header(None), db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     """Body = the ZIP bytes (Content-Type: application/zip). Size enforced while streaming, structure validated before storing."""
     s = get_settings()
@@ -87,18 +94,27 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
         if size == 0:
             raise ApiError(422, 'ZIP_INVALID', 'Archivo vacío')
         try:
-            datastage = x_migration_type == 'DATASTAGE_AIRFLOW'
-            structure = inspect_zip(Path(tmp), require_maven=not datastage)  # metadata only: nothing is extracted here
+            mode = x_migration_type
+            probe = None
+            if mode == 'AUTO':  # the platform decides from the content: .dsx = DataStage export, else a Maven project
+                probe = inspect_zip(Path(tmp), require_maven=False)
+                mode = 'DATASTAGE_AIRFLOW' if any(f.lower().endswith('.dsx') for f in probe['files']) else 'JAVA_CAMEL'
+            datastage = mode == 'DATASTAGE_AIRFLOW'
+            try:  # metadata only: nothing is extracted here
+                structure = probe if (datastage and probe) else inspect_zip(Path(tmp), require_maven=not datastage)
+            except UnsafeInput as e:
+                if x_migration_type != 'AUTO':
+                    raise
+                raise UnsafeInput(e.code, f'{e} El ZIP no trae un proyecto Maven (pom.xml) ni exportaciones DataStage (.dsx); '
+                                          f'trae: {_kinds(probe["files"])}.') from None
             if datastage:
                 dsx = [f for f in structure['files'] if f.lower().endswith('.dsx')]
                 if not dsx:
-                    from collections import Counter
-                    kinds = Counter((Path(f).suffix.lower() or 'sin extensión') for f in structure.get('files', []) if not f.endswith('/'))
-                    found = ', '.join(f'{n} {ext}' for ext, n in kinds.most_common(5)) or 'nada'
-                    raise UnsafeInput('NO_DSX', f'El ZIP no contiene exportaciones DataStage (.dsx); trae: {found}. '
+                    raise UnsafeInput('NO_DSX', f'El ZIP no contiene exportaciones DataStage (.dsx); trae: {_kinds(structure.get("files", []))}. '
                                                 'Suba el ZIP con los .dsx exportados de DataStage.')
                 structure.pop('files')
                 structure['dsxFiles'] = dsx[:500]
+            structure['migrationType'] = mode
         except UnsafeInput as e:
             raise ApiError(422, e.code, str(e)) from None
         os.replace(tmp, target)

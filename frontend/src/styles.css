@@ -19,7 +19,7 @@ a { color: #0a5f73; }
 .main-col { margin-left: 232px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 12px 32px; border-bottom: 1px solid var(--mf-line); background: #fff; color: var(--mf-muted); flex-wrap: wrap; }
 .topbar .user { display: flex; gap: .6rem; align-items: center; }
-main { padding: 24px 32px 48px; max-width: 1500px; }
+main { padding: 24px 32px 48px; max-width: 1840px; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; padding: 8px 0 20px; }
 .page-header h1 { font-size: 28px; margin: 6px 0 4px; } .crumb { letter-spacing: 1.5px; color: #55758d; font-size: 12px; }
 .page-header .actions, .actions { display: flex; gap: .6rem; align-items: flex-start; flex-wrap: wrap; }
@@ -71,3 +71,5 @@ td .add { color: #067647; } td .del { color: #b42318; }
 .folders { list-style: none; padding: 0; margin: 0; max-height: 18rem; overflow: auto; border: 1px solid var(--mf-line); border-radius: 6px; }
 .folders li { border-bottom: 1px solid var(--mf-line); } .folder { width: 100%; text-align: left; padding: 8px 10px; display: flex; gap: .5rem; align-items: center; }
 .folder:hover { background: #eef5f6; }
+.sidebar .nav-title.proj { margin-top: 10px; border-top: 1px solid #23435a; padding-top: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.muted { color: #4d6275; }

@@ -205,3 +205,26 @@ def test_platform_datastage_project_upload_job_and_artifacts(client, token, tmp_
     assert {'migration-report.md', 'manual-actions.md', 'datastage-ir.json'} <= names and any(n.startswith('airflow-bibes') and n.endswith('.zip') for n in names)
     listed = client.get(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta')).json()
     assert [x['id'] for x in listed] == [dm['id']]
+    acts = dm['summary']['actions']
+    assert acts and {a['severity'] for a in acts} == {'manual', 'review'} and all(a['job'] and a['category'] for a in acts)
+    legacy = next(a for a in acts if a['job'] == 'JP_LEGACY_KEYS' and a['severity'] == 'manual')
+    url = f"/api/v1/datastage-migrations/{dm['id']}/actions"
+    assert client.put(f'/api/v1/projects/{pid}/members', headers=token('ana.arquitecta'),
+                      json={'subjectId': 'aldo.auditor', 'role': 'auditor'}).status_code == 200
+    assert client.patch(url, headers=token('aldo.auditor'), json={'key': legacy['key'], 'done': True}).status_code == 403   # read-only role
+    assert client.patch(url, headers=token('ana.arquitecta'), json={'key': '0' * 16, 'done': True}).status_code == 404
+    done = client.patch(url, headers=token('ana.arquitecta'), json={'key': legacy['key'], 'done': True, 'note': 'rediseñado'})
+    assert done.status_code == 200 and done.json()['actionState'][legacy['key']]['done'] is True
+    again = client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={})
+    run_job(again.json()['jobId'])                                                    # a re-run keeps the worklist progress
+    dm2 = client.get(f"/api/v1/datastage-migrations/{again.json()['dataStageMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert dm2['actionState'][legacy['key']]['done'] is True
+    ds_only = client.get('/api/v1/projects?migrationType=DATASTAGE_AIRFLOW', headers=token('ana.arquitecta')).json()['items']
+    assert pid in [p['id'] for p in ds_only] and all(p['migrationType'] == 'DATASTAGE_AIRFLOW' for p in ds_only)
+    auto = client.post('/api/v1/uploads', content=buf.getvalue(), headers=hdr | {'X-Migration-Type': 'AUTO'})
+    assert auto.status_code == 201 and auto.json()['structure']['migrationType'] == 'DATASTAGE_AIRFLOW'
+    md = io.BytesIO()
+    with zipfile.ZipFile(md, 'w') as zf:
+        zf.writestr('docs/51.md', '# x')
+    none = client.post('/api/v1/uploads', content=md.getvalue(), headers=hdr | {'X-Migration-Type': 'AUTO'})
+    assert none.status_code == 422 and 'ni exportaciones DataStage' in none.text and '1 .md' in none.text

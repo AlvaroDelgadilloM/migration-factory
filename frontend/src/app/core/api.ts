@@ -40,7 +40,7 @@ export class Api {
   capabilities() { return this.get<Capabilities>('/capabilities'); }
   browse(path?: string | null) { return this.get<Browse>('/sources/browse', { path }); }
   /** Uploads the ZIP as the raw request body; the API validates size and structure before storing it. */
-  uploadZip(file: Blob, name: string, migrationType: 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' = 'JAVA_CAMEL') {
+  uploadZip(file: Blob, name: string, migrationType: 'AUTO' | 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' = 'AUTO') {
     return firstValueFrom(this.http.post<Upload>(`${B}/uploads`, file, {
       headers: { 'Content-Type': 'application/zip', 'X-Filename': encodeURIComponent(name), 'X-Migration-Type': migrationType } }));
   }
@@ -115,6 +115,9 @@ export class Api {
 
   // artifacts
   artifacts(projectId: string, p: Params) { return this.get<Page<Artifact>>(`/projects/${projectId}/artifacts`, p); }
+  setDataStageAction(id: string, key: string, done: boolean) {
+    return this.send<DataStageMigration>('PATCH', `/datastage-migrations/${id}/actions`, { key, done });
+  }
   dataStageMigrations(projectId: string) { return this.get<DataStageMigration[]>(`/projects/${projectId}/datastage-migrations`); }
   startDataStageMigration(projectId: string, body: unknown) {
     return this.send<{ dataStageMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/datastage-migrations`, body, { 'Idempotency-Key': this.key() });

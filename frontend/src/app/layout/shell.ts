@@ -14,6 +14,9 @@ const PROJECT_SCREENS = [
 ] as const;
 // Pruebas: the original system (JBoss) against the migrated one (Tomcat), as a battery of cases or one request at a time
 const TEST_SCREENS = [['automaticas', 'Automáticas', 'pi-sync'], ['manuales', 'Manuales', 'pi-send']] as const;
+// DataStage → Airflow projects have their own steps: the Java/Camel screens (findings, plan, diff…) do not apply to them
+const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-list'], ['ds/oleadas', 'Oleadas', 'pi-sitemap'],
+  ['ds/acciones', 'Acciones manuales', 'pi-check-square']] as const;
 
 @Component({
   selector: 'mf-shell',
@@ -22,9 +25,16 @@ const TEST_SCREENS = [['automaticas', 'Automáticas', 'pi-sync'], ['manuales', '
     <p-toast position="bottom-right" />
     <a class="skip" href="#main">Saltar al contenido</a>
     <aside class="sidebar" aria-label="Navegación principal">
-      <div class="brand"><h2>Migration Factory</h2><p>JBoss / Camel 2 → Camel 4</p></div>
+      <div class="brand"><h2>Migration Factory</h2><p>{{ isDs() ? 'DataStage → Airflow' : 'JBoss / Camel 2 → Camel 4' }}</p></div>
       <nav>
         <a routerLink="/portfolio" routerLinkActive="active"><i class="pi pi-briefcase" aria-hidden="true"></i> Cartera</a>
+        @if (ctx.projectId()) { <span class="nav-title proj" [title]="ctx.project()?.name ?? ''">{{ ctx.project()?.name ?? 'Proyecto' }}</span> }
+        @if (isDs()) {
+          @for (s of dsScreens; track s[0]) {
+            <a [routerLink]="['/p', ctx.projectId(), ...s[0].split('/')]" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+              <i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
+          }
+        } @else {
         @for (s of screens; track s[0]) {
           @if (ctx.projectId()) {
             <a [routerLink]="['/p', ctx.projectId(), s[0]]" routerLinkActive="active"><i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
@@ -42,6 +52,7 @@ const TEST_SCREENS = [['automaticas', 'Automáticas', 'pi-sync'], ['manuales', '
             }
           }
         </div>
+        }
         <a routerLink="/rules" routerLinkActive="active"><i class="pi pi-book" aria-hidden="true"></i> Reglas</a>
         <a routerLink="/audit" routerLinkActive="active"><i class="pi pi-history" aria-hidden="true"></i> Auditoría</a>
       </nav>
@@ -70,6 +81,8 @@ export class Shell {
   ctx = inject(ProjectContext);
   screens = PROJECT_SCREENS;
   tests = TEST_SCREENS;
+  dsScreens = DS_SCREENS;
+  isDs = computed(() => this.ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW');
   private router = inject(Router);
 
   constructor() {
