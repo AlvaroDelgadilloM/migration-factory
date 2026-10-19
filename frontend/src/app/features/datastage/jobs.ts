@@ -14,7 +14,7 @@ import { DataStageStore, DsJob } from './store';
   selector: 'mf-ds-jobs',
   imports: [FormsModule, DrawerModule, IconFieldModule, InputIconModule, InputTextModule, SelectButtonModule, TableModule, PageHeader, StateView, StatusTag],
   template: `
-    <mf-page-header title="Jobs" crumb="DATASTAGE → AIRFLOW" [subtitle]="ds.ctx.project()?.name" />
+    <mf-page-header title="Jobs" crumb="DATASTAGE → AIRFLOW" subtitle="Cada job de DataStage, su complejidad y lo que se generó para Airflow." />
     <mf-state [loading]="ds.list.loading()" [error]="ds.list.error()" [hasData]="!!ds.list.data()" [empty]="!ds.jobs().length"
               emptyText="Sin resultados todavía: migre el proyecto desde Resumen." (retry)="ds.reload()">
       <div class="filters">
@@ -37,7 +37,7 @@ import { DataStageStore, DsJob } from './store';
             <tr [pSelectableRow]="r" class="clickable">
               <td><span class="mono">{{ r.name }}</span>@if (ds.pilot()[r.name]) { <span class="chip">piloto</span> }</td>
               <td><mf-status [value]="r.jobType" /></td>
-              <td><mf-status [value]="r.complexity" /> <span class="muted small">{{ r.score }} pts</span></td>
+              <td><mf-status [value]="r.complexity" /><small class="muted pts">{{ r.score }} puntos</small></td>
               <td><mf-status [value]="r.state" /></td>
               <td>@if (r.pending) { <strong>{{ r.pending }}</strong> pendiente(s) } @else { <span class="muted">—</span> }</td>
               <td class="small">{{ conf(r.confidence) }}</td>
@@ -76,7 +76,7 @@ import { DataStageStore, DsJob } from './store';
         }
       }
     </p-drawer>`,
-  styles: [`.clickable{cursor:pointer}.st{font-size:12px;padding:1px 8px;border-radius:10px}.st-OK{background:#e7f6ec;color:#067647}
+  styles: [`.clickable{cursor:pointer}.pts{display:block;margin-top:3px}.st{font-size:12px;padding:1px 8px;border-radius:10px}.st-OK{background:#e7f6ec;color:#067647}
     .st-REVIEW{background:#e6f2f3;color:#0a5f73}.st-MANUAL{background:#fdecea;color:#b42318}.issue{padding-left:16px}h3{margin:16px 0 6px;font-size:15px}`],
 })
 export class DsJobs {

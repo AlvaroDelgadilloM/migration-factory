@@ -228,3 +228,19 @@ export class TrafficLight {
     return { c: '#f9a825', l: 'Amarillo', t: 'Automático con revisión' };
   });
 }
+
+/** Brand mark: two blocks joined by an arrow (legacy → modern). Decorative; the name is always written next to it. */
+@Component({
+  selector: 'mf-logo',
+  template: `
+    <svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 40 40" aria-hidden="true" class="logo">
+      <defs><linearGradient id="mfg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fd0c8" /><stop offset="1" stop-color="#2b6cb0" /></linearGradient></defs>
+      <rect x="1" y="1" width="38" height="38" rx="11" fill="url(#mfg)" />
+      <rect x="8" y="13" width="9" height="14" rx="2.5" fill="#fff" opacity=".55" />
+      <rect x="23" y="11" width="9" height="18" rx="2.5" fill="#fff" />
+      <path d="M17.5 20h4.2m0 0-2-2m2 2-2 2" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    </svg>`,
+})
+export class Logo {
+  size = input(36);
+}

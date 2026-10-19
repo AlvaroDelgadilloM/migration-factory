@@ -2324,6 +2324,10 @@ export interface components {
             lastScan?: {
                 [key: string]: unknown;
             } | null;
+            /** Lastdatastage */
+            lastDataStage?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ProjectUpdate */
         ProjectUpdate: {

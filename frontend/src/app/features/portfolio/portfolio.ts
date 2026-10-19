@@ -15,6 +15,7 @@ import { Capabilities, Page, Project, SourceType, Upload } from '../../core/mode
 import { buildZip, filterPicked } from '../../core/zip';
 import { FolderBrowser } from './folder-browser';
 import { ProjectContext } from '../../core/project-context';
+import { AuthService } from '../../core/auth';
 import { CursorPager, Loader } from '../../shared/state';
 import { PageHeader, StateView, StatusTag, short } from '../../shared/ui';
 
@@ -25,53 +26,68 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
   imports: [FormsModule, RouterLink, ButtonModule, DialogModule, InputTextModule, MessageModule, SelectModule, SelectButtonModule, TableModule, TextareaModule,
             PageHeader, StateView, StatusTag, FolderBrowser],
   template: `
-    <mf-page-header title="Cartera" crumb="CARTERA" subtitle="Aplicaciones e integraciones visibles para su usuario">
+    <mf-page-header [title]="greeting()" crumb="CARTERA" subtitle="Sus proyectos de migración: abra uno para continuar donde lo dejó o registre uno nuevo.">
       <p-button label="Registrar proyecto" icon="pi pi-plus" (onClick)="openNew()" />
     </mf-page-header>
 
     <div class="cards">
-      <article><b>{{ list.data()?.total ?? '—' }}</b> proyectos visibles</article>
-      <article><b>{{ analyzed() }}</b> con análisis correcto (en esta página)</article>
-      <article><b>{{ withFindings() }}</b> con hallazgos (en esta página)</article>
+      <article><i class="pi pi-th-large" aria-hidden="true"></i><b>{{ list.data()?.total ?? '—' }}</b> proyectos visibles</article>
+      <article><i class="pi pi-sync" aria-hidden="true"></i><b>{{ countType('JAVA_CAMEL') }}</b> Java / Camel</article>
+      <article><i class="pi pi-share-alt" aria-hidden="true"></i><b>{{ countType('DATASTAGE_AIRFLOW') }}</b> DataStage → Airflow</article>
+      <article><i class="pi pi-check-circle" aria-hidden="true"></i><b>{{ analyzed() }}</b> con análisis o migración lista</article>
     </div>
 
     <div class="toolbar">
-      <span class="p-input-icon-left">
+      <span class="search">
+        <i class="pi pi-search" aria-hidden="true"></i>
         <label class="sr-only" for="q">Buscar proyecto</label>
-        <input pInputText id="q" placeholder="Buscar por nombre" [(ngModel)]="q" (keyup.enter)="search()" />
+        <input pInputText id="q" placeholder="Buscar proyecto…" [(ngModel)]="q" (keyup.enter)="search()" (search)="search()" type="search" />
       </span>
-      <p-button label="Buscar" icon="pi pi-search" [outlined]="true" (onClick)="search()" />
       <p-selectbutton [options]="typeOptions" optionLabel="label" optionValue="value" [ngModel]="typeFilter()"
                       (ngModelChange)="typeFilter.set($event ?? 'ALL'); search()" aria-label="Filtrar por tipo de migración" />
     </div>
 
     <mf-state [loading]="list.loading()" [error]="list.error()" [hasData]="!!list.data()" [empty]="list.data()?.items?.length === 0"
-              emptyText="No hay proyectos visibles. Registre uno o pida acceso a un owner." (retry)="list.reload()">
+              emptyText="No hay proyectos que coincidan. Registre uno nuevo o pida acceso al responsable de un proyecto." (retry)="list.reload()">
       <div class="panel">
-        <p-table [value]="list.data()?.items ?? []" [loading]="list.loading()" dataKey="id" [tableStyle]="{ 'min-width': '52rem' }">
+        <p-table [value]="list.data()?.items ?? []" [loading]="list.loading()" dataKey="id" [tableStyle]="{ 'min-width': '48rem', 'table-layout': 'fixed' }" [rowHover]="true">
           <ng-template #header>
-            <tr><th scope="col">Proyecto</th><th scope="col">Tipo</th><th scope="col">Origen</th><th scope="col">Destino</th><th scope="col">Rol</th>
-                <th scope="col">Último análisis</th><th scope="col">Commit / snapshot</th><th scope="col">Hallazgos</th><th scope="col"></th></tr>
+            <tr><th scope="col" style="width:34%">Proyecto</th><th scope="col" style="width:22%">Origen</th><th scope="col" style="width:12%">Destino</th>
+                <th scope="col" style="width:18%">Estado</th><th scope="col" style="width:10%">Su rol</th><th scope="col" style="width:4%"></th></tr>
           </ng-template>
           <ng-template #body let-p>
-            <tr>
-              <td><a [routerLink]="['/p', p.id, p.migrationType === 'DATASTAGE_AIRFLOW' ? 'ds' : 'inventory']"><strong>{{ p.name }}</strong></a><br /><small class="muted">{{ p.description }}</small></td>
-              <td><span class="chip" [class.ds]="p.migrationType === 'DATASTAGE_AIRFLOW'">{{ p.migrationType === 'DATASTAGE_AIRFLOW' ? 'DataStage → Airflow' : 'Java / Camel' }}</span></td>
-              <td class="small"><span class="chip">{{ sourceLabel[p.sourceType] }}</span>
-                <span class="mono">{{ p.repositoryUrl ?? p.localPath ?? p.upload?.['filename'] }}</span></td>
-              <td>{{ runtimeLabel[p.targetRuntime ?? ''] ?? '—' }}</td>
-              <td>{{ p.myRole ?? '—' }}</td>
-              <td>@if (p.lastScan) { <mf-status [value]="p.lastScan.status" /> } @else { <span class="muted">No ejecutado</span> }</td>
-              <td class="mono">{{ p.lastScan?.commitSha ? short(p.lastScan?.commitSha) : (p.lastScan?.snapshotHash ? 'snap ' + short(p.lastScan?.snapshotHash) : '—') }}</td>
-              <td>{{ p.lastScan?.findings ?? '—' }}</td>
-              <td><p-button icon="pi pi-arrow-right" [text]="true" [ariaLabel]="'Abrir ' + p.name" (onClick)="open(p)" /></td>
+            <tr class="prow" (click)="open(p)">
+              <td>
+                <div class="pname">
+                  <span class="picon" [class.ds]="p.migrationType === 'DATASTAGE_AIRFLOW'" aria-hidden="true">
+                    <i [class]="p.migrationType === 'DATASTAGE_AIRFLOW' ? 'pi pi-share-alt' : 'pi pi-sync'"></i></span>
+                  <span class="ptext">
+                    <a [routerLink]="['/p', p.id, p.migrationType === 'DATASTAGE_AIRFLOW' ? 'ds' : 'inventory']" (click)="$event.stopPropagation()"><strong>{{ p.name }}</strong></a>
+                    <small class="muted">{{ p.migrationType === 'DATASTAGE_AIRFLOW' ? 'DataStage → Airflow' : 'Java / Camel' }}@if (p.description) { · {{ p.description }} }</small>
+                  </span>
+                </div>
+              </td>
+              <td><span class="src"><i [class]="'pi ' + sourceIcon[p.sourceType]" aria-hidden="true"></i>
+                <span class="mono small" [title]="p.repositoryUrl ?? p.localPath ?? p.upload?.['filename'] ?? ''">{{ sourceText(p) }}</span></span></td>
+              <td class="nowrap">{{ runtimeLabel[p.targetRuntime ?? ''] ?? '—' }}</td>
+              <td>
+                @if (p.lastDataStage; as d) {
+                  <mf-status [value]="d.state === 'queued' || d.state === 'running' ? d.state : d.status" />
+                  @if (d.manualJobs) { <small class="muted block">{{ d.manualJobs }} job(s) con trabajo manual</small> }
+                } @else if (p.lastScan) {
+                  <mf-status [value]="p.lastScan.status" />
+                  @if (p.lastScan.findings) { <small class="muted block">{{ p.lastScan.findings }} hallazgo(s)</small> }
+                } @else { <span class="muted">Sin empezar</span> }
+              </td>
+              <td><span class="muted">{{ roleLabel(p.myRole) }}</span></td>
+              <td class="go"><i class="pi pi-chevron-right" aria-hidden="true"></i></td>
             </tr>
           </ng-template>
         </p-table>
       </div>
       <div class="pager">
         <p-button label="Anterior" icon="pi pi-chevron-left" [text]="true" [disabled]="pager.page() === 0" (onClick)="pager.prev(); load()" />
-        <span>Página {{ pager.page() + 1 }}</span>
+        <span class="muted">Página {{ pager.page() + 1 }}</span>
         <p-button label="Siguiente" icon="pi pi-chevron-right" iconPos="right" [text]="true" [disabled]="!list.data()?.nextCursor"
                   (onClick)="pager.next(list.data()?.nextCursor); load()" />
       </div>
@@ -181,12 +197,22 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
     padding:8px 10px;border-radius:8px;background:#f3f6fa;font-size:13px}.wsteps li span{width:22px;height:22px;border-radius:50%;display:inline-grid;
     place-items:center;background:#dfe7ee;font-weight:600;font-size:12px}.wsteps li.on{background:#e6f2f3;color:var(--mf-ink);font-weight:600}
     .wsteps li.on span{background:var(--mf-teal);color:#fff}.wsteps li.done span{background:#12b76a;color:#fff}.grow{flex:1}
-    .review{margin-top:10px;font-size:13px}.chip.ds{background:#fff1e0}`],
+    .review{margin-top:10px;font-size:13px}.chip.ds{background:#fff1e0}
+    .search{position:relative;flex:0 1 22rem}.search i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#8193a4}
+    .search input{width:100%;padding-left:36px}
+    .prow{cursor:pointer}.pname{display:flex;gap:12px;align-items:center}.ptext{display:flex;flex-direction:column;min-width:0}
+    .ptext small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32rem}
+    .picon{width:38px;height:38px;flex:0 0 38px;border-radius:11px;display:grid;place-items:center;background:#e3effd;color:#1d4f91}
+    .picon.ds{background:#fff0dc;color:#8a4b08}.src{display:inline-flex;gap:8px;align-items:center;max-width:18rem}
+    .src .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.block{display:block;margin-top:3px}
+    .go{color:#8193a4;text-align:right}.nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ptext small{max-width:100%}.src{max-width:100%}`],
 })
 export class Portfolio {
   private api = inject(Api);
   private router = inject(Router);
   private ctx = inject(ProjectContext);
+  private auth = inject(AuthService);
   list = new Loader<Page<Project>>();
   pager = new CursorPager();
   q = signal('');
@@ -221,7 +247,21 @@ export class Portfolio {
   ];
   short = short;
   sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git' };
-  analyzed = computed(() => (this.list.data()?.items ?? []).filter(p => p.lastScan?.['status'] === 'succeeded').length);
+  analyzed = computed(() => (this.list.data()?.items ?? []).filter(p => p.lastScan?.['status'] === 'succeeded'
+    || ['succeeded', 'partial_success'].includes(String(p.lastDataStage?.['state'] ?? ''))).length);
+  countType(t: string) { return (this.list.data()?.items ?? []).filter(p => (p.migrationType ?? 'JAVA_CAMEL') === t).length; }
+  sourceIcon: Record<string, string> = { local: 'pi-folder', zip: 'pi-file-arrow-up', git: 'pi-github' };
+  sourceText(p: Project) {
+    const v = p.repositoryUrl ?? p.localPath ?? (p.upload?.['filename'] as string | undefined) ?? '';
+    return v.replace(/^https:\/\/(www\.)?/, '').replace(/\.git$/, '');
+  }
+  roleLabel(r: string | null | undefined) {
+    return ({ owner: 'Responsable', architect: 'Arquitecto', developer: 'Desarrollador', reviewer: 'Revisor', auditor: 'Auditor', admin: 'Admin' } as Record<string, string>)[r ?? ''] ?? '—';
+  }
+  greeting = computed(() => {
+    const n = (/^(.*?)\s*\(/.exec(this.auth.me()?.name ?? '')?.[1] ?? this.auth.me()?.name ?? '').split(' ')[0];
+    return n ? `Hola, ${n}` : 'Cartera';
+  });
   withFindings = computed(() => (this.list.data()?.items ?? []).filter(p => Number(p.lastScan?.['findings'] ?? 0) > 0).length);
 
   constructor() { this.load(); }

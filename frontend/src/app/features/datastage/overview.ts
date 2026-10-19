@@ -16,7 +16,7 @@ import { DataStageStore } from './store';
   imports: [FormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule, ProgressBarModule, TableModule, ActionButton, JobLog,
             PageHeader, StateView, StatusTag],
   template: `
-    <mf-page-header title="Resumen" crumb="DATASTAGE → AIRFLOW" [subtitle]="ds.ctx.project()?.name">
+    <mf-page-header title="Resumen" crumb="DATASTAGE → AIRFLOW" subtitle="Dónde está la migración y qué sigue.">
       <span class="tz"><label for="tz">Zona horaria de los DAGs</label><input pInputText id="tz" [(ngModel)]="timezone" /></span>
       <mf-action [label]="ds.current() ? 'Volver a migrar' : 'Analizar y migrar'" icon="pi pi-play" [busy]="ds.busy()"
                  [disabledReason]="ds.startReason()" (run)="ds.start(timezone)" />
@@ -36,7 +36,7 @@ import { DataStageStore } from './store';
               <p class="muted">{{ hint(s.status) }} DataStage {{ s.parse?.dataStageVersion }} → Airflow {{ s.airflow?.airflow }}.</p>
             </div>
             @if (ds.airflowZip(); as z) {
-              <p-button label="Descargar proyecto Airflow" icon="pi pi-download" (onClick)="api.download(z.id, z.name)" />
+              <p-button label="Descargar proyecto Airflow" icon="pi pi-download" size="large" styleClass="nowrap-btn" (onClick)="api.download(z.id, z.name)" />
             }
           </section>
 
@@ -53,12 +53,11 @@ import { DataStageStore } from './store';
           </section>
 
           <div class="cards">
-            <article><b>{{ s.parse?.jobs }}</b> jobs · {{ s.parse?.sequences }} secuencias · {{ s.parse?.files }} DSX</article>
-            <article class="ok-c"><b>{{ s.counts?.AUTO_MIGRATED ?? 0 }}</b> automáticos</article>
-            <article class="info-c"><b>{{ s.counts?.SEMIAUTOMATIC ?? 0 }}</b> para revisar</article>
-            <article class="warn-c"><b>{{ s.counts?.MANUAL_REVIEW ?? 0 }}</b> con trabajo manual</article>
-            <article class="bad-c"><b>{{ (s.counts?.BLOCKED ?? 0) + (s.counts?.FAILED ?? 0) }}</b> bloqueados / fallidos</article>
-            <article><b>{{ s.dags?.length ?? 0 }}</b> DAGs</article>
+            <article><i class="pi pi-database" aria-hidden="true"></i><b>{{ s.parse?.jobs }}</b> jobs · {{ s.parse?.sequences }} secuencias</article>
+            <article class="ok-c"><i class="pi pi-bolt" aria-hidden="true"></i><b>{{ s.counts?.AUTO_MIGRATED ?? 0 }}</b> automáticos</article>
+            <article class="info-c"><i class="pi pi-eye" aria-hidden="true"></i><b>{{ s.counts?.SEMIAUTOMATIC ?? 0 }}</b> para revisar</article>
+            <article class="warn-c"><i class="pi pi-user-edit" aria-hidden="true"></i><b>{{ s.counts?.MANUAL_REVIEW ?? 0 }}</b> con trabajo manual</article>
+            <article><i class="pi pi-share-alt" aria-hidden="true"></i><b>{{ s.dags?.length ?? 0 }}</b> DAGs generados</article>
           </div>
 
           <div class="grid">
@@ -87,8 +86,10 @@ import { DataStageStore } from './store';
     .next{background:#f0f7f7;border:1px solid #cfe5e6;border-radius:12px;padding:16px 20px;margin-bottom:16px}.next h3{margin:0 0 6px}
     .next p-progressbar{display:block;margin:10px 0 4px;height:8px}
     .grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px}.card{background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:16px 20px}
-    .card h3{margin:0 0 10px}.pilot{list-style:none;padding:0;margin:0 0 14px}.pilot li{padding:3px 0}
-    .ok-c b{color:#067647}.info-c b{color:#0a5f73}.warn-c b{color:#b54708}.bad-c b{color:#b42318}
+    .card h3{margin:0 0 10px}.pilot{list-style:none;padding:0;margin:0 0 14px}.pilot li{padding:4px 0;display:flex;gap:8px;align-items:baseline}
+    .pilot .mono{word-break:break-all}:host ::ng-deep .nowrap-btn{white-space:nowrap}.hero{flex-wrap:wrap}
+    .ok-c b{color:#067647}.info-c b{color:#0a5f73}.warn-c b{color:#b54708}
+    .ok-c > i{background:#e7f6ec !important;color:#067647 !important}.warn-c > i{background:#fff4e5 !important;color:#b54708 !important}
     @media (max-width:1100px){.grid{grid-template-columns:1fr}}`],
 })
 export class DsOverview {

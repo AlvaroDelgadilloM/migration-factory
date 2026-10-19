@@ -31,6 +31,13 @@ def project_out(db, p: Project, principal: Principal) -> dict:
                    required_gates=p.required_gates, independent_review=p.independent_review, pr_config=p.pr_config,
                    my_role='admin' if principal.is_admin and not role_in(db, principal, p.id) else role_in(db, principal, p.id),
                    version=p.version, created_at=p.created_at).model_dump()
+    if p.migration_type == 'DATASTAGE_AIRFLOW':
+        from ..models import DataStageMigration
+        dm = db.scalar(select(DataStageMigration).where(DataStageMigration.project_id == p.id).order_by(DataStageMigration.created_at.desc()).limit(1))
+        if dm:  # Cartera shows the latest DataStage run like the latest scan of a Java project
+            s = dm.summary or {}
+            d['lastDataStage'] = {'id': str(dm.id), 'state': dm.state, 'status': s.get('status'), 'createdAt': dm.created_at.isoformat(),
+                                  'jobs': (s.get('parse') or {}).get('jobs'), 'manualJobs': (s.get('counts') or {}).get('MANUAL_REVIEW')}
     if last:
         d['lastScan'] = {'id': str(last.id), 'status': last.status, 'commitSha': last.commit_sha, 'snapshotHash': last.snapshot_hash,
                          'createdAt': last.created_at.isoformat(),

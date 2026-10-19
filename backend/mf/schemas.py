@@ -102,6 +102,7 @@ class ProjectOut(Dto):
     version: int
     created_at: datetime
     last_scan: dict | None = None
+    last_data_stage: dict | None = None
 
 
 class MemberIn(Dto):

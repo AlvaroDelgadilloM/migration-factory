@@ -530,3 +530,17 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
 - Cartera: columna y filtro por tipo de migración (`GET /projects?migrationType=`), destino legible, ancho máximo 1840 px.
 - Pruebas: backend 203, frontend 17. Revisión visual en navegador pendiente: la extensión de Chrome se desconectó por el
   cambio de cuenta.
+
+## Rediseño visual (2026-10-19)
+- Sistema visual nuevo en `styles.css`: tokens de color, radios, sombras suaves, tarjetas con ícono, tablas y diálogos
+  PrimeNG pulidos, botones y etiquetas sin cortes de línea.
+- Login en dos paneles: propuesta de valor (Java/Camel, DataStage → Airflow, validado y trazable) y acceso; en modo
+  demostración cada perfil es una tarjeta con avatar y lo que puede hacer. OIDC con un solo botón.
+- Menú lateral con logo, tarjeta del proyecto activo (nombre + tipo), secciones Proyecto/Pruebas/Plataforma; barra superior
+  con ruta (Cartera › proyecto), su rol, avatar del usuario y salida.
+- Cartera: saludo, tarjetas por tipo, búsqueda con ícono, tabla sin columnas técnicas (commit/snapshot) y con una columna
+  «Estado» que también refleja la última migración DataStage (`lastDataStage` en el proyecto).
+- DataStage: subtítulos que explican cada página, tarjetas con ícono, botón principal de descarga, leyenda de oleadas con
+  color, grupos de acciones con contador.
+- Revisado con capturas en 1440 px (Playwright local, no forma parte del repositorio). Frontend 17, backend sin cambios de
+  comportamiento salvo `lastDataStage`.

@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { provideOAuthClient } from 'angular-oauth2-oidc';
 import { Portfolio } from './portfolio';
 
 describe('Portfolio · registro de proyecto por origen', () => {
@@ -9,7 +10,7 @@ describe('Portfolio · registro de proyecto por origen', () => {
   let c: Portfolio;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), provideOAuthClient()] });
     c = TestBed.runInInjectionContext(() => new Portfolio());
     http = TestBed.inject(HttpTestingController);
     http.expectOne(r => r.url === '/api/v1/projects').flush({ items: [], total: 0, nextCursor: null });

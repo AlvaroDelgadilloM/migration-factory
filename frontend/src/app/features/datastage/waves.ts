@@ -7,7 +7,7 @@ import { DataStageStore } from './store';
   selector: 'mf-ds-waves',
   imports: [PageHeader, StateView],
   template: `
-    <mf-page-header title="Oleadas" crumb="DATASTAGE → AIRFLOW" [subtitle]="ds.ctx.project()?.name" />
+    <mf-page-header title="Oleadas" crumb="DATASTAGE → AIRFLOW" subtitle="En qué orden migrar los jobs según sus dependencias." />
     <p class="muted">Orden de migración calculado de las dependencias (secuencia → job, encadenamiento y archivos o tablas que un job produce y
       otro consume). Los jobs de una misma oleada son independientes entre sí y se pueden migrar en paralelo.</p>
     <mf-state [loading]="ds.list.loading()" [error]="ds.list.error()" [hasData]="!!ds.list.data()" [empty]="!waves().length"
@@ -42,7 +42,9 @@ import { DataStageStore } from './store';
     .st-AUTO_MIGRATED{border-left-color:#12b76a}.st-SEMIAUTOMATIC{border-left-color:#0a7ea4}.st-MANUAL_REVIEW{border-left-color:#f79009}
     .st-BLOCKED,.st-FAILED{border-left-color:#d92d20}.seq{font-style:normal;font-weight:700;font-size:10px;background:#10283c;color:#fff;border-radius:4px;padding:0 4px}
     .legend{display:flex;gap:16px;margin:0 0 10px}.legend span{display:inline-flex;gap:6px;align-items:center}
-    .dot{width:10px;height:10px;border-radius:2px;display:inline-block;border-left:10px solid}`],
+    .dot{width:10px;height:10px;border-radius:3px;display:inline-block;background:#9aa8b4}
+    .dot.st-AUTO_MIGRATED{background:#12b76a}.dot.st-SEMIAUTOMATIC{background:#0a7ea4}.dot.st-MANUAL_REVIEW{background:#f79009}
+    .wave{flex-basis:21rem}`],
 })
 export class DsWaves {
   ds = inject(DataStageStore);
