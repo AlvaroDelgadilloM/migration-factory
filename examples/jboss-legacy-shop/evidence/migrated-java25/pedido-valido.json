@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": {
+      "customerId": 42,
+      "productId": 7,
+      "quantity": 2
+    }
+  },
+  "status": 201,
+  "contentType": "application/json",
+  "response": {
+    "id": 50001,
+    "status": "NEW"
+  }
+}

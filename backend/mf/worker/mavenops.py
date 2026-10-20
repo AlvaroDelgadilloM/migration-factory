@@ -69,6 +69,13 @@ def guard(cwd) -> str | None:
     return None
 
 
+def java_home_or_none(release: str | None) -> str | None:
+    try:
+        return java_home(release)
+    except FileNotFoundError:
+        return None  # Maven then fails with the compiler's own message (release 25 not supported), which names the cause
+
+
 def java_home(release: str | None) -> str | None:
     """JDK to build and run a result compiled for `release`: Java 25 needs MF_JDK25_HOME; anything else the default JDK."""
     if str(release) != '25':
@@ -79,8 +86,24 @@ def java_home(release: str | None) -> str | None:
     return home
 
 
+_RELEASE = re.compile(r'<(?:maven\.compiler\.release|maven\.compiler\.target|java\.version|release)>\s*(?:1\.)?(\d+)\s*</')
+
+
+def pom_release(cwd) -> str | None:
+    """Java release the project's POM targets (maven.compiler.release/target, java.version or the compiler <release>)."""
+    try:
+        m = _RELEASE.search((Path(cwd) / 'pom.xml').read_text(encoding='utf-8', errors='replace'))
+    except OSError:
+        return None
+    return m[1] if m else None
+
+
 def mvn(ctx, cwd, goals, name, timeout=None, java_home: str | None = None):
     s = get_settings()
+    if java_home is None and pom_release(cwd) == '25':
+        # a candidate migrated to Java 25 (individual plan, CLI): the JDK 25 even when the caller did not pass it; the legacy
+        # baseline (release 8/11/17) keeps the default JDK
+        java_home = java_home_or_none('25')
     problem = guard(cwd)
     if problem:  # never start Maven without its project: the error is configuration, not compilation
         log = ctx.workdir / 'logs' / f'{name}.log'

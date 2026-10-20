@@ -88,7 +88,8 @@ aplicada, compile o tests fallidos) y `BLOCKED` (no se puede continuar con segur
 Salidas: `reports/baseline-report.md` y `analysis.json → baseline {status, buildExitCode, environmentWarnings, repairs}`.
 En lugar de un `confidence` numérico, cada reparación registra su **evidencia** (`basis`).
 
-Opciones: `--target springboot|quarkus`, `--java 17|21` (21 añade `UpgradeToJava21`), `--dry-run`, `--no-autofix`,
+Opciones: `--target springboot|springboot4|tomcat|quarkus`, `--java 17|21|25` (21 añade `UpgradeToJava21`; 25 añade `UpgradeToJava25` y solo
+es válido con `--target springboot4`: Spring Boot 4.1.1 + Camel 4.22.1 LTS, compilado y probado con el JDK de `MF_JDK25_HOME`), `--dry-run`, `--no-autofix`,
 `--max-fix-rounds 5`, `--fail-on-critical`, `--report-format md,json`, `--skip-baseline`, `--no-maven` (analyze),
 `--accept REGLA="motivo"` (decisión humana explícita sobre un hallazgo bloqueante; queda en los reportes).
 

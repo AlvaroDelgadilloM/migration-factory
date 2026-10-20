@@ -1,0 +1,9 @@
+200  GET  /customers/42                      -> 1 elemento(s)  {'id': 42, 'name': 'María Pérez', 'email': 'cliente42@ejemplo.test', 'city': 'Monterrey', 
+404  GET  /customers/999999                  -> 1 elemento(s)  {'error': 'Cliente no encontrado'}
+200  GET  /customers/42/orders               -> 9 elemento(s)  [{'id': 6144, 'product': 'Noche 104', 'quantity': 2, 'status': 'CANCELLED', 'ordered_at': 
+200  GET  /products?category=bienestar       -> 60 elemento(s)  [{'id': 2, 'name': 'Spa 2', 'category': 'bienestar', 'price': 1844.23}, {'id': 7, 'name': 
+200  GET  /products                          -> 300 elemento(s)  [{'id': 1, 'name': 'Desayuno 1', 'category': 'alimentos', 'price': 3727.58}, {'id': 2, 'na
+200  GET  /stats/top-products                -> 5 elemento(s)  [{'id': 252, 'name': 'Tour 252', 'units': 853}, {'id': 262, 'name': 'Upgrade 262', 'units'
+201  POST /orders                            -> 1 elemento(s)  {'id': 50001, 'status': 'NEW'}
+400  POST /orders                            -> 1 elemento(s)  {'error': 'quantity fuera de rango (1-100)'}
+400  POST /orders                            -> 1 elemento(s)  {'error': 'Campo obligatorio numérico: productId'}

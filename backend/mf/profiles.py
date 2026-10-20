@@ -45,6 +45,7 @@ USED_COMPONENTS = {'quartz2': 'quartz', 'quartz': 'quartz', 'http4': 'http', 'ht
                    'smtps': 'mail', 'imap': 'mail', 'pop3': 'mail', 'cxf': 'cxf-soap', 'kafka': 'kafka'}
 
 SPRING_CAMEL = '4.14.9'
+SPRING4_CAMEL = '4.22.1'  # Camel 4.22 LTS: first line with official Java 25 support (camel.apache.org/download)
 QUARKUS_CAMEL_EXT = '3.40.0'
 
 PROFILES = [
@@ -100,6 +101,33 @@ PROFILES = [
                     'https://tomcat.apache.org/whichversion.html'],
         'status': 'validated',
     },
+    {   # Java 25: Camel 4.22 LTS supports Java 17/21/25 and its Spring Boot line is 4.1 (camel-parent 4.22.1: spring-boot 4.1.1)
+        'key': 'spring-boot-4.1-camel-4.22', 'version': 1, 'runtime': 'spring',
+        'name': 'Spring Boot 4.1.1 + Camel 4.22.1 (LTS) · Java 21 o 25',
+        'java_version': '21', 'camel_version': SPRING4_CAMEL, 'runtime_version': '4.1.1',
+        'bom_coordinates': ['org.apache.camel.springboot:camel-spring-boot-bom:4.22.1',
+                            'org.springframework.boot:spring-boot-dependencies:4.1.1'],
+        'tooling': {
+            'pluginVersion': '6.46.1',
+            'artifacts': ['org.apache.camel.upgrade:camel-upgrade-recipes:4.22.0',
+                          'org.openrewrite.recipe:rewrite-migrate-java:3.42.1'],
+            'camelRecipe': 'org.apache.camel.upgrade.CamelMigrationRecipe',
+            'camelRecipeTarget': '4.22.0',
+        },
+        'dependency_mapping': {
+            'groupId': 'org.apache.camel.springboot', 'version': SPRING4_CAMEL,
+            'artifacts': {f'org.apache.camel:{k}': ('camel-spring-boot-starter' if v is None else f'camel-{v}-starter')
+                          for k, v in _COMPONENTS.items()},
+            'xmlDsl': 'camel-xml-io-dsl-starter',
+            'coreComponent': 'camel-{}-starter',
+            'routesProperty': 'camel.springboot.routes-include-pattern',
+            'javaVersions': ['21', '25'],
+        },
+        'sources': ['https://camel.apache.org/download/',
+                    'https://repo1.maven.org/maven2/org/apache/camel/camel-parent/4.22.1/camel-parent-4.22.1.pom',
+                    'https://github.com/spring-projects/spring-boot/issues/47245'],
+        'status': 'validated',
+    },
     {
         'key': 'quarkus-3.40-camel-quarkus', 'version': 3, 'runtime': 'quarkus',
         'name': 'Quarkus 3.40.1 + Camel Quarkus 3.40.0 (Camel 4.22.1)',
@@ -127,10 +155,16 @@ PROFILES = [
 ]
 
 
-def pick(target_runtime: str, war: bool = False) -> dict:
-    """Validated profile of a runtime; war=True selects the external-Tomcat WAR variant of that runtime."""
-    return next(x for x in PROFILES if x['runtime'] == target_runtime and x['status'] == 'validated'
-                and (x['dependency_mapping'].get('deployment') == 'war') == war)
+def pick(target_runtime: str, war: bool = False, key: str | None = None) -> dict:
+    """Validated profile of a runtime (the first one listed); war=True selects the external-Tomcat WAR variant; key selects one."""
+    return next(x for x in PROFILES if x['status'] == 'validated' and (x['key'] == key if key else
+                x['runtime'] == target_runtime and (x['dependency_mapping'].get('deployment') == 'war') == war))
+
+
+def java_versions(profile) -> list[str]:
+    """Java releases a profile was verified for (Camel 4.14 and Camel Quarkus 3.40: 17 and 21; Camel 4.22 Spring Boot: 21 and 25)."""
+    mapping = profile['dependency_mapping'] if isinstance(profile, dict) else profile.dependency_mapping
+    return list(mapping.get('javaVersions', ['17', '21']))
 
 
 def profile_digest(p: dict) -> str:

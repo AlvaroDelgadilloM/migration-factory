@@ -544,3 +544,23 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
   color, grupos de acciones con contador.
 - Revisado con capturas en 1440 px (Playwright local, no forma parte del repositorio). Frontend 17, backend sin cambios de
   comportamiento salvo `lastDataStage`.
+
+## Java 25 con Spring Boot: perfil Spring Boot 4.1 + Camel 4.22 LTS (2026-10-20)
+- Camel 4.14 (perfil Spring Boot 3.5) y Camel Quarkus 3.40 no soportan oficialmente Java 25; la primera línea de Camel que lo
+  soporta es 4.22 LTS, cuyo Spring Boot es 4.1.1 (camel-parent 4.22.1). Perfil nuevo `spring-boot-4.1-camel-4.22` v1: BOMs
+  camel-spring-boot 4.22.1 + spring-boot 4.1.1, recetas camel-upgrade 4.22.0 y rewrite-migrate-java 3.42.1
+  (`UpgradeToJava25`), `spring-boot-starter-webmvc` (renombrado en Boot 4), Java 21 o 25. Snapshot verificado de
+  camel-spring-boot-bom 4.22.1 en `rules/camel/boms`.
+- Integrado con el catálogo de versiones (`mf.versions`, de la otra línea de trabajo): cada perfil declara `javaVersions` y el
+  catálogo marca validado lo que el perfil declara; Java 25 en los demás perfiles queda «Pendiente de validar» con la pieza que
+  no lo soporta (Camel 4.14 / Camel Quarkus 3.40) y el perfil a usar.
+- JDK 25: además del `java_home` explícito (Tomcat WAR, pruebas), Maven usa `MF_JDK25_HOME` cuando el POM del proyecto apunta
+  a 25 (el candidato del plan individual y la CLI); el baseline legado sigue en el JDK 21. Worker: JDK 25 desde la imagen
+  oficial multi-arquitectura `eclipse-temurin:25.0.4.1_1-jdk-noble` (antes se descargaba solo el binario x64, que no corría en
+  ARM).
+- CLI: `--target springboot4 --java 25`; la CLI rechaza una versión que el perfil no soporta.
+- Probado de punta a punta con el ejemplo JBoss: baseline 3/3, candidato compila y pasa 4/4 con JDK 25, bytecode major 69,
+  arranca con Java 25.0.4.1 / Spring Boot 4.1.1 / Camel 4.22.1 y los 9 casos son iguales al legado
+  (`examples/jboss-legacy-shop/evidence/migrated-java25`). Pruebas: `tests/test_java25.py` (4) y `tests/test_versions.py`
+  ajustado.
+- Pendiente: variante WAR para Tomcat 11 con Spring Boot 4 (el WAR individual sigue en Spring Boot 3.5 / Tomcat 10.1).

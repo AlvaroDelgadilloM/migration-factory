@@ -20,7 +20,8 @@ import uuid
 from pathlib import Path
 
 EXIT_OK, EXIT_ERROR, EXIT_BUILD, EXIT_CRITICAL, EXIT_INPUT = 0, 1, 2, 3, 4
-TARGETS = {'springboot': 'spring', 'spring': 'spring', 'quarkus': 'quarkus', 'tomcat': 'spring', 'tomcat-war': 'tomcat-war'}
+TARGETS = {'springboot': 'spring', 'spring': 'spring', 'springboot4': 'spring', 'quarkus': 'quarkus', 'tomcat': 'spring', 'tomcat-war': 'tomcat-war'}
+PROFILE_KEYS = {'springboot4': 'spring-boot-4.1-camel-4.22'}  # targets that select a profile other than the runtime's first one
 WAR_TARGETS = {'tomcat'}  # one project -> WAR for an external Tomcat 10.1 (Spring Boot engine); tomcat-war is the Fuse workspace pipeline
 ACTION = {'AUTO': 'AUTOMATIC', 'AUTO_TEST': 'AUTOMATIC_WITH_REVIEW', 'REVIEW': 'AUTOMATIC_WITH_REVIEW', 'MANUAL': 'MANUAL'}
 JAKARTA_FIX = {  # compile error "package javax.X does not exist" -> verified Jakarta recipe
@@ -231,13 +232,16 @@ def run_baseline(root, baseline_dir, ctx, report, pf, catalog, build, log):
 
 
 # --- plan ---------------------------------------------------------------------------------------
-def build_plan(report, target: str, java: str, accepted: dict, war: bool = False):
+def build_plan(report, target: str, java: str, accepted: dict, war: bool = False, profile_key: str | None = None):
     """accepted: rule id -> reason (explicit human decision, recorded in the reports)."""
     from .models import Finding, Module, Route, Scan, TargetProfile
     from .planning import build_steps, evaluate_steps
     from .profiles import PROFILES, profile_digest
     from .profiles import pick
-    p = pick(target, war)
+    p = pick(target, war, profile_key)
+    from .profiles import java_versions
+    if java not in java_versions(p):
+        raise InvalidInput(f"El perfil {p['name']} está verificado para Java {', '.join(java_versions(p))} (pedido: {java})")
     profile = TargetProfile(**p, digest=profile_digest(p))
     scan = Scan(commit_sha=None, snapshot_hash=report['snapshotHash'], errors=report['errors'], route_builders=report.get('routeBuilders', []),
                 maven_resolution=report['mavenResolution'], components=report['components'],
@@ -408,7 +412,7 @@ RECIPE_STATES = ('APPLIED', 'SKIPPED', 'ROLLED_BACK', 'BLOCKED_BY_BASELINE', 'FA
 
 
 def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds, baseline, log, allow_baseline_failure=False,
-            auto_up_to='REVIEW', approved=(), on_candidate=None, baseline_policy=None, war=False):
+            auto_up_to='REVIEW', approved=(), on_candidate=None, baseline_policy=None, war=False, profile_key=None):
     """Doc 15 pipeline. Trees: source (read only) -> .work/baseline (repair + validation) -> .work/candidate (migration)."""
     from . import preflight, transform
     from .profiles import PROFILES
@@ -437,7 +441,7 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
     if pf.get('repairPatch'):
         (out / 'reports' / 'baseline-repair.patch').write_text(redact(pf['repairPatch']))
     state = pf['build'].get('state')
-    plan = build_plan(report, target, java, accepted, war) if state != 'BASELINE_BLOCKED' else {'steps': [], 'accepted': accepted}
+    plan = build_plan(report, target, java, accepted, war, profile_key) if state != 'BASELINE_BLOCKED' else {'steps': [], 'accepted': accepted}
     write_json(out / 'reports' / 'analysis.json', report)
     from . import ENGINE_VERSION, rules as mrules
     from datetime import datetime, timezone
@@ -485,7 +489,7 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
         _finish(out, report, plan, result, log)
         return EXIT_ERROR
     from .profiles import pick
-    profile = pick(target, war)
+    profile = pick(target, war, profile_key)
     (out / 'reports' / 'migration-plan.md').write_text(plan_markdown(report, plan))
     write_json(out / 'reports' / 'migration-plan.json', plan)
     actions = manual_actions(report, plan)
@@ -1365,7 +1369,7 @@ def main(argv=None):
     pfp = sub.add_parser('preflight', parents=[common]); pfp.add_argument('project'); pfp.add_argument('--output')
     for name in ('plan', 'migrate'):
         p = sub.add_parser(name, parents=[common]); p.add_argument('project')
-        p.add_argument('--target', choices=sorted(TARGETS), default='springboot'); p.add_argument('--java', choices=['17', '21'], default='21')
+        p.add_argument('--target', choices=sorted(TARGETS), default='springboot'); p.add_argument('--java', choices=['17', '21', '25'], default='21')
         p.add_argument('--accept', action='append', default=[], metavar='RULE=MOTIVO',
                        help='decisión explícita sobre un hallazgo bloqueante, p. ej. CAMEL2_VERSION="revisado contra guía 2→3"')
         p.add_argument('--output')
@@ -1512,7 +1516,7 @@ def main(argv=None):
         target = TARGETS[args.target]
         if args.cmd == 'plan':
             report = analyze(source, target, None, True, log)
-            plan = build_plan(report, target, args.java, accepted, args.target in WAR_TARGETS)
+            plan = build_plan(report, target, args.java, accepted, args.target in WAR_TARGETS, PROFILE_KEYS.get(args.target))
             md = plan_markdown(report, plan)
             if args.output:
                 o = Path(args.output).resolve(); o.mkdir(parents=True, exist_ok=True)
@@ -1530,7 +1534,7 @@ def main(argv=None):
                        baseline_policy=baseline_policy(args))
             print((out / 'workspace' / 'workspace-migration.md').read_text())
             return code
-        code = migrate(source, out, target, args.java, accepted, war=args.target in WAR_TARGETS, dry_run=args.dry_run, autofix=not args.no_autofix,
+        code = migrate(source, out, target, args.java, accepted, war=args.target in WAR_TARGETS, profile_key=PROFILE_KEYS.get(args.target), dry_run=args.dry_run, autofix=not args.no_autofix,
                        max_rounds=args.max_fix_rounds, baseline=not args.skip_baseline, log=log,
                        allow_baseline_failure=args.allow_baseline_failure, auto_up_to=args.auto_apply_up_to, approved=set(args.approve),
                        baseline_policy=baseline_policy(args))

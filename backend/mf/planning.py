@@ -324,7 +324,8 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
             # the URL clients call today: web.xml mapping of CamelHttpTransportServlet first, then restConfiguration().contextPath
             pattern = web_patterns[0] if web_patterns else (ctx_paths[0].rstrip('/') + '/*') if ctx_paths else '/camel/*'
             if profile.runtime == 'spring':
-                items.append(('org.openrewrite.maven.AddDependency', {'groupId': 'org.springframework.boot', 'artifactId': 'spring-boot-starter-web',
+                web = 'spring-boot-starter-webmvc' if profile.runtime_version.startswith('4.') else 'spring-boot-starter-web'  # renamed in Boot 4
+                items.append(('org.openrewrite.maven.AddDependency', {'groupId': 'org.springframework.boot', 'artifactId': web,
                               'version': profile.runtime_version, 'onlyIfUsing': 'org.apache.camel..*'}))
                 props_extra = [f'camel.servlet.mapping.context-path={pattern}']
             else:
@@ -495,9 +496,12 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
                                                   renames={d['artifact']: d['target'] for d in decisions if d['action'] == 'RENAME'},
                                                   removed={d['artifact'] for d in decisions if d['action'] in ('REMOVE', 'BLOCK')},
                                                   legacy=(scan.summary or {}).get('legacyRuntime'))
-    if java_version == '21':  # verified in rewrite-migrate-java 3.11.0 and 3.42.0
-        recipe['activeRecipes'] = recipe['activeRecipes'] + ['org.openrewrite.java.migrate.UpgradeToJava21']
-        notes.append('Java 21: org.openrewrite.java.migrate.UpgradeToJava21 (el perfil base usa Java 17).')
+    java_version = java_version or profile.java_version  # a profile whose base is above 17 (Spring Boot 4.1 + Camel 4.22: 21)
+    upgrade = {'21': 'org.openrewrite.java.migrate.UpgradeToJava21',   # rewrite-migrate-java 3.11.0 and 3.42.x
+               '25': 'org.openrewrite.java.migrate.UpgradeToJava25'}.get(java_version)  # rewrite-migrate-java 3.42.1 (profile Camel 4.22)
+    if upgrade:
+        recipe['activeRecipes'] = recipe['activeRecipes'] + [upgrade]
+        notes.append(f'Java {java_version}: {upgrade}' + ('; se compila y prueba con el JDK 25 del worker (MF_JDK25_HOME)' if java_version == '25' else '') + '.')
     add(f'runtime-{profile.runtime}', f'Runtime {profile.name}: BOM, starters/extensiones y arranque', 'recipe', 'REVIEW',
         recipe=recipe, preconditions=base_pre + [g1] + pre, depends_on=[mapping_dep], rollback=ROLLBACK_RECIPE,
         finding_ids=ids(['UNMAPPED_COMPONENT']), notes=notes)

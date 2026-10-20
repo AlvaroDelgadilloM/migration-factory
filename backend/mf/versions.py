@@ -24,14 +24,24 @@ def tomcat_war() -> dict:
     }
 
 
+def java25_reason(profile) -> str:
+    """Why Java 25 is not offered with this profile, naming the piece that lacks official support and where it is supported."""
+    piece = (f'Camel Quarkus {profile.runtime_version}' if profile.runtime == 'quarkus' else f'Camel {profile.camel_version}')
+    return f'{NOT_VALIDATED}: {piece} no soporta Java 25 oficialmente; use el perfil Spring Boot 4.1 + Camel 4.22 LTS'
+
+
 def profile_target(profile) -> dict:
-    """Spring Boot / Quarkus profile. Java 21 is the verified upgrade of these profiles (planning: UpgradeToJava21 on a
-    Java 17 base); Java 25 has not been validated for them."""
-    validated = ['21']
+    """Spring Boot / Quarkus profile: the Java releases it declares (profiles.java_versions) are the validated ones. Spring
+    Boot 3.5 + Camel 4.14 and Quarkus 3.40: 17/21; Spring Boot 4.1 + Camel 4.22 LTS: 21/25 (verified end to end on the JBoss
+    example: Java 25 bytecode, 9/9 cases equal to the legacy system)."""
+    from .profiles import java_versions
+    validated = [v for v in JAVA_CHOICES if v in java_versions(profile)]
     platform = (f'Spring Boot {profile.runtime_version}' if profile.runtime == 'spring' else f'Quarkus {profile.runtime_version}')
     return {
         'target': 'profile', 'profileId': str(profile.id), 'runtime': profile.runtime, 'label': profile.name,
-        'java': [{'version': v, 'validated': v in validated, 'reason': None if v in validated else NOT_VALIDATED} for v in JAVA_CHOICES],
+        'java': [{'version': v, 'validated': v in validated,
+                  'reason': None if v in validated else java25_reason(profile) if v == '25' else NOT_VALIDATED}
+                 for v in JAVA_CHOICES],
         'spring': [{'key': f'{profile.key}@{profile.version}', 'label': f'{platform} · Camel {profile.camel_version}', 'java': validated}],
     }
 
