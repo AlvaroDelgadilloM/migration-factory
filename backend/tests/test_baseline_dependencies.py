@@ -16,7 +16,7 @@ ORA = ('[ERROR] Failed to execute goal on project orders-routes: Could not resol
 def with_missing(fake, monkeypatch, log=ORA):
     orig = fake.mvn
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         if name == 'baseline-compile':
             return fake._result(ctx, name, 1, log)
         return orig(ctx, cwd, goals, name, timeout)
@@ -81,7 +81,7 @@ def test_internal_artifact_and_waves(tmp_path, monkeypatch):                    
     fake = install(monkeypatch, FakeMaven(effective_ok=True))
     orig = fake.mvn
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         if name == 'baseline-compile' and 'common-datasource' in str(cwd):
             return fake._result(ctx, name, 1, ORA)
         if name == 'install-common-datasource-migrated':

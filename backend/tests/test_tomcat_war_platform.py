@@ -14,7 +14,7 @@ def test_fuse_workspace_is_recommended_and_migrated_to_tomcat_war(client, token,
     orig = fake.mvn
     built = []
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         if name == 'tomcat-war-package':                      # mvn -DskipTests package on the migrated workspace
             built.append((list(goals), Path(cwd).name))
             war = Path(cwd) / 'webapp' / 'target' / 'ROOT.war'

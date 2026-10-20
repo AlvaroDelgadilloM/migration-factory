@@ -96,7 +96,7 @@ def test_migrate_workspace_by_waves_with_isolated_overlays(tmp_path, monkeypatch
     seen = []
     orig = fake.mvn
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         from mf.worker import mavenops
         seen.append((name, str(mavenops.current_overlay() or '')))
         if name == 'baseline-compile' and 'common-catalogue' in str(cwd):
@@ -274,7 +274,7 @@ def test_retry_reuses_successful_projects_and_unblocks_dependents(tmp_path, monk
     fake = install(monkeypatch, FakeMaven(effective_ok=True))
     orig, broken, calls = fake.mvn, {'on': True}, []
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         calls.append((name, str(cwd)))
         if broken['on'] and name == 'baseline-compile' and 'common-datasource' in str(cwd):
             return fake._result(ctx, name, 1, '[ERROR] /x/src/main/java/A.java:[3,17] cannot find symbol')
@@ -304,7 +304,7 @@ def test_parallel_migration_inside_a_wave(tmp_path, monkeypatch):
     fake = install(monkeypatch, FakeMaven(effective_ok=True))
     orig, flags, threads = fake.mvn, [], set()
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         from mf.worker import mavenops
         flags.append(mavenops._parallel['on'])
         threads.add(threading.get_ident())

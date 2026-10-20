@@ -85,7 +85,7 @@ def test_compile_errors_are_structured_and_a_worse_round_is_rolled_back(tmp_path
             '[ERROR]   symbol:   class SwaggerDefinition\nNoSuchEndpointException: No endpoint could be found for: direct://process-order\n')
     err3 = err1 + ''.join(f'[ERROR] /w/.work/candidate/orders-routes/src/main/java/demo/orders/B.java:[{i},1] incompatible types\n' for i in (1, 2))
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         if name.startswith('candidate-compile-'):
             calls['n'] += 1
             return fake._result(ctx, name, 1, err1 if calls['n'] == 1 else err3)

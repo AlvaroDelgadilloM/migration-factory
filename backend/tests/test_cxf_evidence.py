@@ -96,7 +96,7 @@ FUSE_POM = f'''<?xml version="1.0" encoding="UTF-8"?>
 
 
 class FuseMaven(FakeMaven):
-    def mvn(self, ctx, cwd, goals, name, timeout=None):
+    def mvn(self, ctx, cwd, goals, name, timeout=None, java_home=None):
         if goals == ['validate']:
             self.calls.append((name, tuple(goals)))
             return self._result(ctx, name, 1, '[ERROR] Non-resolvable import POM: Could not find artifact '

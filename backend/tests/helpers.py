@@ -20,7 +20,7 @@ class FakeMaven:
         p.write_text(text)
         return runner.Result(code, 5, p)
 
-    def mvn(self, ctx, cwd, goals, name, timeout=None):
+    def mvn(self, ctx, cwd, goals, name, timeout=None, java_home=None):
         self.calls.append((name, tuple(goals)))
         if self.slow:  # real subprocess so cancellation/timeout paths are exercised
             return runner.run(['sleep', str(self.slow)], cwd, ctx, name=name, timeout=timeout or 600)

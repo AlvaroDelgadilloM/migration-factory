@@ -163,7 +163,7 @@ def test_autofix_bounded_and_recorded(project, tmp_path, monkeypatch):
     calls = {'test': 0}
     orig_mvn = fake.mvn
 
-    def mvn(ctx, cwd, goals, name, timeout=None):
+    def mvn(ctx, cwd, goals, name, timeout=None, java_home=None):
         if name.startswith('candidate-compile-'):
             calls['test'] += 1
             if calls['test'] == 1:
