@@ -4,7 +4,7 @@ import { Login } from './features/login/login';
 import { Shell } from './layout/shell';
 
 export const routes: Routes = [
-  { path: 'login', component: Login, title: 'Ingreso · Condor Migration Factory' },
+  { path: 'login', component: Login, title: 'Ingreso · Migration Factory' },
   {
     path: '', component: Shell, canActivate: [authGuard], children: [
       { path: '', pathMatch: 'full', redirectTo: 'portfolio' },
