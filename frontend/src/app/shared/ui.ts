@@ -229,16 +229,20 @@ export class TrafficLight {
   });
 }
 
-/** Brand mark: two blocks joined by an arrow (legacy → modern). Decorative; the name is always written next to it. */
+/** Brand mark: the Condor (same drawing as public/favicon.svg). Decorative; the name is always written next to it. */
 @Component({
   selector: 'mf-logo',
   template: `
-    <svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 40 40" aria-hidden="true" class="logo">
-      <defs><linearGradient id="mfg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fd0c8" /><stop offset="1" stop-color="#2b6cb0" /></linearGradient></defs>
-      <rect x="1" y="1" width="38" height="38" rx="11" fill="url(#mfg)" />
-      <rect x="8" y="13" width="9" height="14" rx="2.5" fill="#fff" opacity=".55" />
-      <rect x="23" y="11" width="9" height="18" rx="2.5" fill="#fff" />
-      <path d="M17.5 20h4.2m0 0-2-2m2 2-2 2" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 160 160" aria-hidden="true" class="logo">
+      <circle cx="80" cy="80" r="74" fill="#F4BD28" />
+      <path d="M 26 80 C 26 40, 52 18, 75 18 C 45 32, 38 58, 38 80 C 38 102, 45 128, 75 142 C 52 142, 26 120, 26 80 Z" fill="#1C2833" />
+      <path d="M 38 58 Q 75 58, 110 42" stroke="#1C2833" stroke-width="14" stroke-linecap="round" fill="none" />
+      <polygon points="110,30 134,42 110,54" fill="#1C2833" />
+      <path d="M 38 102 Q 82 102, 118 86" stroke="#1C2833" stroke-width="14" stroke-linecap="round" fill="none" />
+      <polygon points="118,74 142,86 118,98" fill="#1C2833" />
+      <rect x="102" y="15" width="10" height="10" fill="#1C2833" rx="2" />
+      <rect x="120" y="10" width="10" height="10" fill="#F4BD28" stroke="#1C2833" stroke-width="2.5" rx="2" />
+      <circle cx="140" cy="22" r="4" fill="#1C2833" />
     </svg>`,
 })
 export class Logo {

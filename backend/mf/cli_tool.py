@@ -1309,14 +1309,14 @@ def datastage_cmd(args, log) -> int:
                 if args.output:
                     o = Path(args.output).resolve()
                     o.mkdir(parents=True, exist_ok=True)
-                    write_json(o / 'datastage-ir.json', project.to_dict())
-                    write_json(o / 'datastage-analysis.json', analysis)
+                    for name_, data in (('datastage-ir.json', project.to_dict()), ('datastage-analysis.json', analysis)):
+                        (o / name_).write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
                 print(json.dumps(summary, ensure_ascii=False, indent=2))
                 return EXIT_OK if project.metadata['status'] != 'FAILED' else EXIT_ERROR
             rep = adapter.migrate(work, Path(args.output), name, args.airflow_python, args.timezone, log)
         except adapter.InvalidInput as e:
             raise InvalidInput(str(e)) from None
-    print(Path(rep['output']['project'], 'migration-report', 'migration-report.md').read_text().split('## Oleadas')[0])
+    print(Path(rep['output']['project'], 'migration-report', 'migration-report.md').read_text(encoding='utf-8').split('## Oleadas')[0])
     print(f"Proyecto: {rep['output']['project']}\nZIP: {rep['output']['zip']}")
     return {'FAILED': EXIT_ERROR, 'BLOCKED': EXIT_CRITICAL}.get(rep['status'], EXIT_OK)
 

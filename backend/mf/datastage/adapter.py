@@ -58,7 +58,7 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
         shutil.rmtree(proj_dir)
     report_dir = proj_dir / 'migration-report'
     report_dir.mkdir(parents=True)
-    (report_dir / 'datastage-ir.json').write_text(json.dumps(project.to_dict(), ensure_ascii=False, indent=1))
+    (report_dir / 'datastage-ir.json').write_text(json.dumps(project.to_dict(), ensure_ascii=False, indent=1), encoding='utf-8')
     log('generando DAGs, SQL y configuración')
     gen = Project(project, analysis, proj_dir, name, timezone_name)
     results = gen.generate()
@@ -93,12 +93,12 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
               'graph': analysis['graph'], 'pilot': analysis['pilot'], 'manualActions': manual, 'actions': worklist(analysis, results),
               'dags': gen.dags,
               'airflow': AIRFLOW, 'generatedAt': datetime.now(timezone.utc).isoformat(timespec='seconds')}
-    (report_dir / 'inventory.json').write_text(json.dumps(analysis['jobs'], ensure_ascii=False, indent=1))
-    (report_dir / 'dependency-graph.json').write_text(json.dumps(analysis['graph'], ensure_ascii=False, indent=1))
-    (report_dir / 'stage-decisions.json').write_text(json.dumps(analysis['decisions'], ensure_ascii=False, indent=1))
-    (report_dir / 'migration-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1))
-    (report_dir / 'migration-report.md').write_text(markdown(report))
-    (report_dir / 'manual-actions.md').write_text('# Acciones manuales\n\n' + ''.join(f'- [ ] {m}\n' for m in manual))
+    (report_dir / 'inventory.json').write_text(json.dumps(analysis['jobs'], ensure_ascii=False, indent=1), encoding='utf-8')
+    (report_dir / 'dependency-graph.json').write_text(json.dumps(analysis['graph'], ensure_ascii=False, indent=1), encoding='utf-8')
+    (report_dir / 'stage-decisions.json').write_text(json.dumps(analysis['decisions'], ensure_ascii=False, indent=1), encoding='utf-8')
+    (report_dir / 'migration-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding='utf-8')
+    (report_dir / 'migration-report.md').write_text(markdown(report), encoding='utf-8')
+    (report_dir / 'manual-actions.md').write_text('# Acciones manuales\n\n' + ''.join(f'- [ ] {m}\n' for m in manual), encoding='utf-8')
     hashes = {f'source/{p.relative_to(root).as_posix()}': sha(p) for p in files}
     hashes |= {p.relative_to(proj_dir).as_posix(): sha(p) for p in sorted(proj_dir.rglob('*')) if p.is_file()}
     manifest = {'sourceType': 'IBM_DATASTAGE_DSX', 'migrationType': MIGRATION_TYPE, 'dataStageVersion': project.metadata['dataStageVersion'],
@@ -106,7 +106,7 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
                 'semiautomatic': counts['SEMIAUTOMATIC'], 'manualReview': counts['MANUAL_REVIEW'], 'blocked': counts['BLOCKED'],
                 'failed': counts['FAILED'], 'status': overall, 'hashes': hashes, 'timestamp': report['generatedAt']}
     (proj_dir / '.migration').mkdir(exist_ok=True)
-    (proj_dir / '.migration/manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
+    (proj_dir / '.migration/manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding='utf-8')
     zip_path = out / f'{proj_dir.name}.zip'
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
         for p in sorted(proj_dir.rglob('*')):
@@ -121,8 +121,8 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
                                            missing=missing, mismatched=bad))
     if missing or bad:
         report['status'] = 'FAILED'
-    (report_dir / 'migration-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1))
-    (report_dir / 'migration-report.md').write_text(markdown(report))
+    (report_dir / 'migration-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding='utf-8')
+    (report_dir / 'migration-report.md').write_text(markdown(report), encoding='utf-8')
     report['output'] = {'project': str(proj_dir), 'zip': str(zip_path)}
     return report
 

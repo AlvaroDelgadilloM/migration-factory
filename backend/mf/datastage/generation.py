@@ -396,7 +396,7 @@ def branch(branches: list, activities: dict, ti=None, params=None, **_):
 
 
 def _file_format(stage: str) -> dict:
-    cfg = yaml.safe_load((CONFIG / "files.yaml").read_text()) or {}
+    cfg = yaml.safe_load((CONFIG / "files.yaml").read_text(encoding='utf-8')) or {}
     if stage not in cfg:
         raise AirflowFailException(f"MANUAL ({stage}): definir el formato del archivo en config/files.yaml")
     return cfg[stage]
@@ -418,7 +418,7 @@ def load_file(conn_id: str, stage: str, path: str, table: str, columns: list, **
 def export_file(conn_id: str, stage: str, path: str, sql_file: str, **context):
     from airflow.providers.oracle.hooks.oracle import OracleHook
     fmt = _file_format(stage)
-    sql = context["task"].render_template((Path(__file__).resolve().parents[2] / sql_file).read_text(), context)
+    sql = context["task"].render_template((Path(__file__).resolve().parents[2] / sql_file).read_text(encoding='utf-8'), context)
     rows = OracleHook(oracle_conn_id=conn_id).get_records(sql.rstrip().rstrip(";"))
     with open(path, "w", newline="", encoding=fmt.get("encoding", "utf-8")) as fh:
         csv.writer(fh, delimiter=fmt.get("delimiter", "|")).writerows(rows)

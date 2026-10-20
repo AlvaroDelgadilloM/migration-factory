@@ -60,7 +60,7 @@ def secrets(out: Path, literal_credentials: list):
 
 
 def connection_manifest(out: Path):
-    data = json.loads((out / 'config/connection-manifest.json').read_text())
+    data = json.loads((out / 'config/connection-manifest.json').read_text(encoding='utf-8'))
     leaked = [c['connId'] for c in data['connections'] if 'value' in (c['fields'].get('password') or {})]
     return gate('CONNECTION_MANIFEST_GATE', 'FAIL' if leaked else 'PASS', f"{len(data['connections'])} conexión(es); sin contraseñas"
                 if not leaked else f'contraseñas en {leaked}')
@@ -99,7 +99,7 @@ def sql_files(out: Path, results: dict):
     problems, n = [], 0
     for p in sorted((out / 'sql').rglob('*.sql')):
         n += 1
-        text = '\n'.join(l for l in p.read_text().splitlines() if not l.lstrip().startswith('--'))
+        text = '\n'.join(l for l in p.read_text(encoding='utf-8').splitlines() if not l.lstrip().startswith('--'))
         if not text.strip():
             continue
         rel = p.relative_to(out).as_posix()

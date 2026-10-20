@@ -7,7 +7,10 @@
 - output captured to a file, redacted before it reaches events or artifacts
 """
 import os
-import resource
+try:
+    import resource  # POSIX: per-process limits of the child processes
+except ImportError:  # Windows (local CLI and tests): the module imports, without the limits
+    resource = None
 import signal
 import subprocess
 import threading
@@ -61,7 +64,7 @@ class Result:
 
 
 def _limits(pid, cpu_seconds):
-    if not hasattr(resource, 'prlimit'):  # macOS (local tests): no per-pid limits
+    if resource is None or not hasattr(resource, 'prlimit'):  # macOS / Windows (local tests): no per-pid limits
         return
     for res, val in ((resource.RLIMIT_CORE, 0), (resource.RLIMIT_FSIZE, 2 * 1024 ** 3),
                      (resource.RLIMIT_NOFILE, 8192), (resource.RLIMIT_CPU, cpu_seconds)):
