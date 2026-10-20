@@ -4393,6 +4393,62 @@
           }
         }
       }
+    },
+    "/api/v1/datastage-migrations/{dm_id}/reconciliations": {
+      "post": {
+        "tags": [
+          "datastage"
+        ],
+        "summary": "Upload Reconciliation",
+        "description": "Evidence of the reconciliation run in the client's environment (tests/reconciliation/run_reconciliation.py of the\ngenerated project): evaluated here, kept with the migration and audited. Nothing connects to the client's databases.",
+        "operationId": "upload_reconciliation_api_v1_datastage_migrations__dm_id__reconciliations_post",
+        "parameters": [
+          {
+            "name": "dm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dm Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Result"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataStageMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4905,6 +4961,12 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Actionstate",
+            "default": {}
+          },
+          "reconciliation": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reconciliation",
             "default": {}
           },
           "createdBy": {

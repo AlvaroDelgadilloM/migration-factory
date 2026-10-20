@@ -52,6 +52,15 @@ def test_variables_read_by_expressions_are_declared_and_credentials_are_not_tran
         translate('P_CONN.$P_PWD', {}, params)
 
 
+def test_a_terminator_with_several_entries_only_runs_when_one_of_them_fires(generated):
+    """Seen running the DAG in Airflow (datastage-e2e): one abort task fed by the condition's "otherwise" and by the exception
+    handler was not skipped by the branch (reachable through the handler) and aborted a successful run."""
+    dag = (generated / 'dags/js_master.py').read_text(encoding='utf-8')
+    assert "'task': 'ta_500_abort__nc_200_mode'" in dag                       # the branch skips its own copy
+    assert 'nc_200_mode >> ta_500_abort__nc_200_mode' in dag and 'ex_400_error >> ta_500_abort__ex_400_error' in dag
+    assert 'none_failed_min_one_success' not in dag.split('ta_500_abort__nc_200_mode = ')[1].splitlines()[0]
+
+
 def _result(**changes):
     table = {'job': 'JP_PUBLISH', 'stage': 'DB_200_UPDATE_TOTALS', 'table': 'ORDER_TOTALS', 'excluded': [], 'verdict': 'EQUAL',
              'checks': [{'name': 'row_count', 'legacy': '6', 'target': '6'}, {'name': 'checksum', 'legacy': '91', 'target': '91'}],

@@ -175,6 +175,14 @@ with DAG(
         params = self.plain_params(seq)
         called = []
         body, after = [], []
+        # A TerminatorActivity reached from several places (a condition's "otherwise" and the exception handler) runs in
+        # DataStage only when one of them fires. One Airflow task per entry keeps that: with a single task, the branch could
+        # not skip it (it is reachable from the chosen branch through the handler) and it would abort a successful run.
+        inbound = {n: [l.source_stage for l in seq.links if l.target_stage == n and l.source_stage in tids] for n in acts}
+        split = {n for n in acts if acts[n].stage_type == 'CTerminatorActivity' and len(inbound[n]) > 1}
+
+        def target(l):
+            return f'{tids[l.target_stage]}__{tids[l.source_stage]}' if l.target_stage in split else tids[l.target_stage]
         for s in seq.stages:
             tid, t, p = tids[s.name], s.stage_type, s.properties
             if t == 'CJobActivity':
@@ -194,13 +202,14 @@ with DAG(
                             f'"variables": {dict(p.get("variables") or {})!r}}})')
             elif t == 'CCondition':
                 outs = [l for l in seq.links if l.source_stage == s.name]
-                branches = [{'task': tids[l.target_stage], 'type': (l.trigger or {}).get('type'), 'expression': (l.trigger or {}).get('expression')}
+                branches = [{'task': target(l), 'type': (l.trigger or {}).get('type'), 'expression': (l.trigger or {}).get('expression')}
                             for l in outs if l.target_stage in tids]
                 body.append(f'    {tid} = BranchPythonOperator(task_id={tid!r}, python_callable=runtime.branch, op_kwargs={{"branches": {branches!r}, '
                             f'"activities": {tids!r}}})')
             elif t == 'CTerminatorActivity':
-                body.append(f'    {tid} = PythonOperator(task_id={tid!r}, python_callable=runtime.terminate, op_kwargs={{"message": {p.get("FinalMessage") or ""!r}}}, '
-                            f'trigger_rule="none_failed_min_one_success")')
+                for task in ([f'{tid}__{tids[src]}' for src in inbound[s.name]] if s.name in split else [tid]):
+                    body.append(f'    {task} = PythonOperator(task_id={task!r}, python_callable=runtime.terminate, '
+                                f'op_kwargs={{"message": {p.get("FinalMessage") or ""!r}}})')
             elif t == 'CExceptionHandler':
                 body.append(f'    {tid} = EmptyOperator(task_id={tid!r}, trigger_rule="one_failed")')
                 after.append(tid)
@@ -217,7 +226,7 @@ with DAG(
         deps = []
         for l in seq.links:
             if l.source_stage in tids and l.target_stage in tids:
-                deps.append(f'    {tids[l.source_stage]} >> {tids[l.target_stage]}')
+                deps.append(f'    {tids[l.source_stage]} >> {target(l)}')
         for h in after:  # the exception handler fires when any job activity fails
             jobs = [tids[s.name] for s in seq.stages if s.stage_type == 'CJobActivity']
             if jobs:

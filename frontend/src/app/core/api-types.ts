@@ -1219,6 +1219,27 @@ export interface paths {
         patch: operations["set_action_api_v1_datastage_migrations__dm_id__actions_patch"];
         trace?: never;
     };
+    "/api/v1/datastage-migrations/{dm_id}/reconciliations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Reconciliation
+         * @description Evidence of the reconciliation run in the client's environment (tests/reconciliation/run_reconciliation.py of the
+         *     generated project): evaluated here, kept with the migration and audited. Nothing connects to the client's databases.
+         */
+        post: operations["upload_reconciliation_api_v1_datastage_migrations__dm_id__reconciliations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1427,6 +1448,13 @@ export interface components {
              * @default {}
              */
             actionState: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reconciliation
+             * @default {}
+             */
+            reconciliation: {
                 [key: string]: unknown;
             };
             /** Createdby */
@@ -5454,6 +5482,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DataStageActionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataStageMigrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_reconciliation_api_v1_datastage_migrations__dm_id__reconciliations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {

@@ -121,6 +121,9 @@ export class Api {
   setDataStageAction(id: string, key: string, done: boolean) {
     return this.send<DataStageMigration>('PATCH', `/datastage-migrations/${id}/actions`, { key, done });
   }
+  uploadDataStageReconciliation(id: string, result: unknown) {
+    return this.send<DataStageMigration>('POST', `/datastage-migrations/${id}/reconciliations`, result);
+  }
   dataStageMigrations(projectId: string) { return this.get<DataStageMigration[]>(`/projects/${projectId}/datastage-migrations`); }
   startDataStageMigration(projectId: string, body: unknown) {
     return this.send<{ dataStageMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/datastage-migrations`, body, { 'Idempotency-Key': this.key() });

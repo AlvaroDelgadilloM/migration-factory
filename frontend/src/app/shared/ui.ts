@@ -94,6 +94,8 @@ const SEVERITY: Record<string, { s: 'success' | 'info' | 'warn' | 'danger' | 'se
   LOW: { s: 'success', icon: 'pi-circle-fill' }, MEDIUM: { s: 'info', icon: 'pi-circle-fill' }, HIGH: { s: 'warn', icon: 'pi-circle-fill' },
   VERY_HIGH: { s: 'danger', icon: 'pi-circle-fill' }, PARALLEL: { s: 'secondary', icon: 'pi-cog' }, SEQUENCE: { s: 'contrast', icon: 'pi-share-alt' },
   manual: { s: 'danger', icon: 'pi-user-edit' }, review: { s: 'info', icon: 'pi-eye' },
+  // DataStage reconciliation (legacy output vs Airflow output)
+  VERIFIED: { s: 'success', icon: 'pi-verified' }, EQUAL: { s: 'success', icon: 'pi-check' }, NOT_RECONCILED: { s: 'secondary', icon: 'pi-question-circle' },
 };
 const LABEL: Record<string, string> = {
   succeeded: 'Correcto', running: 'En curso', queued: 'En cola', failed: 'Fallido', cancelled: 'Cancelado', timed_out: 'Tiempo agotado',
@@ -114,6 +116,7 @@ const LABEL: Record<string, string> = {
   TECHNICALLY_VALID: 'Técnicamente válido', NOT_VERIFIED: 'Sin verificar', FUNCTIONALLY_UNVERIFIED: 'Falta reconciliar',
   FUNCTIONALLY_VALIDATED: 'Datos reconciliados', LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', VERY_HIGH: 'Muy alta',
   PARALLEL: 'Job', SEQUENCE: 'Secuencia', manual: 'Manual', review: 'Revisar',
+  VERIFIED: 'Verificado', EQUAL: 'Igual', NOT_RECONCILED: 'Sin reconciliar',
 };
 /** One line under a status where the code alone does not say what to do. */
 export const STATUS_HINT: Record<string, string> = {

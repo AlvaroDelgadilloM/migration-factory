@@ -34,6 +34,8 @@ export class DataStageStore {
   readonly pilot = computed(() => Object.fromEntries(Object.entries((this.summary()?.pilot ?? {}) as Record<string, string>).map(([k, v]) => [v, k])));
   readonly artifacts = computed(() => Object.entries((this.summary()?.artifacts ?? {}) as Record<string, string>)
     .map(([k, v]) => ({ name: k.replace(/^ds-[0-9a-f]+\./, ''), id: v })));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly reconciliation = computed<any>(() => (this.current()?.reconciliation as any)?.latest ?? null);
   readonly airflowZip = computed(() => this.artifacts().find(a => a.name.endsWith('.zip')) ?? null);
   readonly startReason = computed(() => {
     if (!this.ctx.can('execute')) return `Su rol (${this.ctx.role()}) no permite migrar`;
@@ -62,6 +64,20 @@ export class DataStageStore {
     this.busy.set(true);
     try { await this.api.startDataStageMigration(id, { timezone: timezone.trim() }); await this.reload(); }
     catch (e) { this.error.set(UiError.from(e)); }
+    finally { this.busy.set(false); }
+  }
+
+  /** Uploads reconciliation-result.json (run in the client's environment); the backend evaluates it and keeps the evidence. */
+  async uploadReconciliation(result: unknown): Promise<boolean> {
+    const m = this.current();
+    if (!m) return false;
+    this.error.set(null);
+    this.busy.set(true);
+    try {
+      const updated = await this.api.uploadDataStageReconciliation(m.id, result);
+      this.list.data.update(l => l ? [updated, ...l.slice(1)] : l);
+      return true;
+    } catch (e) { this.error.set(UiError.from(e)); return false; }
     finally { this.busy.set(false); }
   }
 

@@ -75,6 +75,36 @@ En la plataforma:
 
 El worker trae Airflow 2.10.5 en `/opt/airflow-venv`, fijado con los constraints oficiales, solo para el DagBag.
 
+## Reconciliación (prueba real)
+
+Que los DAGs importen no prueba que los datos sean los mismos. La prueba real corre el job en DataStage y el DAG en Airflow
+con la misma entrada, en un ambiente de pruebas del cliente, y compara lo que escribe cada uno:
+
+1. DataStage escribe en un esquema (legado) y Airflow en otro (migrado).
+2. En el ambiente de Airflow: `python tests/reconciliation/run_reconciliation.py --conn <connection> --legacy <ESQUEMA_DS>
+   --target <ESQUEMA_AF>` (o `--legacy-conn`/`--target-conn` si son dos bases). Usa Connections de Airflow: la plataforma
+   nunca se conecta a las bases del cliente ni recibe credenciales.
+3. El script deja `reconciliation-result.json`, que se sube en **DataStage → Reconciliación**
+   (`POST /datastage-migrations/{id}/reconciliations`). La plataforma recalcula los veredictos desde los valores (no confía
+   en los del archivo), guarda la última medición y el historial, y lo audita.
+
+Por cada tabla Oracle que escribe un job compara: filas, claves distintas, duplicados, nulos por columna, suma/mínimo/máximo
+de las numéricas, un checksum (`ORA_HASH` de la fila con separador) y una muestra de claves distintas en los dos sentidos.
+Las columnas que se llenan con la hora de ejecución (`CurrentTimestamp`, `CurrentDate`…) se excluyen y se nombran.
+`reconciliation.json` trae las consultas exactas y `<job>.sql`, las mismas para correrlas a mano.
+
+Veredictos: tabla `EQUAL` / `DIFFERENT` / `ERROR`; job `VERIFIED` cuando todas sus tablas son iguales; los jobs que no
+escriben una tabla Oracle o que no se midieron quedan `NOT_RECONCILED`.
+
+### Prueba previa con Oracle y Airflow reales (CI)
+
+`.github/workflows/datastage-e2e.yml` (sin datos del cliente; corre en GitHub porque necesita Docker): levanta Oracle Free 23
+y Airflow 2.10.5, migra el fixture `shop_flow.dsx`, ejecuta el DAG `js_master` de punta a punta y lo reconcilia contra una
+emulación fila por fila del job (`backend/tests/e2e/datastage_oracle.py`). Comprueba también que una fila alterada se detecta.
+No reemplaza a DataStage: confirma que el SQL generado corre en Oracle, que el DAG ejecuta sus tareas y que la
+reconciliación distingue igual de distinto. Encontró y quedaron corregidos: el checksum mal formado, el doble esquema en el
+nombre de la tabla y las Variables usadas en expresiones que no se declaraban en `variables.json`.
+
 ## Corpus BIBES (regresión)
 
 Son datos del cliente: nunca entran al repositorio. `MF_DATASTAGE_CORPUS=<carpeta>` activa la prueba de regresión.
@@ -92,7 +122,7 @@ El piloto sugerido (un job LOW, uno MEDIUM, uno HIGH y una secuencia maestra) sa
 ## Límites conocidos
 
 - **Pendiente para Sprint 4:** el fallback con IA (doc 58). Hoy lo no traducible queda MANUAL, con el motivo.
-- **Reconciliación:** se generan las consultas, pero ejecutarlas requiere DataStage y Airflow sobre la misma entrada.
+- **Reconciliación:** ejecutarla requiere DataStage y Airflow sobre la misma entrada en el ambiente del cliente (ver arriba).
 - **Programación:** el DSX no la trae. `schedule=None` y `config/schedules.yaml` para definirla.
 - **Sin traducción, por diseño:** `@PARTITIONNUM` (particionamiento paralelo), contadores entre filas, ColumnGenerator y
   RowGenerator con valores sintéticos, y los bloques PL/SQL por fila (WriteMode 8).

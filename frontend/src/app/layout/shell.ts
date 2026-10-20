@@ -17,7 +17,7 @@ const PROJECT_SCREENS = [
 const TEST_SCREENS = [['automaticas', 'Automáticas', 'pi-sync'], ['manuales', 'Manuales', 'pi-send']] as const;
 // DataStage → Airflow projects have their own steps: the Java/Camel screens (findings, plan, diff…) do not apply to them
 const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-list'], ['ds/oleadas', 'Oleadas', 'pi-sitemap'],
-  ['ds/acciones', 'Acciones manuales', 'pi-check-square']] as const;
+  ['ds/acciones', 'Acciones manuales', 'pi-check-square'], ['ds/reconciliacion', 'Reconciliación', 'pi-check-circle']] as const;
 
 @Component({
   selector: 'mf-shell',

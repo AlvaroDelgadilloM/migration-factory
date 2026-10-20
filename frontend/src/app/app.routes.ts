@@ -12,6 +12,7 @@ export const routes: Routes = [
       { path: 'p/:projectId/ds', title: 'Resumen · DataStage', loadComponent: () => import('./features/datastage/overview').then(m => m.DsOverview) },
       { path: 'p/:projectId/ds/jobs', title: 'Jobs · DataStage', loadComponent: () => import('./features/datastage/jobs').then(m => m.DsJobs) },
       { path: 'p/:projectId/ds/oleadas', title: 'Oleadas · DataStage', loadComponent: () => import('./features/datastage/waves').then(m => m.DsWaves) },
+      { path: 'p/:projectId/ds/reconciliacion', title: 'Reconciliación · DataStage', loadComponent: () => import('./features/datastage/reconciliation').then(m => m.DsReconciliation) },
       { path: 'p/:projectId/ds/acciones', title: 'Acciones · DataStage', loadComponent: () => import('./features/datastage/actions').then(m => m.DsActions) },
       { path: 'p/:projectId/inventory', title: 'Inventario', loadComponent: () => import('./features/inventory/inventory').then(m => m.Inventory) },
       { path: 'p/:projectId/findings', title: 'Hallazgos', loadComponent: () => import('./features/findings/findings').then(m => m.Findings) },

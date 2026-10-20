@@ -79,6 +79,15 @@ jobs:
             echo "la reconciliación no detectó la fila alterada"; exit 1
           fi
           python -c "import json; t={x['table']:x for x in json.load(open('/tmp/recon-different.json'))['tables']}; d=t['ORDER_TOTALS']; assert d['verdict']=='DIFFERENT' and d['diff']['changed']==['103'], d; print('detectada:', d['diff'])"
+      - name: Rama "en otro caso" (P_MODE distinto de FULL) termina el flujo sin publicar
+        run: |
+          export AIRFLOW_CONN_ORACLE_P_CONN="oracle://MF_TARGET:$(python -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MF_E2E_ORACLE_PASSWORD"]))')@localhost:1521?service_name=FREEPDB1"
+          export AIRFLOW_VAR_P_CONN__P_SCHEMA=MF_TARGET AIRFLOW_VAR_P_CONN__P_USER=ETL_E2E
+          $AF/airflow dags test js_master 2026-01-03 -c '{"P_MODE": "DELTA"}' > /tmp/dag-abort.log 2>&1 || true
+          grep -q "DagRun Finished: dag_id=js_master.*state=failed" /tmp/dag-abort.log
+          grep -q "Secuencia terminada por DataStage TerminatorActivity" /tmp/dag-abort.log
+          if grep -q "starting task_id=ja_300_publish.db_200_update_totals" /tmp/dag-abort.log; then echo "publicó en la rama de aborto"; exit 1; fi
+          echo "abortó sin publicar, como en DataStage"
       - name: Evidencia
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,4 +95,4 @@ jobs:
           name: datastage-e2e
           path: |
             /tmp/recon-*.json
-            /tmp/dag.log
+            /tmp/dag*.log
