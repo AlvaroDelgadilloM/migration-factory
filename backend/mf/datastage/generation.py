@@ -297,41 +297,76 @@ with DAG(
               f'\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
         write(o / 'docker-compose.yml', COMPOSE.replace('@AIRFLOW@', AIRFLOW['airflow']).replace('@PY@', AIRFLOW['python']))
         write(o / 'tests/dags/test_dag_integrity.py', DAG_TEST.replace('@EXPECTED@', json.dumps(sorted(d['dagId'] for d in self.dags))))
+        specs = []
         for j in self.p.jobs:
-            if j.job_type == 'PARALLEL':
-                rec = reconciliation(j)
-                if rec:
-                    write(o / f'tests/reconciliation/{ident(j.name)}.sql', rec)
+            if j.job_type == 'PARALLEL' and (spec := reconciliation_spec(j)):
+                specs += spec
+                write(o / f'tests/reconciliation/{ident(j.name)}.sql', reconciliation_sql(spec))
+        write(o / 'tests/reconciliation/reconciliation.json', json.dumps({'format': RECON_FORMAT, 'project': self.name, 'tables': specs},
+                                                                        ensure_ascii=False, indent=2))
+        write(o / 'tests/reconciliation/run_reconciliation.py', RECON_RUNNER.replace('@FORMAT@', RECON_FORMAT))
         write(o / 'tests/reconciliation/README.md', RECON_README)
         write(o / 'README.md', README.replace('@NAME@', self.name).replace('@AIRFLOW@', AIRFLOW['airflow']))
 
 
-def reconciliation(job) -> str | None:
-    """Checks DataStage target vs Airflow target for every Oracle table the job writes (doc 60): run both against the
-    same input on the two systems; equal results are the evidence, not the DAG importing."""
+VOLATILE = re.compile(r'(?i)\b(current(timestamp|date|time)\w*|systimestamp|sysdate|current_timestamp|current_date)\b')
+NUMERIC = ('2', '3', '4', '-5', '5', '6', '7', '8')
+RECON_FORMAT = 'mf-datastage-reconciliation/1'
+SCHEMA_MARK = '@SCHEMA@'          # replaced by the legacy or the migrated schema when the check runs
+ROW_SEP = " || '|' || "           # row text for ORA_HASH: columns joined with a separator (a|bc differs from ab|c)
+
+
+def reconciliation_spec(job) -> list[dict]:
+    """What to compare for every Oracle table the job writes (doc 60): its columns, business key and numeric columns.
+    Columns filled with the run time (CurrentTimestamp...) differ on every run by design: they are excluded and named."""
     out = []
     for s in job.stages:
         if s.stage_type != 'OracleConnectorPX' or not s.input_links or not s.properties.get('Usage/TableName'):
             continue
         link = next(l for l in job.links if l.name == s.input_links[0])
-        table = Jinja(job)(s.properties['Usage/TableName'])
-        cols = [c['name'] for c in link.columns]
-        keys = [c['name'] for c in link.columns if c.get('key')] or cols[:1]
-        nums = [c['name'] for c in link.columns if str(c.get('sqlType')) in ('2', '3', '4', '-5', '5', '6', '7', '8')]
-        out.append(f'-- {job.name} / {s.name} -> {table}\n-- Ejecutar en el esquema legado ({{{{ params.legacy_schema }}}}) y en el migrado '
-                   f'({{{{ params.target_schema }}}}); comparar fila por fila.\n')
-        for schema in ('legacy_schema', 'target_schema'):
-            t = f'{{{{ params.{schema} }}}}.{table}'
-            checks = [f"SELECT '{schema}' AS lado, 'row_count' AS chequeo, COUNT(*) AS valor FROM {t}",
-                      f"SELECT '{schema}', 'business_key_count', COUNT(*) FROM (SELECT DISTINCT {', '.join(keys)} FROM {t})",
-                      f"SELECT '{schema}', 'duplicate_count', COUNT(*) FROM (SELECT {', '.join(keys)} FROM {t} GROUP BY {', '.join(keys)} HAVING COUNT(*) > 1)",
-                      f"SELECT '{schema}', 'checksum', SUM(ORA_HASH({' || ' + chr(39) + '|' + chr(39) + ' || '.join(cols)})) FROM {t}"]
-            checks += [f"SELECT '{schema}', 'null_count:{c}', COUNT(*) - COUNT({c}) FROM {t}" for c in cols]
-            checks += [f"SELECT '{schema}', '{f}:{c}', {f.upper()}({c}) FROM {t}" for c in nums for f in ('sum', 'min', 'max')]
-            out.append('\nUNION ALL\n'.join(checks) + ';\n')
-        out.append(f'-- muestra de diferencias (hasta 50 filas)\n(SELECT {", ".join(cols)} FROM {{{{ params.legacy_schema }}}}.{table}\n'
-                   f' MINUS SELECT {", ".join(cols)} FROM {{{{ params.target_schema }}}}.{table}) FETCH FIRST 50 ROWS ONLY;\n')
-    return '\n'.join(out) if out else None
+        table = Jinja(job)(s.properties['Usage/TableName']).rsplit('.', 1)[-1]  # the schema is the side being compared
+        excluded = [c['name'] for c in link.columns if VOLATILE.search(str(c.get('derivation') or link.expressions.get(c['name']) or ''))]
+        cols = [c['name'] for c in link.columns if c['name'] not in excluded]
+        keys = [c['name'] for c in link.columns if c.get('key') and c['name'] in cols] or cols[:1]
+        nums = [c['name'] for c in link.columns if str(c.get('sqlType')) in NUMERIC and c['name'] in cols]
+        if cols:
+            spec = {'job': job.name, 'stage': s.name, 'table': table, 'keys': keys, 'columns': cols, 'numeric': nums, 'excluded': excluded}
+            spec['checks'] = [[name, q] for name, q in check_queries(spec, SCHEMA_MARK)]
+            # key and hash of every row: the difference sample is built from these, also between two databases
+            spec['rowHash'] = f"SELECT {ROW_SEP.join(keys)}, ORA_HASH({ROW_SEP.join(cols)}) FROM {SCHEMA_MARK}.{table}"
+            out.append(spec)
+    return out
+
+
+def check_queries(spec: dict, schema: str) -> list[tuple[str, str]]:
+    """(check, SELECT returning one value) over `schema`.table; the same list runs on both sides."""
+    t, keys, cols = f'{schema}.{spec["table"]}', ', '.join(spec['keys']), spec['columns']
+    row = ROW_SEP.join(cols)
+    qs = [('row_count', f'SELECT COUNT(*) FROM {t}'),
+          ('business_key_count', f'SELECT COUNT(*) FROM (SELECT DISTINCT {keys} FROM {t})'),
+          ('duplicate_count', f'SELECT COUNT(*) FROM (SELECT {keys} FROM {t} GROUP BY {keys} HAVING COUNT(*) > 1)'),
+          ('checksum', f'SELECT SUM(ORA_HASH({row})) FROM {t}')]
+    qs += [(f'null_count:{c}', f'SELECT COUNT(*) - COUNT({c}) FROM {t}') for c in cols]
+    qs += [(f'{f}:{c}', f'SELECT {f.upper()}({c}) FROM {t}') for c in spec['numeric'] for f in ('sum', 'min', 'max')]
+    return qs
+
+
+def reconciliation_sql(specs: list[dict]) -> str:
+    """The same checks as run_reconciliation.py, as plain SQL for a person (replace the two schemas)."""
+    out = []
+    for spec in specs:
+        out.append(f'-- {spec["job"]} / {spec["stage"]} -> {spec["table"]}\n'
+                   f'-- Reemplazar LEGACY_SCHEMA (salida de DataStage) y TARGET_SCHEMA (salida de Airflow); misma entrada en los dos.\n'
+                   + (f'-- Excluidas (se llenan con la hora de ejecución): {", ".join(spec["excluded"])}\n' if spec['excluded'] else ''))
+        for side in ('LEGACY_SCHEMA', 'TARGET_SCHEMA'):
+            out.append('\nUNION ALL\n'.join(f"SELECT '{side}' AS lado, '{name}' AS chequeo, ({q}) AS valor FROM dual"
+                                            for name, q in check_queries(spec, side)) + ';\n')
+        cols = ', '.join(spec['columns'])
+        for a, b in (('LEGACY_SCHEMA', 'TARGET_SCHEMA'), ('TARGET_SCHEMA', 'LEGACY_SCHEMA')):
+            out.append(f'-- filas en {a} que no están en {b} (hasta 50)\n'
+                       f'SELECT * FROM (SELECT {cols} FROM {a}.{spec["table"]} MINUS SELECT {cols} FROM {b}.{spec["table"]}) '
+                       f'FETCH FIRST 50 ROWS ONLY;\n')
+    return '\n'.join(out)
 
 
 RUNTIME = r'''"""Funciones reutilizables de los DAGs migrados desde DataStage (generado por Migration Factory)."""
@@ -460,11 +495,121 @@ services:
 
 RECON_README = '''# Reconciliación DataStage → Airflow
 
-Cada `<job>.sql` compara la tabla que escribe el job en el esquema legado (salida de DataStage) contra la del esquema
-migrado (salida de Airflow), con la misma entrada: conteo de filas, claves de negocio, duplicados, nulos por columna,
-suma/mínimo/máximo de las numéricas, checksum y una muestra de diferencias.
+Compara cada tabla que escribe un job en el esquema legado (salida de DataStage) contra la del esquema migrado (salida de
+Airflow), con la misma entrada: conteo de filas, claves de negocio, duplicados, nulos por columna, suma/mínimo/máximo de
+las numéricas, checksum y una muestra de diferencias en los dos sentidos. Las columnas que se llenan con la hora de
+ejecución (CurrentTimestamp...) se excluyen y se nombran: difieren en cada corrida por diseño.
 
+1. Correr el job en DataStage escribiendo en el esquema legado y el DAG en Airflow escribiendo en el migrado.
+2. En el ambiente de Airflow (las credenciales salen de sus Connections):
+
+       python tests/reconciliation/run_reconciliation.py --conn oracle_p_conn --legacy DS_LEGADO --target AF_MIGRADO
+
+   Con dos bases distintas: `--legacy-conn` y `--target-conn`.
+3. Subir `reconciliation-result.json` a Migration Factory (DataStage → Reconciliación): ahí queda la evidencia.
+
+`reconciliation.json` tiene las consultas exactas; `<job>.sql`, las mismas para correrlas a mano.
 Estado mientras no se ejecuten: `RECONCILIATION_NOT_EXECUTABLE` (el DAG que importa no prueba equivalencia funcional).
+'''
+
+RECON_RUNNER = '''"""Reconciliación DataStage -> Airflow (generado por Migration Factory). Ver README.md de esta carpeta.
+
+Ejecuta las consultas de reconciliation.json en el esquema legado y en el migrado con Connections de Airflow (aquí no se
+escriben credenciales) y deja reconciliation-result.json para subirlo a Migration Factory. Sale con 0 solo si todo es igual.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import re
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+FORMAT = "@FORMAT@"
+SCHEMA = re.compile(r"^[A-Za-z][A-Za-z0-9_$#]{0,127}$")
+SAMPLE = 50              # claves de ejemplo por tipo de diferencia
+MAX_ROWS = 2_000_000     # filas por lado para la muestra de diferencias
+
+
+def connect(conn_id: str):
+    from airflow.providers.oracle.hooks.oracle import OracleHook
+    return OracleHook(oracle_conn_id=conn_id).get_conn()
+
+
+def text(v):
+    return None if v is None else v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
+def row_hashes(cur, sql: str) -> tuple[dict, bool]:
+    cur.execute(f"{sql} FETCH FIRST {MAX_ROWS + 1} ROWS ONLY")
+    out, n = {}, 0
+    for key, h in cur:
+        n += 1
+        if n > MAX_ROWS:
+            return out, True
+        out.setdefault(text(key), []).append(text(h))
+    return out, False
+
+
+def table(spec: dict, sides: dict) -> dict:
+    res = {k: spec[k] for k in ("job", "stage", "table", "keys", "excluded")}
+    try:
+        checks, hashes = [], {}
+        for side, (conn, schema) in sides.items():
+            cur = conn.cursor()
+            values = []
+            for name, q in spec["checks"]:
+                cur.execute(q.replace("@SCHEMA@", schema))
+                values.append(text(cur.fetchone()[0]))
+            checks.append(values)
+            hashes[side] = row_hashes(cur, spec["rowHash"].replace("@SCHEMA@", schema))
+        res["checks"] = [{"name": n, "legacy": a, "target": b} for (n, _), a, b in zip(spec["checks"], *checks)]
+        (old, cut_a), (new, cut_b) = hashes["legacy"], hashes["target"]
+        res["diff"] = {"onlyLegacy": sorted(k for k in old if k not in new)[:SAMPLE],
+                       "onlyTarget": sorted(k for k in new if k not in old)[:SAMPLE],
+                       "changed": sorted(k for k in old if k in new and sorted(old[k]) != sorted(new[k]))[:SAMPLE],
+                       "truncated": cut_a or cut_b}
+        same = all(c["legacy"] == c["target"] for c in res["checks"]) and not any(res["diff"][k] for k in ("onlyLegacy", "onlyTarget", "changed"))
+        res["verdict"] = "EQUAL" if same else "DIFFERENT"
+    except Exception as e:  # noqa: BLE001 - one table failing (no access, missing table) does not stop the others
+        res["verdict"], res["error"] = "ERROR", f"{type(e).__name__}: {e}"[:500]
+    return res
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--conn", help="Connection de Airflow para los dos esquemas")
+    ap.add_argument("--legacy-conn")
+    ap.add_argument("--target-conn")
+    ap.add_argument("--legacy", required=True, help="esquema con la salida de DataStage")
+    ap.add_argument("--target", required=True, help="esquema con la salida de Airflow")
+    ap.add_argument("--only", action="append", default=[], help="solo estos jobs")
+    ap.add_argument("--out", default="reconciliation-result.json")
+    a = ap.parse_args(argv)
+    lc, tc = a.legacy_conn or a.conn, a.target_conn or a.conn
+    if not lc or not tc:
+        ap.error("indique --conn, o --legacy-conn y --target-conn")
+    for s in (a.legacy, a.target):
+        if not SCHEMA.match(s):
+            ap.error(f"esquema no válido: {s}")
+    spec = json.loads((HERE / "reconciliation.json").read_text(encoding="utf-8"))
+    conns = {lc: connect(lc)}
+    conns.setdefault(tc, connect(tc))
+    sides = {"legacy": (conns[lc], a.legacy), "target": (conns[tc], a.target)}
+    tables = [table(t, sides) for t in spec["tables"] if not a.only or t["job"] in a.only]
+    result = {"format": FORMAT, "project": spec["project"], "executedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "legacy": {"conn": lc, "schema": a.legacy}, "target": {"conn": tc, "schema": a.target}, "tables": tables}
+    Path(a.out).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    for t in tables:
+        print(f"{t['verdict']:9} {t['job']} / {t['table']}" + (f"  ({t['error']})" if t.get("error") else ""))
+    print(f"Resultado: {a.out}")
+    return 0 if tables and all(t["verdict"] == "EQUAL" for t in tables) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 '''
 
 README = '''# @NAME@ en Apache Airflow

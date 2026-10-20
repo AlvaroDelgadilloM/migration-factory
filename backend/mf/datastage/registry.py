@@ -2,6 +2,7 @@
 expressions), never from its type alone. Separate from the Camel registries (no shared tables or rules)."""
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 
 from .expressions import Untranslatable, stage_vars_sql, translate
@@ -29,14 +30,26 @@ class StageDecision:
         return asdict(self)
 
 
-def param_resolver(job):
+SECRET_MEMBER = re.compile(r'(?i)pwd|pass|secret|token|key$')
+
+
+def param_resolver(job, used: set | None = None):
     """Parameter references in expressions -> Jinja: parameter sets are environment config (Airflow Variables),
-    connection members never reach SQL text (doc 59), plain job parameters are DAG params."""
+    connection members never reach SQL text (doc 59), plain job parameters are DAG params. Every Variable an expression
+    reads is added to `used` (variables.json must declare it, or the task fails while rendering)."""
     sets = {p.name for p in job.parameters if p.is_set}
     plain = {p.name for p in job.parameters if not p.is_set}
     res = {}
+
+    def variable(s, m):
+        member = (m or '').lstrip('$')
+        if SECRET_MEMBER.search(member):
+            raise Untranslatable(f'credencial {s}.{member} en una expresión: va en una Connection, nunca en el SQL')
+        if used is not None:
+            used.add(f'{s}__{member}')
+        return f"'{{{{ var.value.{s}__{member} }}}}'"
     for s in sets:
-        res[s] = lambda m, s=s: f"'{{{{ var.value.{s}__{(m or '').lstrip('$')} }}}}'"
+        res[s] = lambda m, s=s: variable(s, m)
     for p in plain:
         res[p] = lambda m, p=p: f"'{{{{ params.{p} }}}}'"
     return res

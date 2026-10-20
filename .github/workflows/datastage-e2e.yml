@@ -1,0 +1,83 @@
+name: DataStage e2e
+
+# DataStage -> Airflow on a real Oracle and a real Airflow: the project generated from the synthetic fixture runs its DAG,
+# and the generated reconciliation compares it with the legacy side (backend/tests/e2e/datastage_oracle.py). Synthetic
+# data only; the Oracle password is created per run.
+on:
+  push:
+    branches: [main, 'feature/**']
+    paths: ['backend/mf/datastage/**', 'backend/tests/e2e/**', 'backend/tests/fixtures/datastage/**', '.github/workflows/datastage-e2e.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oracle-airflow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      AIRFLOW_HOME: /tmp/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_FOLDER: /tmp/ds/airflow-shop_flow/dags
+      MF_E2E_ORACLE_DSN: localhost:1521/FREEPDB1
+      AF: /tmp/af/bin
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.12'}
+      - name: Oracle Free 23
+        run: |
+          PW="Mf$(openssl rand -hex 10)"
+          echo "::add-mask::$PW"
+          echo "MF_E2E_ORACLE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          docker run -d --name oracle -p 1521:1521 -e ORACLE_PASSWORD="$PW" gvenzl/oracle-free:23-slim-faststart
+      - name: Airflow 2.10.5 (constraints oficiales)
+        run: |
+          python -m venv /tmp/af
+          $AF/pip install -q "apache-airflow==2.10.5" "apache-airflow-providers-oracle==4.0.0" "apache-airflow-providers-common-sql==1.21.0" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.5/constraints-3.12.txt"
+          $AF/airflow db migrate > /dev/null
+      - name: Migrar el fixture DataStage
+        run: |
+          pip install -q -r backend/requirements.lock
+          python migrate.py datastage migrate backend/tests/fixtures/datastage/shop_flow.dsx --output /tmp/ds --airflow-python $AF/python
+      - name: Esperar Oracle
+        run: |
+          for i in $(seq 1 60); do docker exec oracle healthcheck.sh > /dev/null 2>&1 && exit 0; sleep 5; done
+          docker logs oracle | tail -30; exit 1
+      - name: Esquemas, datos de entrada y staging
+        run: |
+          $AF/python backend/tests/e2e/datastage_oracle.py setup
+          $AF/python backend/tests/e2e/datastage_oracle.py ddl /tmp/ds/airflow-shop_flow/sql/ddl/staging.sql
+      - name: Lado legado (emulación fila por fila del job)
+        run: $AF/python backend/tests/e2e/datastage_oracle.py legacy
+      - name: Ejecutar el DAG migrado en Airflow
+        run: |
+          export AIRFLOW_CONN_ORACLE_P_CONN="oracle://MF_TARGET:$(python -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MF_E2E_ORACLE_PASSWORD"]))')@localhost:1521?service_name=FREEPDB1"
+          export AIRFLOW_VAR_P_CONN__P_SCHEMA=MF_TARGET AIRFLOW_VAR_P_CONN__P_USER=ETL_E2E
+          $AF/airflow dags list-import-errors
+          $AF/airflow dags test js_master 2026-01-01 2>&1 | tee /tmp/dag.log | tail -40
+          grep -q "DagRun Finished: dag_id=js_master.*state=success" /tmp/dag.log
+      - name: Reconciliación (debe ser igual)
+        run: |
+          export AIRFLOW_CONN_ORACLE_RECON="oracle://system:$(python -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MF_E2E_ORACLE_PASSWORD"]))')@localhost:1521?service_name=FREEPDB1"
+          cd /tmp/ds/airflow-shop_flow
+          $AF/python tests/reconciliation/run_reconciliation.py --conn oracle_recon --legacy MF_LEGACY --target MF_TARGET --out /tmp/recon-equal.json
+      - name: Reconciliación con una fila alterada (debe detectarla)
+        run: |
+          export AIRFLOW_CONN_ORACLE_RECON="oracle://system:$(python -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MF_E2E_ORACLE_PASSWORD"]))')@localhost:1521?service_name=FREEPDB1"
+          $AF/python backend/tests/e2e/datastage_oracle.py tamper
+          cd /tmp/ds/airflow-shop_flow
+          if $AF/python tests/reconciliation/run_reconciliation.py --conn oracle_recon --legacy MF_LEGACY --target MF_TARGET --out /tmp/recon-different.json; then
+            echo "la reconciliación no detectó la fila alterada"; exit 1
+          fi
+          python -c "import json; t={x['table']:x for x in json.load(open('/tmp/recon-different.json'))['tables']}; d=t['ORDER_TOTALS']; assert d['verdict']=='DIFFERENT' and d['diff']['changed']==['103'], d; print('detectada:', d['diff'])"
+      - name: Evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: datastage-e2e
+          path: |
+            /tmp/recon-*.json
+            /tmp/dag.log

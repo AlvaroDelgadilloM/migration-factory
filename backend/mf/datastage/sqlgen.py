@@ -8,10 +8,9 @@ import re
 from dataclasses import dataclass, field
 
 from .expressions import Untranslatable, stage_vars_sql, translate
-from .registry import WRITE_MODES, param_resolver
+from .registry import SECRET_MEMBER, WRITE_MODES, param_resolver
 
 _TOKEN = re.compile(r'#([A-Za-z_]\w*)(?:\.(\$?\w+))?#')
-SECRET_MEMBER = re.compile(r'(?i)pwd|pass|secret|token|key$')
 OSH_PAIR = re.compile(r'\(3\)([^()]+?)\(2\)([^()]*)')
 
 
@@ -81,7 +80,7 @@ class Step:
 class Composer:
     def __init__(self, job, staging_prefix='STG_'):
         self.job, self.jinja, self.prefix = job, Jinja(job), staging_prefix
-        self.params = param_resolver(job)
+        self.params = param_resolver(job, self.jinja.variables)  # Variables read by expressions are declared too
         self.staging = {}   # table -> columns (DDL)
         self.loads = []     # file_load steps needed before the SQL steps
 

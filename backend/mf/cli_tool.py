@@ -1349,6 +1349,9 @@ def tomcat_war(source: Path, args, log) -> int:
 
 def main(argv=None):
     _env_for_cli()
+    for stream in (sys.stdout, sys.stderr):  # a Windows console (cp1252) cannot print '→': replace it, never crash
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(errors='replace')
     ap = argparse.ArgumentParser(prog='migrate.py', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     common = argparse.ArgumentParser(add_help=False)
