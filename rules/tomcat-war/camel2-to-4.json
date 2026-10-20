@@ -6,6 +6,11 @@
     "runtime": "tomcat-war",
     "name": "Tomcat 10.1 WAR + Spring 6.2 + Camel 4.18.4 (LTS)",
     "javaRelease": "17",
+    "javaReleases": [
+      "17",
+      "21",
+      "25"
+    ],
     "camelVersion": "4.18.4",
     "springVersion": "6.2.19",
     "cxfVersion": "4.1.5",

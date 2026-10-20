@@ -164,6 +164,16 @@ def test_client_config_patches_containers_and_war_dependencies(tmp_path):
     assert '<artifactId>h2</artifactId>' in (ws / 'webapp/pom.xml').read_text(encoding='utf-8')
 
 
+def test_java_release_is_chosen_among_the_validated_ones(tmp_path):
+    _, ws = run(tmp_path, {'javaRelease': 25})
+    assert '<maven.compiler.release>25<' in (ws / 'pom.xml').read_text(encoding='utf-8')
+    (tmp_path / 'default').mkdir()
+    _, ws = run(tmp_path / 'default', {})
+    assert '<maven.compiler.release>17<' in (ws / 'pom.xml').read_text(encoding='utf-8')  # the profile default
+    with pytest.raises(pipeline.InvalidInput, match='javaRelease 11'):
+        pipeline.validate_config({'javaRelease': '11'})
+
+
 def test_a_patch_that_no_longer_matches_aborts(tmp_path):
     cfg = {'patches': [{'name': 'obsoleto', 'module': 'orders-api', 'file': 'OrdersRoute.java', 'find': 'texto que ya no existe', 'replace': 'x'}]}
     with pytest.raises(pipeline.PatchMismatch):

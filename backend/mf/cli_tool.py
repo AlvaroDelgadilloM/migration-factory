@@ -1247,7 +1247,7 @@ def verify_cmd(args, log) -> int:
         if args.check == 'auto':
             from .tomcat_war import autotest
             res = autotest.run(Path(args.project), Path(args.war), out, args.container or '', Path(args.data) if args.data else None,
-                               not args.no_screenshots, args.timeout, log)
+                               not args.no_screenshots, args.timeout, log, Path(args.migrated_java_home) if args.migrated_java_home else None)
             t = res['totals']
             mode = 'con paquete de datos' if res['mode'] == 'DATOS' else 'prueba de humo (sin datos del cliente)'
             o, m = res['startup']['original'], res['startup']['migrado']
@@ -1423,6 +1423,7 @@ def main(argv=None):
     va.add_argument('--data', help='paquete de datos de prueba (carpeta o .zip); sin él, prueba de humo')
     va.add_argument('--output', required=True); va.add_argument('--timeout', type=int, default=900, help='segundos para que arranque cada lado')
     va.add_argument('--no-screenshots', action='store_true')
+    va.add_argument('--migrated-java-home', help='JDK con el que corre el WAR migrado (p. ej. Java 25); el original usa JAVA_HOME')
     vv = vsub.add_parser('report', help='reporte HTML con el original junto al migrado, caso por caso, y capturas de pantalla')
     vv.add_argument('--output', required=True, help='la misma carpeta de salida de verify routes / verify responses')
     vv.add_argument('--browser', help='ejecutable de Edge o Chrome para las capturas (por defecto se busca uno instalado)')

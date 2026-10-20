@@ -264,7 +264,7 @@ def fix_route(java_file: Path, cls: str, from_uri: str, expected: dict, trial: P
     return None
 
 
-def dump_migrated(source: Path, module_dirs: dict, war_dir: Path, work: Path, log=lambda m: None) -> dict:
+def dump_migrated(source: Path, module_dirs: dict, war_dir: Path, work: Path, log=lambda m: None, java: str | None = None) -> dict:
     """Routes (Camel 4) of migrated modules taken straight from an exploded WAR: module_dirs = {artifactId: folder with the
     module jar unpacked}. Returns {artifactId: {route key: lines}}; a module that cannot be dumped is left out."""
     tool, logs = work / 'tool', work / 'logs'
@@ -283,7 +283,7 @@ def dump_migrated(source: Path, module_dirs: dict, war_dir: Path, work: Path, lo
         dump = work / 'dump-auto' / f'{m}.txt'
         dump.parent.mkdir(parents=True, exist_ok=True)
         dump.unlink(missing_ok=True)
-        _run([_java('java'), 'RouteDump', classes, dump], logs / f'dump-auto-{m}.log', classpath=[tool] + lib4 + chain)
+        _run([java or _java('java'), 'RouteDump', classes, dump], logs / f'dump-auto-{m}.log', classpath=[tool] + lib4 + chain)
         if dump.exists():
             out[m] = read_dump(dump, equivalences)[0]
         else:

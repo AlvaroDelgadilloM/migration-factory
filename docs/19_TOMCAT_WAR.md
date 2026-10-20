@@ -77,7 +77,7 @@ Las decisiones de un cliente no viven en el motor:
 
 ```json
 {
-  "groupId": "com.cliente.migrated", "version": "1.0.0-SNAPSHOT",
+  "groupId": "com.cliente.migrated", "version": "1.0.0-SNAPSHOT", "javaRelease": "25",
   "containers": {"names": ["mobile", "web1"], "file": ".gitlab-ci.yml", "skipPattern": "SKIP_{NAME}:\\s*\"?true"},
   "patches": [{"name": "motivo", "module": "artifactId", "file": "Clase.java", "find": "...", "replace": "...", "regex": false}],
   "extraWarDependencies": ["g:a:v"],
@@ -85,6 +85,9 @@ Las decisiones de un cliente no viven en el motor:
 }
 ```
 
+- `javaRelease`: nivel de lenguaje y de bytecode del código migrado (`maven.compiler.release`). Solo los validados con el
+  piloto (`profile.javaReleases` de las reglas: 17, 21, 25); por omisión 17. Compilar con 25 exige un JDK 25. La versión de
+  Spring no se elige aparte: la fija la de Camel (4.18.4 está compilado contra Spring 6.2.19 / Spring Boot 3.5).
 - `containers`: si varios contenedores de origen despliegan subconjuntos distintos de bundles, cada módulo guarda dónde va
   y el WAR arranca con `-Dmf.container=<nombre>`. Hay bundles alternativos entre sí (mismas rutas REST) que no pueden convivir.
 - `patches`: ajustes que no son mecánicos. **Si el texto ya no coincide, la migración se detiene**: nunca se aplican a ciegas.
@@ -228,6 +231,11 @@ Los headers `Authorization`, `Cookie` y `Proxy-Authorization` de los casos nunca
   el nombre del header de operación SOAP, el *stream caching* y el cuerpo `null` de `Content-Length: 0`. La misma prueba
   corrió por la plataforma (pantalla Pruebas → Automáticas → Probar, worker real) con el mismo resultado.
 - Pruebas: `test_tomcat_war_autotest.py` (generador), `test_http_tests.py` (API) y JUnit de la capa (11, `mvn -pl compat test`).
+- **Java 25** (2026-10-20, Temurin 25.0.4.1 LTS): el piloto migrado con `"javaRelease": "25"` compila con JDK 25 (bytecode 69),
+  las 11 pruebas JUnit de la capa pasan en JDK 25 y la prueba automática del contenedor `mobile` con el WAR corriendo en la
+  JVM 25 (`verify auto --migrated-java-home`; el original sigue en Java 21) da lo mismo que con Java 21: 26 de 26 módulos,
+  177 de 201 idénticos, 23 solo texto de error y la misma diferencia de datos pendiente. 4 casos agotaron el tiempo en una
+  primera corrida, 2 de cada lado, por carga de la máquina; repetidos, respondieron igual que en Java 21.
 
 ## Claves de configuración
 
@@ -250,4 +258,5 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
   externo solo se compara con `mocks.json` o contra el ambiente de pruebas del cliente.
 - **Rutas REST definidas en XML** (`<rest>`) no generan casos todavía; las de Java sí.
 - La línea base nunca se ha comparado contra un JBoss Fuse real.
+- **Java 25 en la plataforma**: la imagen del worker trae JDK 21; una migración con `javaRelease` 25 se valida y se genera, pero no compila en el servidor hasta que el worker tenga JDK 25 (en línea de comandos sí, con un JDK 25 local).
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

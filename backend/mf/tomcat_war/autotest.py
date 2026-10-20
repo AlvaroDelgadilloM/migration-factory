@@ -510,7 +510,8 @@ def _h2_database(h2: Path, folder: Path, data: Path | None, work: Path) -> str:
     return url
 
 
-def start_tomcat(war_dir: Path, work: Path, version: str, port: int, etc: Path, container: str, jdbc: str, h2: Path) -> tuple:
+def start_tomcat(war_dir: Path, work: Path, version: str, port: int, etc: Path, container: str, jdbc: str, h2: Path,
+                 java_home: Path | None = None) -> tuple:
     """The migrated WAR in a real Tomcat (official distribution), with the test configuration."""
     zip_file = _fetch(f'org.apache.tomcat:tomcat:{version}:zip', work / 'dist', work)
     home = work / 'tomcat'
@@ -528,7 +529,8 @@ def start_tomcat(war_dir: Path, work: Path, version: str, port: int, etc: Path, 
     shutil.copy(h2, home / 'lib')
     for d in ('logs', 'temp', 'work'):
         (home / d).mkdir(exist_ok=True)
-    cmd = [verify._java('java'), f'-Dcatalina.home={home}', f'-Dcatalina.base={home}', f"-Djava.io.tmpdir={home / 'temp'}",
+    java = str(Path(java_home) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')) if java_home else verify._java('java')
+    cmd = [java, f'-Dcatalina.home={home}', f'-Dcatalina.base={home}', f"-Djava.io.tmpdir={home / 'temp'}",
            f"-Djava.util.logging.config.file={home / 'conf' / 'logging.properties'}", '-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager',
            f'-Dmf.etc={etc}', f'-Dmf.container={container}', f'-Dmf.test.jdbcUrl={jdbc}',
            '-cp', os.pathsep.join(str(home / 'bin' / j) for j in ('bootstrap.jar', 'tomcat-juli.jar')), 'org.apache.catalina.startup.Bootstrap', 'start']
@@ -594,7 +596,7 @@ def _data_dir(data: Path | None, work: Path) -> Path | None:
 
 
 def run(source: Path, war: Path, out: Path, container: str = '', data: Path | None = None, screenshots: bool = True,
-        timeout: int = 900, log=lambda m: None) -> dict:
+        timeout: int = 900, log=lambda m: None, migrated_java_home: Path | None = None) -> dict:
     source, out = Path(source).resolve(), Path(out).resolve()
     work = out / '.verify' / 'auto'
     work.mkdir(parents=True, exist_ok=True)
@@ -614,7 +616,8 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
             m['body'] = (data / m['bodyFile']).read_text(encoding='utf-8')
 
     log(f"{len(deployed)} módulos en el contenedor '{container or 'todos'}'; leyendo sus servicios")
-    dumps = verify.dump_migrated(source, {n: m['dir'] for n, m in deployed.items()}, work / 'migrated' / 'war', work, log)
+    java_migrated = str(Path(migrated_java_home) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')) if migrated_java_home else None
+    dumps = verify.dump_migrated(source, {n: m['dir'] for n, m in deployed.items()}, work / 'migrated' / 'war', work, log, java_migrated)
     cases = rest_cases(dumps, projects, aliases, values) + soap_cases(deployed)
     if data and (data / 'casos.json').is_file():
         extra = json.loads((data / 'casos.json').read_text(encoding='utf-8'))
@@ -640,7 +643,8 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
         cmd = cmd[:1] + [f"-Dmf.test.jdbcUrl={o['jdbc']}"] + cmd[1:]
         p_orig = _start(cmd, work / 'logs' / 'original.log', env=env)
         procs.append(p_orig)
-        p_tc, tc_log = start_tomcat(work / 'migrated' / 'war', work, rules['profile']['tomcatVersion'], mg['port'], mg['etc'], container, mg['jdbc'], h2)
+        p_tc, tc_log = start_tomcat(work / 'migrated' / 'war', work, rules['profile']['tomcatVersion'], mg['port'], mg['etc'], container, mg['jdbc'], h2,
+                                     migrated_java_home)
         procs.append(p_tc)
         text_o = _wait(p_orig, work / 'logs' / 'original.log', 'BASELINE LISTO', timeout)
         text_m = _wait(p_tc, tc_log, 'Modulos iniciados:', timeout)

@@ -296,7 +296,8 @@ def _template(out: Path, rules: dict, cfg: dict):
         if len(parts) not in (2, 3):
             raise InvalidInput(f'extraWarDependencies: se esperaba g:a o g:a:v, no {d!r}')
         extra += _dep_xml(*parts).replace('\r\n', '\n')
-    tokens = {'@GROUP_ID@': cfg['groupId'], '@VERSION@': cfg['version'], '@JAVA_RELEASE@': p['javaRelease'], '@CAMEL_VERSION@': p['camelVersion'],
+    tokens = {'@GROUP_ID@': cfg['groupId'], '@VERSION@': cfg['version'], '@JAVA_RELEASE@': str(cfg.get('javaRelease') or p['javaRelease']),
+              '@CAMEL_VERSION@': p['camelVersion'],
               '@SPRING_VERSION@': p['springVersion'], '@CXF_VERSION@': p['cxfVersion'], '@SLF4J_VERSION@': p['slf4jVersion'],
               '@TOMCAT_VERSION@': p['tomcatVersion'], '@ACTIVEMQ_VERSION@': p['activemqVersion'], '@EXTRA_WAR_DEPENDENCIES@': extra}
     src = RULES_DIR / 'template'
@@ -326,6 +327,12 @@ def validate_config(cfg: dict) -> dict:
     c = cfg.get('containers')
     if c and not (c.get('names') and c.get('skipPattern')):
         raise InvalidInput('containers requiere names y skipPattern')
+    if cfg.get('javaRelease') is not None:
+        # nivel de lenguaje y de bytecode del código migrado; solo los que el perfil validó con el piloto (javaReleases)
+        allowed = [str(v) for v in load_rules()['profile'].get('javaReleases', [])]
+        cfg['javaRelease'] = str(cfg['javaRelease'])
+        if cfg['javaRelease'] not in allowed:
+            raise InvalidInput(f"javaRelease {cfg['javaRelease']} no está validada para este perfil; opciones: {', '.join(allowed)}")
     return cfg
 
 
