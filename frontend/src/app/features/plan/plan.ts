@@ -6,14 +6,15 @@ import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { Api } from '../../core/api';
 import { UiError } from '../../core/errors';
-import { EffortEstimate, Page, Plan, PlanStep, Profile, Scan } from '../../core/models';
+import { EffortEstimate, Page, Plan, PlanStep, Profile, Scan, TargetVersions } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
 import { ActionButton, PageHeader, StateView, StatusTag, TrafficLight, short } from '../../shared/ui';
+import { VersionPicker } from '../../shared/version-picker';
 
 @Component({
   selector: 'mf-plan',
-  imports: [FormsModule, MessageModule, SelectModule, TableModule, ActionButton, PageHeader, StateView, StatusTag, TrafficLight],
+  imports: [FormsModule, MessageModule, SelectModule, TableModule, ActionButton, PageHeader, StateView, StatusTag, TrafficLight, VersionPicker],
   template: `
     <mf-page-header title="Plan" crumb="PLAN" subtitle="Perfil objetivo versionado, pasos, precondiciones y bloqueos" />
     <mf-state [loading]="scans.loading()" [error]="scans.error()" [hasData]="!!scans.data()" [empty]="!scanId()"
@@ -25,6 +26,7 @@ import { ActionButton, PageHeader, StateView, StatusTag, TrafficLight, short } f
         <label for="pf">Perfil objetivo</label>
         <p-select inputId="pf" [options]="profiles.data() ?? []" optionLabel="name" optionValue="id" [(ngModel)]="profileId" [style]="{ minWidth: '24rem' }">
           <ng-template #item let-p>{{ p.name }} · v{{ p.version }} · {{ p.status }}</ng-template></p-select>
+        <mf-version-picker [entry]="versionEntry()" [(java)]="java" [(spring)]="spring" />
         <mf-action label="Crear plan" icon="pi pi-plus" [busy]="busy() === 'create'" [disabledReason]="createReason()" (run)="create()" />
         <label for="pv">Versión</label>
         <p-select inputId="pv" [options]="plans.data() ?? []" optionValue="id" [ngModel]="planId()" (ngModelChange)="planId.set($event)" placeholder="Sin planes">
@@ -57,7 +59,7 @@ import { ActionButton, PageHeader, StateView, StatusTag, TrafficLight, short } f
                 emptyText="Aún no hay planes para este análisis." (retry)="plan.reload()">
         @if (plan.data(); as p) {
           <div class="plan-head">
-            <span>Plan v{{ p.version }} <mf-status [value]="p.status" /> · perfil <strong>{{ p.profile?.['name'] }}</strong> v{{ p.profile?.['version'] }}
+            <span>Plan v{{ p.version }} <mf-status [value]="p.status" /> · perfil <strong>{{ p.profile?.['name'] }}</strong> v{{ p.profile?.['version'] }} · Java <strong>{{ p.javaVersion ?? p.profile?.['java_version'] ?? p.profile?.['javaVersion'] }}</strong>
               · digest <code>{{ p.digest.slice(0, 12) }}</code>
               @if (p.approvedBy) { · aprobado por {{ p.approvedBy }} }</span>
             <span class="actions">
@@ -120,7 +122,14 @@ export class PlanPage {
   effort = new Loader<EffortEstimate>();
   scanId = signal<string | null>(null);
   planId = signal<string | null>(null);
-  profileId: string | null = null;
+  private profileSig = signal<string | null>(null);
+  get profileId() { return this.profileSig(); }
+  set profileId(v: string | null) { this.profileSig.set(v); }
+  java = signal('21');
+  spring = signal<string | null>(null);
+  versions = new Loader<TargetVersions[]>();
+  /** Java/Spring the chosen profile accepts (mf.versions): only validated combinations. */
+  versionEntry = computed(() => (this.versions.data() ?? []).find(v => v.profileId === this.profileSig()) ?? null);
   busy = signal<string | null>(null);
   actionError = signal<UiError | null>(null);
   expanded: Record<string, boolean> = {};
@@ -134,6 +143,7 @@ export class PlanPage {
   });
 
   constructor() {
+    this.versions.load(() => this.api.targetVersions());
     effect(async () => {
       const id = this.projectId();
       this.ctx.select(id);
@@ -176,7 +186,7 @@ export class PlanPage {
 
   async create() {
     if (!this.profileId || !this.scanId()) return;
-    const p = await this.act('create', () => this.api.createPlan(this.scanId()!, this.profileId!)) as Plan | null;
+    const p = await this.act('create', () => this.api.createPlan(this.scanId()!, this.profileId!, this.java(), this.spring())) as Plan | null;
     if (p) { await this.loadPlans(this.scanId()!); this.planId.set(p.id); }
   }
 

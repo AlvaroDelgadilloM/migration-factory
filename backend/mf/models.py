@@ -246,6 +246,7 @@ class Plan(Entity, Base):
     scan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('scan.id', ondelete='CASCADE'))
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
     profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('target_profile.id'))
+    java_version: Mapped[str | None] = mapped_column(String(10))  # chosen Java (mf.versions); None = the profile's own
     version: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default='draft')  # draft | approved | superseded
     digest: Mapped[str] = mapped_column(String(64))

@@ -6,15 +6,16 @@ import { TableModule } from 'primeng/table';
 import { TextareaModule } from 'primeng/textarea';
 import { Api } from '../../core/api';
 import { UiError } from '../../core/errors';
-import { Profile, WorkspaceMigration } from '../../core/models';
+import { Profile, TargetVersions, WorkspaceMigration } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
 import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
+import { VersionPicker } from '../../shared/version-picker';
 
 /** Doc 18 on the platform: migrate every project of the workspace by waves (dependencies first). */
 @Component({
   selector: 'mf-ws-migration',
-  imports: [FormsModule, MessageModule, SelectModule, TableModule, TextareaModule, ActionButton, JobLog, StateView, StatusTag],
+  imports: [FormsModule, MessageModule, SelectModule, TableModule, TextareaModule, ActionButton, JobLog, StateView, StatusTag, VersionPicker],
   template: `
     <h3>Migración por oleadas</h3>
     <p class="muted">Spring Boot / Quarkus: migra todos los proyectos del workspace en orden de dependencias. Si un proyecto no migra, los que dependen de él
@@ -26,7 +27,7 @@ import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
     <div class="form">
       <span><label for="wsp">Destino</label>
         <p-select inputId="wsp" [options]="targets()" optionLabel="name" optionValue="id" [(ngModel)]="profileId" [style]="{ minWidth: '22rem' }" /></span>
-      <span><label for="wsj">Java</label><p-select inputId="wsj" [options]="['17', '21']" [(ngModel)]="java" /></span>
+      <mf-version-picker [entry]="versionEntry()" [(java)]="java" [(spring)]="spring" />
     </div>
     @if (profileId === TOMCAT) {
       <p class="muted">Tomcat WAR convierte todos los bundles OSGi/Blueprint del workspace en <strong>un solo WAR</strong> con Camel 4.18: las rutas no
@@ -110,8 +111,15 @@ export class WorkspaceMigrationPanel {
   ctx = inject(ProjectContext);
   profiles = new Loader<Profile[]>();
   list = new Loader<WorkspaceMigration[]>();
-  profileId: string | null = null;
-  java = '21';
+  private profileSig = signal<string | null>(null);
+  get profileId() { return this.profileSig(); }
+  set profileId(v: string | null) { this.profileSig.set(v); }
+  java = signal('21');
+  spring = signal<string | null>(null);
+  versions = new Loader<TargetVersions[]>();
+  /** Java/Spring the chosen target accepts (Tomcat WAR or the chosen Spring Boot / Quarkus profile). */
+  versionEntry = computed(() => (this.versions.data() ?? []).find(v =>
+    this.profileSig() === this.TOMCAT ? v.target === 'tomcat-war' : v.profileId === this.profileSig()) ?? null);
   acceptText = '';
   configText = '';
   verifyRoutes = true;
@@ -128,6 +136,7 @@ export class WorkspaceMigrationPanel {
   });
 
   constructor() {
+    this.versions.load(() => this.api.targetVersions());
     this.profiles.load(async () => {
       const ps = (await this.api.profiles()).filter(p => p.status === 'validated');
       this.profileId ??= this.recommended()?.target === this.TOMCAT ? this.TOMCAT : ps.find(p => p.runtime === 'spring' && !p.dependencyMapping?.['deployment'])?.id ?? ps[0]?.id ?? null;
@@ -172,8 +181,9 @@ export class WorkspaceMigrationPanel {
       try { config = JSON.parse(this.configText); }
       catch { this.error.set(new UiError(422, 'VALIDATION_ERROR', 'La configuración del cliente no es JSON válido')); return; }
     }
-    const body = this.profileId === this.TOMCAT ? { target: this.TOMCAT, java: this.java, accept, config, verifyRoutes: this.verifyRoutes }
-      : { target: 'profile', profileId: this.profileId, java: this.java, accept };
+    const versions = { java: this.java(), spring: this.spring() };
+    const body = this.profileId === this.TOMCAT ? { target: this.TOMCAT, ...versions, accept, config, verifyRoutes: this.verifyRoutes }
+      : { target: 'profile', profileId: this.profileId, ...versions, accept };
     try { await this.api.startWorkspaceMigration(this.scanId(), body); this.list.reload(); }
     catch (e) { this.error.set(UiError.from(e)); }
     finally { this.busy.set(false); }

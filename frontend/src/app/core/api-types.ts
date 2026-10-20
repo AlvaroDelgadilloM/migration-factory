@@ -689,6 +689,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/target-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Target Versions
+         * @description Java and Spring versions each migration target accepts (mf.versions): what the screens offer.
+         */
+        get: operations["target_versions_api_v1_target_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profiles": {
         parameters: {
             query?: never;
@@ -1923,6 +1943,15 @@ export interface components {
             /** War */
             war: boolean;
         };
+        /** JavaChoice */
+        JavaChoice: {
+            /** Version */
+            version: string;
+            /** Validated */
+            validated: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
         /** JobOut */
         JobOut: {
             /**
@@ -2197,6 +2226,14 @@ export interface components {
              * Format: uuid
              */
             profileId: string;
+            /**
+             * Java
+             * @default 21
+             * @enum {string}
+             */
+            java: "21" | "25";
+            /** Spring */
+            spring?: string | null;
         };
         /** PlanOut */
         PlanOut: {
@@ -2220,6 +2257,8 @@ export interface components {
              * Format: uuid
              */
             profileId: string;
+            /** Javaversion */
+            javaVersion?: string | null;
             /** Version */
             version: number;
             /** Status */
@@ -2573,6 +2612,31 @@ export interface components {
             /** Finishedat */
             finishedAt: string | null;
         };
+        /** SpringChoice */
+        SpringChoice: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Java */
+            java: string[];
+        };
+        /** TargetVersions */
+        TargetVersions: {
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "tomcat-war" | "profile";
+            /** Profileid */
+            profileId?: string | null;
+            /** Label */
+            label: string;
+            /** Java */
+            java: components["schemas"]["JavaChoice"][];
+            /** Spring */
+            spring: components["schemas"]["SpringChoice"][];
+        };
         /** UploadOut */
         UploadOut: {
             /**
@@ -2667,7 +2731,9 @@ export interface components {
              * @default 21
              * @enum {string}
              */
-            java: "17" | "21";
+            java: "21" | "25";
+            /** Spring */
+            spring?: string | null;
             /** Accept */
             accept?: {
                 [key: string]: string;
@@ -4273,6 +4339,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+        };
+    };
+    target_versions_api_v1_target_versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetVersions"][];
                 };
             };
         };

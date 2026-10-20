@@ -69,7 +69,17 @@ def guard(cwd) -> str | None:
     return None
 
 
-def mvn(ctx, cwd, goals, name, timeout=None):
+def java_home(release: str | None) -> str | None:
+    """JDK to build and run a result compiled for `release`: Java 25 needs MF_JDK25_HOME; anything else the default JDK."""
+    if str(release) != '25':
+        return None
+    home = get_settings().jdk25_home
+    if not home or not (Path(home) / 'bin').is_dir():
+        raise FileNotFoundError('Java 25 requiere un JDK 25 en el worker (MF_JDK25_HOME)')
+    return home
+
+
+def mvn(ctx, cwd, goals, name, timeout=None, java_home: str | None = None):
     s = get_settings()
     problem = guard(cwd)
     if problem:  # never start Maven without its project: the error is configuration, not compilation
@@ -89,7 +99,8 @@ def mvn(ctx, cwd, goals, name, timeout=None):
     home = ctx.workdir / 'home'  # JGit (OpenRewrite) writes ~/.config: keep it in the job workspace, not the read-only image
     home.mkdir(parents=True, exist_ok=True)
     opts = f'-Djansi.tmpdir={jansi_tmp(ctx.workdir)} -Djansi.force=false -Duser.home={home} {s.maven_opts}'
-    return runner.run(args, cwd, ctx, name=name, timeout=timeout or s.step_timeout_seconds, env={'MAVEN_OPTS': opts})
+    env = {'MAVEN_OPTS': opts} | ({'JAVA_HOME': java_home} if java_home else {})
+    return runner.run(args, cwd, ctx, name=name, timeout=timeout or s.step_timeout_seconds, env=env)
 
 
 def external_env(ctx) -> dict:

@@ -18,7 +18,7 @@ from ..db import get_db
 from ..errors import ApiError
 from ..models import AuditEvent, RuleCatalog, TargetProfile
 from ..profiles import profile_digest
-from ..schemas import AuditOut, AuthConfig, Page, CatalogCreate, CatalogOut, Me, ProfileCreate, ProfileOut
+from ..schemas import AuditOut, AuthConfig, Page, CatalogCreate, CatalogOut, Me, ProfileCreate, ProfileOut, TargetVersions
 from .common import limit_param, paginate
 
 router = APIRouter()
@@ -57,6 +57,14 @@ def me(principal: Principal = Depends(current_principal)):
 
 
 # --- profiles -----------------------------------------------------------------------------------
+@router.get('/target-versions', response_model=list[TargetVersions], tags=['profiles'])
+def target_versions(db: Session = Depends(get_db), _: Principal = Depends(current_principal)):
+    """Java and Spring versions each migration target accepts (mf.versions): what the screens offer."""
+    from .. import versions
+    profiles = db.scalars(select(TargetProfile).where(TargetProfile.status == 'validated').order_by(TargetProfile.key, TargetProfile.version.desc()))
+    return versions.catalog(profiles)
+
+
 @router.get('/profiles', response_model=list[ProfileOut], tags=['profiles'])
 def list_profiles(status: str | None = Query(None, pattern='^(draft|validated|retired)$'), runtime: str | None = Query(None, pattern='^(spring|quarkus)$'),
                   db: Session = Depends(get_db), _: Principal = Depends(current_principal)):

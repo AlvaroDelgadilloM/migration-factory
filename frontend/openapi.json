@@ -2584,6 +2584,32 @@
         }
       }
     },
+    "/api/v1/target-versions": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Target Versions",
+        "description": "Java and Spring versions each migration target accepts (mf.versions): what the screens offer.",
+        "operationId": "target_versions_api_v1_target_versions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TargetVersions"
+                  },
+                  "type": "array",
+                  "title": "Response Target Versions Api V1 Target Versions Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/profiles": {
       "get": {
         "tags": [
@@ -6192,6 +6218,35 @@
         "title": "HttpTestSource",
         "description": "A tomcat-war migration that can be tested automatically (its WAR and the analysed source are stored)."
       },
+      "JavaChoice": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "validated": {
+            "type": "boolean",
+            "title": "Validated"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "validated"
+        ],
+        "title": "JavaChoice"
+      },
       "JobOut": {
         "properties": {
           "id": {
@@ -7003,6 +7058,27 @@
             "type": "string",
             "format": "uuid",
             "title": "Profileid"
+          },
+          "java": {
+            "type": "string",
+            "enum": [
+              "21",
+              "25"
+            ],
+            "title": "Java",
+            "default": "21"
+          },
+          "spring": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spring"
           }
         },
         "type": "object",
@@ -7032,6 +7108,17 @@
             "type": "string",
             "format": "uuid",
             "title": "Profileid"
+          },
+          "javaVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Javaversion"
           },
           "version": {
             "type": "integer",
@@ -7991,6 +8078,81 @@
         ],
         "title": "ScanOut"
       },
+      "SpringChoice": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "java": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Java"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "java"
+        ],
+        "title": "SpringChoice"
+      },
+      "TargetVersions": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "tomcat-war",
+              "profile"
+            ],
+            "title": "Target"
+          },
+          "profileId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profileid"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "java": {
+            "items": {
+              "$ref": "#/components/schemas/JavaChoice"
+            },
+            "type": "array",
+            "title": "Java"
+          },
+          "spring": {
+            "items": {
+              "$ref": "#/components/schemas/SpringChoice"
+            },
+            "type": "array",
+            "title": "Spring"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target",
+          "label",
+          "java",
+          "spring"
+        ],
+        "title": "TargetVersions"
+      },
       "UploadOut": {
         "properties": {
           "id": {
@@ -8233,11 +8395,23 @@
           "java": {
             "type": "string",
             "enum": [
-              "17",
-              "21"
+              "21",
+              "25"
             ],
             "title": "Java",
             "default": "21"
+          },
+          "spring": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spring"
           },
           "accept": {
             "patternProperties": {

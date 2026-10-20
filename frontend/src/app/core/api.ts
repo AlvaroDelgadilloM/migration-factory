@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
   Artifact, AuditEvent, Catalog, DiffFile, DiffFileDetail, Execution, Finding, FindingDetail, LogEvent, Member, Module,
-  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, Upload, Validation,
+  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, TargetVersions, Upload, Validation,
 } from './models';
 
 const B = '/api/v1';
@@ -80,9 +80,12 @@ export class Api {
 
   // plans & executions
   profiles(p: Params = {}) { return this.get<Profile[]>('/profiles', p); }
+  targetVersions() { return this.get<TargetVersions[]>('/target-versions'); }
   plans(scanId: string) { return this.get<Plan[]>(`/scans/${scanId}/plans`); }
   plan(id: string) { return this.get<Plan>(`/plans/${id}`); }
-  createPlan(scanId: string, profileId: string) { return this.send<Plan>('POST', `/scans/${scanId}/plans`, { profileId }); }
+  createPlan(scanId: string, profileId: string, java = '21', spring: string | null = null) {
+    return this.send<Plan>('POST', `/scans/${scanId}/plans`, { profileId, java, spring });
+  }
   approvePlan(id: string, rowVersion: number) { return this.send<Plan>('POST', `/plans/${id}/approve`, null, { 'If-Match': String(rowVersion) }); }
   startExecution(planId: string, mode: 'preview' | 'apply') {
     return this.send<{ executionId: string; jobId: string }>('POST', `/plans/${planId}/executions`, { mode }, { 'Idempotency-Key': this.key() });

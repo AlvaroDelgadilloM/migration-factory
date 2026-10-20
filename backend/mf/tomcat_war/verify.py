@@ -32,8 +32,9 @@ class ToolError(pipeline.InvalidInput):
 
 
 # --- tools ------------------------------------------------------------------------------------------------------------
-def _java(tool: str) -> str:
-    home = os.environ.get('JAVA_HOME')
+def _java(tool: str, home: Path | str | None = None) -> str:
+    """A JDK tool: from `home` when given (the migrated side may need its own JDK, e.g. Java 25), else from JAVA_HOME."""
+    home = home or os.environ.get('JAVA_HOME')
     exe = (Path(home) / 'bin' / tool) if home else None
     found = shutil.which(str(exe)) if exe else None
     found = found or shutil.which(tool)
@@ -108,11 +109,12 @@ def baseline_libs(work: Path, version: str, log=lambda m: None, extra: list = ()
     return lib
 
 
-def _compile(sources: list[Path], classpath: list, out: Path, release: str, log_file: Path, encoding: str = 'UTF-8') -> bool:
+def _compile(sources: list[Path], classpath: list, out: Path, release: str, log_file: Path, encoding: str = 'UTF-8',
+             jdk: Path | str | None = None) -> bool:
     out.mkdir(parents=True, exist_ok=True)
     args = out.parent / f'{out.name}.sources'
     args.write_text('\n'.join('"' + str(s).replace('\\', '/') + '"' for s in sources), encoding='utf-8')
-    return _run([_java('javac'), '--release', release, '-nowarn', '-encoding', encoding, '-proc:none', '-d', out, f'@{args}'], log_file,
+    return _run([_java('javac', jdk), '--release', release, '-nowarn', '-encoding', encoding, '-proc:none', '-d', out, f'@{args}'], log_file,
                 classpath=classpath) == 0
 
 
@@ -231,7 +233,7 @@ _END = re.compile(r'\.end(?:Choice)?\(\)')
 
 
 def fix_route(java_file: Path, cls: str, from_uri: str, expected: dict, trial: Path, compile_cp: list, dump_cp: list,
-              equivalences: list, logs: Path, base_classes: Path, release: str = '17') -> dict | None:
+              equivalences: list, logs: Path, base_classes: Path, release: str = '17', jdk: Path | str | None = None) -> dict | None:
     """Camel 2 and Camel 4 close blocks differently on some `.end()`/`.endChoice()` (e.g. `.end()` after a filter inside a
     choice branch returns to the branch in Camel 2 and to the choice in Camel 4): the same source builds another tree without
     any error. Tries removing each `.end()`/`.endChoice()` of the route, one at a time, recompiles that class and re-dumps it;
@@ -251,11 +253,11 @@ def fix_route(java_file: Path, cls: str, from_uri: str, expected: dict, trial: P
         shutil.copytree(base_classes, trial)
         src = trial.parent / f'{trial.name}-src' / java_file.name
         pipeline.write(src, candidate)
-        if not _compile([src], compile_cp + [trial], trial, release, logs / f'fix-{cls}-{i}.log', encoding='ISO-8859-1'):
+        if not _compile([src], compile_cp + [trial], trial, release, logs / f'fix-{cls}-{i}.log', encoding='ISO-8859-1', jdk=jdk):
             continue
         dump = trial.parent / f'{trial.name}.txt'
         dump.unlink(missing_ok=True)
-        _run([_java('java'), 'RouteDump', trial, dump], logs / f'fix-dump-{cls}-{i}.log', classpath=dump_cp)
+        _run([_java('java', jdk), 'RouteDump', trial, dump], logs / f'fix-dump-{cls}-{i}.log', classpath=dump_cp)
         if not dump.exists():
             continue
         got = {k: v for k, v in read_dump(dump, equivalences)[0].items() if k.split(' | ', 1)[0] == cls}
@@ -291,7 +293,8 @@ def dump_migrated(source: Path, module_dirs: dict, war_dir: Path, work: Path, lo
     return out
 
 
-def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, log=lambda m: None, fix: bool = False) -> dict:
+def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, log=lambda m: None, fix: bool = False,
+           jdk4: Path | str | None = None) -> dict:
     """Route-structure comparison. migrated: the built `migrated-workspace` (modules/*/target/classes and the WAR lib).
     fix=True: unexplained differences that a single `.end()` removal makes identical to Camel 2 are corrected in the migrated
     sources (and target/classes); the caller rebuilds the WAR. Listed as `autoCorrected` for review."""
@@ -324,7 +327,7 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
     lib4.append(servlet[-1])
 
     equivalences = load_equivalences()
-    java = _java('java')
+    java = {'camel2': _java('java'), 'camel4': _java('java', jdk4)}  # jdk4: JDK of the migrated bytecode (e.g. Java 25)
     modules, totals = [], Counter()
     for m in _order(deps):
         java_dir = src_dirs[m]
@@ -352,7 +355,7 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
             dump.parent.mkdir(parents=True, exist_ok=True)
             dump.unlink(missing_ok=True)
             # noOptimize: the JAXB 2.2 of Camel 2 generates accessor classes through a JDK API removed after Java 8
-            _run([java, '-Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true', 'RouteDump', classes, dump, work / 'xml' / side / m],
+            _run([java[side], '-Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true', 'RouteDump', classes, dump, work / 'xml' / side / m],
                  logs / f'dump-{side}-{m}.log', classpath=cp)
             if not dump.exists():
                 entry |= {'status': 'NOT_EXECUTABLE', 'detail': f"no se pudo volcar ({side}); ver {logs / f'dump-{side}-{m}.log'}"}
@@ -388,7 +391,7 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
                     done = fix_route(files[0], cls, r.split(' | ', 1)[1], want, work / 'fix' / m,
                                      lib4 + [migrated / 'modules' / d / 'target' / 'classes' for d in chain],
                                      [tool] + lib4 + [migrated / 'modules' / d / 'target' / 'classes' for d in chain],
-                                     equivalences, logs, new_classes, release)
+                                     equivalences, logs, new_classes, release, jdk4)
                     if done:
                         break
                 if not done:

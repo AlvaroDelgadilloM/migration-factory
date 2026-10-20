@@ -45,6 +45,12 @@ def start(scan_id: uuid.UUID, body: WorkspaceMigrationIn, request: Request, idem
         profile = None  # the tomcat-war profile is its versioned rules (rules/tomcat-war), not a TargetProfile
     elif profile is None or profile.status != 'validated':
         raise ApiError(409, 'PROFILE_NOT_VALIDATED', 'Solo se migra con perfiles validados')
+    else:
+        from .. import versions
+        try:
+            versions.check(versions.profile_target(profile), body.java, body.spring)
+        except ValueError as e:
+            raise ApiError(422, 'VERSION_NOT_VALIDATED', str(e)) from None
     by_project = ((ws.get('shared') or {}).get('findingsByProject') or {})
     camel2 = sorted(n for n, rules in by_project.items() if 'CAMEL2_VERSION' in rules)
     # tomcat-war applies declarative, per-line Camel 2 -> 4 rules with REVIEW points (docs/19): no global 2->3 decision is needed
@@ -65,7 +71,7 @@ def start(scan_id: uuid.UUID, body: WorkspaceMigrationIn, request: Request, idem
     result = {'workspaceMigrationId': str(wm.id), 'jobId': str(job.id), 'status': 'queued'}
     jobs.remember(db, me.subject, idempotency_key, endpoint, payload, 202, result)
     audit.record(db, actor=me.subject, action='workspace_migration.request', entity_type='scan', entity_id=scan.id, project_id=scan.project_id,
-                 details={'profile': f'{profile.key}@{profile.version}' if profile else 'tomcat-war', 'java': body.java, 'accepted': body.accept, 'approved': wm.approved,
+                 details={'profile': f'{profile.key}@{profile.version}' if profile else 'tomcat-war', 'java': body.java, 'spring': body.spring, 'accepted': body.accept, 'approved': wm.approved,
                           'projects': len(ws.get('projects', []))}, request=request)
     db.commit()
     jobs.try_publish(db)

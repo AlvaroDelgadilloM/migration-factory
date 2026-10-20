@@ -79,3 +79,6 @@ export interface HttpRunSummary { status?: string; totals?: { cases: number; sam
   startup?: Record<'original' | 'migrado', { started: number | null; total: number | null; failed: string[] }>;
   configuration?: { files: number; replaced: number; generated: number; fromDataPackage: string[] } }
 export interface ManualResult { results: (HttpAnswer & { label: string; url: string })[]; state?: string; issues?: string[]; kind?: string | null }
+
+// Java / Spring versions each migration target accepts (GET /target-versions)
+export type TargetVersions = S['TargetVersions'];

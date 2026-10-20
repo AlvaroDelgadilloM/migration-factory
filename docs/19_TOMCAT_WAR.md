@@ -85,7 +85,11 @@ Las decisiones de un cliente no viven en el motor:
 }
 ```
 
-- `javaRelease`: nivel de lenguaje y de bytecode del código migrado (`maven.compiler.release`). Solo los validados con el
+- `javaRelease`: nivel de lenguaje y de bytecode del código migrado (`maven.compiler.release`). En la plataforma se elige en
+  pantalla (Java y Spring, `GET /target-versions`, `backend/mf/versions.py`): solo Java 21 y 25 y solo las combinaciones
+  validadas por destino; la que no lo está aparece deshabilitada con el motivo (Java 25 con Spring Boot / Quarkus). El worker
+  trae un segundo JDK (Temurin 25, `MF_JDK25_HOME`) con el que compila, verifica las rutas y prueba un resultado en Java 25.
+  Detalle: Solo los validados con el
   piloto (`profile.javaReleases` de las reglas: 17, 21, 25); por omisión 17. Compilar con 25 exige un JDK 25. La versión de
   Spring no se elige aparte: la fija la de Camel (4.18.4 está compilado contra Spring 6.2.19 / Spring Boot 3.5).
 - `containers`: si varios contenedores de origen despliegan subconjuntos distintos de bundles, cada módulo guarda dónde va
@@ -258,5 +262,5 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
   externo solo se compara con `mocks.json` o contra el ambiente de pruebas del cliente.
 - **Rutas REST definidas en XML** (`<rest>`) no generan casos todavía; las de Java sí.
 - La línea base nunca se ha comparado contra un JBoss Fuse real.
-- **Java 25 en la plataforma**: la imagen del worker trae JDK 21; una migración con `javaRelease` 25 se valida y se genera, pero no compila en el servidor hasta que el worker tenga JDK 25 (en línea de comandos sí, con un JDK 25 local).
+
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

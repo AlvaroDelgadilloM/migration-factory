@@ -161,9 +161,14 @@ def new_plan(scan_id: uuid.UUID, body: PlanCreate, request: Request, db: Session
         raise ApiError(404, 'NOT_FOUND', 'Perfil inexistente')
     if profile.status != 'validated':
         raise ApiError(409, 'PROFILE_NOT_VALIDATED', 'Solo se planifica con perfiles validados')
-    plan = create_plan(db, scan, profile, me.subject)
+    from .. import versions
+    try:
+        versions.check(versions.profile_target(profile), body.java, body.spring)
+    except ValueError as e:
+        raise ApiError(422, 'VERSION_NOT_VALIDATED', str(e)) from None
+    plan = create_plan(db, scan, profile, me.subject, java=body.java)
     audit.record(db, actor=me.subject, action='plan.create', entity_type='plan', entity_id=plan.id, project_id=scan.project_id,
-                 after={'digest': plan.digest}, details={'profile': f'{profile.key}@{profile.version}', 'version': plan.version}, request=request)
+                 after={'digest': plan.digest}, details={'profile': f'{profile.key}@{profile.version}', 'version': plan.version, 'java': body.java, 'spring': body.spring}, request=request)
     db.commit()
     return plan_out(db, plan)
 

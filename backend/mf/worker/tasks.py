@@ -888,7 +888,7 @@ def _package_result(db, ex, ctx, src, repo, profile, plan, evaluated, patch):
                            + [f'- [hallazgo bloqueante] {f.rule_id} {f.file}:{f.line} — {f.recommendation[:200]}' for f in open_blocking]
                            + ([] if manual or open_blocking else ['Ninguna.'])) + '\n'
     man = result.manifest(status=status, source=repo.source_type,
-                          target={'java': profile.java_version, 'camel': profile.camel_version,
+                          target={'java': plan.java_version or profile.java_version, 'camel': profile.camel_version,
                                   ('springBoot' if profile.runtime == 'spring' else 'quarkus'): profile.runtime_version},
                           projects=1, build_passed=getattr(vals.get(('compile', 'candidate')), 'status', None) == 'PASS',
                           tests_passed=getattr(vals.get(('test', 'candidate')), 'status', None) == 'PASS',
@@ -938,6 +938,12 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
     out = ctx.workdir / 'tw-out'
     cfg = dict(wm.config or {})
     verify_routes = cfg.pop('_verifyRoutes', True)
+    if wm.java:  # the Java chosen on screen (mf.versions) is the language level and bytecode of the result
+        cfg['javaRelease'] = str(wm.java)
+    try:
+        jdk = mavenops.java_home(cfg.get('javaRelease'))
+    except FileNotFoundError as e:
+        raise StepFailure('JDK_MISSING', str(e)) from None
     cfg_path = None
     if cfg:  # the client file of docs/19 (validated by the API, never an overlay folder)
         cfg_path = ctx.workdir / 'client-config.json'
@@ -949,7 +955,8 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
         raise StepFailure('WORKSPACE_INVALID', str(e)) from None
     ws_dir = out / 'migrated-workspace'
     set_phase(ctx, 'build', 55)
-    r = mavenops.mvn(ctx, ws_dir, ['-DskipTests', 'package'], 'tomcat-war-package', timeout=get_settings().workspace_timeout_seconds)
+    r = mavenops.mvn(ctx, ws_dir, ['-DskipTests', 'package'], 'tomcat-war-package', timeout=get_settings().workspace_timeout_seconds,
+                     java_home=jdk)
     text = r.log_path.read_text(errors='replace')
     errors = [line for line in text.splitlines() if line.startswith('[ERROR]')][:20]
     build = {'status': 'PASS' if r.exit_code == 0 else 'FAIL', 'exitCode': r.exit_code, 'errors': errors}
@@ -973,7 +980,7 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
         # their own 30 min timeout but not this job's cancellation (upgrade: route them through runner).
         os.environ.update(env)
         try:
-            rs = verify.routes(src, ws_dir, out, cfg_path, log=lambda m: ctx.emit('info', 'verify', m), fix=True)
+            rs = verify.routes(src, ws_dir, out, cfg_path, log=lambda m: ctx.emit('info', 'verify', m), fix=True, jdk4=jdk)
             equivalence['routeStructure'] = {'status': rs['status'], 'totals': rs['totals'],
                                              'autoCorrected': [c for m in rs['modules'] for c in m.get('autoCorrected', [])]}
             route_diffs = {m['module']: [u['route'] for u in m['unexpected']] for m in rs['modules'] if m.get('unexpected')}
@@ -989,7 +996,8 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                     os.environ[k] = v
         if equivalence['routeStructure'].get('autoCorrected'):  # the sources changed: the WAR must carry the corrected modules
             set_phase(ctx, 'build', 85)
-            r = mavenops.mvn(ctx, ws_dir, ['-DskipTests', 'package'], 'tomcat-war-package-fixed', timeout=get_settings().workspace_timeout_seconds)
+            r = mavenops.mvn(ctx, ws_dir, ['-DskipTests', 'package'], 'tomcat-war-package-fixed', timeout=get_settings().workspace_timeout_seconds,
+                             java_home=jdk)
             if r.exit_code != 0:
                 status, reason = 'FAILED', 'CANDIDATE_COMPILE_FAILED'
                 build = res['build'] = build | {'status': 'FAIL', 'exitCode': r.exit_code, 'afterRouteFix': True}
@@ -1079,8 +1087,13 @@ def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
     saved = {k: os.environ.get(k) for k in env}
     os.environ.update(env)
     try:
+        try:
+            jdk = mavenops.java_home(wm.java)
+        except FileNotFoundError as e:
+            raise StepFailure('JDK_MISSING', str(e)) from None
         return autotest.run(src, war_file, out, run.container or '', data, run.screenshots,
-                            timeout=min(900, get_settings().workspace_timeout_seconds), log=lambda m: ctx.emit('info', 'compare', m))
+                            timeout=min(900, get_settings().workspace_timeout_seconds), log=lambda m: ctx.emit('info', 'compare', m),
+                            migrated_java_home=jdk)
     except autotest.AutoTestError as e:
         raise StepFailure('AUTOTEST_FAILED', str(e)[:2000]) from None
     finally:

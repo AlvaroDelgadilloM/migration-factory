@@ -246,6 +246,8 @@ class FindingDetail(FindingOut):
 
 class PlanCreate(Dto):
     profile_id: uuid.UUID
+    java: Literal['21', '25'] = '21'  # only validated combinations with the profile (mf.versions)
+    spring: str | None = Field(default=None, max_length=120)
 
 
 class PlanOut(Dto):
@@ -253,6 +255,7 @@ class PlanOut(Dto):
     scan_id: uuid.UUID
     project_id: uuid.UUID
     profile_id: uuid.UUID
+    java_version: str | None = None
     version: int
     status: str
     digest: str
@@ -545,7 +548,9 @@ class WorkspaceMigrationIn(Dto):
     # target 'profile' = Spring Boot / Quarkus by waves (profile_id required); 'tomcat-war' = Fuse/Karaf bundles -> one WAR (docs/19)
     target: Literal['profile', 'tomcat-war'] = 'profile'
     profile_id: uuid.UUID | None = None
-    java: Literal['17', '21'] = '21'
+    # Java and Spring line of the result: only validated combinations of the target (mf.versions, GET /target-versions)
+    java: Literal['21', '25'] = '21'
+    spring: str | None = Field(default=None, max_length=120)
     # architect decisions on blocking findings, applied to every project of the workspace (recorded in the audit)
     accept: dict[Annotated[str, Field(pattern=r'^[A-Z0-9_]{2,60}$')], Annotated[str, Field(min_length=10, max_length=500)]] = Field(default_factory=dict)
     approve: list[Annotated[str, Field(pattern=r'^[a-z0-9-]{2,60}$')]] = Field(default_factory=list, max_length=30)
@@ -559,6 +564,9 @@ class WorkspaceMigrationIn(Dto):
     def _profile_or_tomcat(self):
         if self.target == 'profile' and self.profile_id is None:
             raise ValueError('profileId es obligatorio salvo con target tomcat-war')
+        if self.target == 'tomcat-war':  # a profile target is checked by the API, which has its TargetProfile
+            from . import versions
+            versions.check(versions.tomcat_war(), self.java, self.spring)
         if self.config is not None:
             if self.target != 'tomcat-war':
                 raise ValueError('config solo aplica a target tomcat-war')
@@ -716,3 +724,24 @@ class DataPackageOut(Dto):
     name: str
     size_bytes: int
     contents: dict  # etc files, sql scripts, mocks, values, extra cases
+
+
+# --- target versions (mf.versions) -------------------------------------------------------------------------------------
+class JavaChoice(Dto):
+    version: str
+    validated: bool
+    reason: str | None = None
+
+
+class SpringChoice(Dto):
+    key: str
+    label: str
+    java: list[str]  # Java versions this Spring line is validated with
+
+
+class TargetVersions(Dto):
+    target: Literal['tomcat-war', 'profile']
+    profile_id: str | None = None
+    label: str
+    java: list[JavaChoice]
+    spring: list[SpringChoice]

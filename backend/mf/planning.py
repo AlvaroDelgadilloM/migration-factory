@@ -545,7 +545,7 @@ def compat_blocks(steps, modules) -> list[dict]:
     return out
 
 
-def create_plan(db, scan: Scan, profile: TargetProfile, actor) -> Plan:
+def create_plan(db, scan: Scan, profile: TargetProfile, actor, java: str | None = None) -> Plan:
     from .models import Finding as F
     modules = list(db.scalars(select(Module).where(Module.scan_id == scan.id)))
     routes = list(db.scalars(select(Route).where(Route.scan_id == scan.id)))
@@ -554,7 +554,7 @@ def create_plan(db, scan: Scan, profile: TargetProfile, actor) -> Plan:
     by_route = {r.id: r for r in routes}
     endpoints = [{'component': e.component, 'file': by_route[e.route_id].file, 'line': e.line, 'dynamic': e.dynamic}
                  for e in db.scalars(select(Endpoint).where(Endpoint.route_id.in_(list(by_route))))] if routes else []
-    steps, unmapped = build_steps(scan, profile, modules, routes, findings, endpoints=endpoints)
+    steps, unmapped = build_steps(scan, profile, modules, routes, findings, java_version=java, endpoints=endpoints)
     blocks = compat_blocks(steps, modules)
     if blocks:  # doc 19: component without a valid Camel 4 target -> explicit blocking finding on the Camel step
         from .models import RuleCatalog
@@ -567,7 +567,7 @@ def create_plan(db, scan: Scan, profile: TargetProfile, actor) -> Plan:
                          blocking=True, recommendation=f"{b['code']}: {b['reason']}"[:4000], evidence=b['evidence'][:200]))
         db.flush()
         findings = list(db.scalars(select(F).where(F.scan_id == scan.id)))
-        steps, unmapped = build_steps(scan, profile, modules, routes, findings, endpoints=endpoints)
+        steps, unmapped = build_steps(scan, profile, modules, routes, findings, java_version=java, endpoints=endpoints)
     if unmapped:  # unsupported case -> explicit finding, which blocks the runtime step
         from .models import RuleCatalog
         rule = next(r for r in db.get(RuleCatalog, scan.catalog_id).rules if r['id'] == 'UNMAPPED_COMPONENT')
@@ -579,12 +579,12 @@ def create_plan(db, scan: Scan, profile: TargetProfile, actor) -> Plan:
                          blocking=True, recommendation=rule['recommendation'], evidence=f"{d['groupId']}:{d['artifactId']}"))
         db.flush()
         findings = list(db.scalars(select(F).where(F.scan_id == scan.id)))
-        steps, _ = build_steps(scan, profile, modules, routes, findings, endpoints=endpoints)
+        steps, _ = build_steps(scan, profile, modules, routes, findings, java_version=java, endpoints=endpoints)
     last = db.scalar(select(Plan).where(Plan.scan_id == scan.id).order_by(Plan.version.desc()))
     if last and last.status != 'superseded':
         last.status = 'superseded'
-    digest = hashlib.sha256(json.dumps({'steps': steps, 'profile': profile.digest, 'scan': str(scan.id)}, sort_keys=True).encode()).hexdigest()
-    plan = Plan(scan_id=scan.id, project_id=scan.project_id, profile_id=profile.id, version=(last.version + 1) if last else 1,
+    digest = hashlib.sha256(json.dumps({'steps': steps, 'profile': profile.digest, 'scan': str(scan.id), 'java': java}, sort_keys=True).encode()).hexdigest()
+    plan = Plan(scan_id=scan.id, project_id=scan.project_id, profile_id=profile.id, java_version=java, version=(last.version + 1) if last else 1,
                 digest=digest, created_by=actor)
     db.add(plan)
     db.flush()
