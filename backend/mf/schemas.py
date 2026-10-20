@@ -629,11 +629,26 @@ class HttpCase(Dto):
 
 
 class HttpTestRunIn(Dto):
-    name: str = Field(min_length=1, max_length=200)
-    original: HttpTarget
-    migrated: HttpTarget
-    cases: list[HttpCase] = Field(min_length=1, max_length=500)
+    """source 'migration' (default): the worker starts the original code and the migration's WAR and reads the cases from
+    the code; only workspace_migration_id is required (name, container and data package are optional). source 'urls': two
+    systems already running (original, migrated) and the cases to send."""
+    source: Literal['migration', 'urls'] = 'migration'
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    workspace_migration_id: uuid.UUID | None = None
+    container: str | None = Field(default=None, pattern=r'^[\w.\-]{1,60}$')
+    data_package_id: uuid.UUID | None = None  # POST /projects/{id}/http-tests/data-packages; none = smoke test
+    original: HttpTarget | None = None
+    migrated: HttpTarget | None = None
+    cases: list[HttpCase] = Field(default_factory=list, max_length=500)  # source migration: extra cases besides the generated ones
     screenshots: bool = True
+
+    @model_validator(mode='after')
+    def by_source(self):
+        if self.source == 'migration' and not self.workspace_migration_id:
+            raise ValueError('workspaceMigrationId es obligatorio para probar una migración')
+        if self.source == 'urls' and not (self.original and self.migrated and self.cases and self.name):
+            raise ValueError('Con sistemas ya levantados indique name, original, migrated y al menos un caso')
+        return self
 
 
 class HttpTestRunOut(Dto):
@@ -642,8 +657,12 @@ class HttpTestRunOut(Dto):
     job_id: uuid.UUID | None
     state: str
     name: str
-    original: dict
-    migrated: dict
+    source: str = 'urls'
+    workspace_migration_id: uuid.UUID | None = None
+    container: str | None = None
+    data_artifact_id: uuid.UUID | None = None
+    original: dict | None = None
+    migrated: dict | None = None
     cases: list[dict]
     screenshots: bool
     summary: dict
@@ -679,3 +698,21 @@ class DataStageActionIn(Dto):
     key: str = Field(pattern=r'^[0-9a-f]{16}$')
     done: bool
     note: str | None = Field(default=None, max_length=1000)
+
+
+class HttpTestSource(Dto):
+    """A tomcat-war migration that can be tested automatically (its WAR and the analysed source are stored)."""
+    workspace_migration_id: uuid.UUID
+    scan_id: uuid.UUID
+    created_at: datetime
+    state: str
+    build: str | None
+    containers: list[str]
+    war: bool
+
+
+class DataPackageOut(Dto):
+    id: uuid.UUID
+    name: str
+    size_bytes: int
+    contents: dict  # etc files, sql scripts, mocks, values, extra cases

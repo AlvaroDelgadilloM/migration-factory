@@ -118,6 +118,13 @@
       "level": "AUTO"
     },
     {
+      "id": "SIMPLE_WITHOUT_PLACEHOLDER",
+      "pattern": "simple\\(\\s*\"(null|body|in\\.body|out\\.body|bodyAs\\(\\w[\\w.]*\\)|exception|exception\\.message|exception\\.stacktrace|id|exchangeId|camelId|routeId|(?:in\\.|out\\.)?headers?\\.[\\w\\-]+(?:\\.[\\w\\-]+)*|(?:exchangeProperty|property)\\.[\\w\\-]+(?:\\.[\\w\\-]+)*|sys\\.[\\w.\\-]+|sysenv\\.[\\w.\\-]+|date:[\\w:.\\-]+)\"\\s*([,)])",
+      "replace": "simple(\"${\\1}\"\\2",
+      "level": "AUTO",
+      "reason": "Camel 2 evaluaba simple(\"null\"), simple(\"body\"), simple(\"header.x\"), simple(\"exception.message\")... como la funcion; Camel 4 los toma como texto literal: el cuerpo quedaba en la palabra \"null\" en lugar de null, sin ningun error."
+    },
+    {
       "id": "SIMPLE_PROPERTY",
       "pattern": "\\$\\{property\\.",
       "replace": "${exchangeProperty.",

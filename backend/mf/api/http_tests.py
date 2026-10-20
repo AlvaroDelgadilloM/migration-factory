@@ -1,8 +1,12 @@
 """Pruebas: manual requests and automatic comparisons of the original system against the migrated one (docs/19).
 
-Both call systems the user names, so every base URL must be on MF_TEST_ALLOWED_HOSTS (SSRF). A manual request is one short
-HTTP call and runs here; an automatic run sends every case to both systems and builds the evidence report, so it is a job."""
+Automatic, from a migration (the default): the worker starts the original code on Camel 2 and the migration's WAR in Tomcat
+itself, reads the cases from the code and compares; the user only picks the migration (and optionally the container and the
+client's test data package). Automatic or manual against systems already running: every base URL must be on
+MF_TEST_ALLOWED_HOSTS (SSRF). A manual request is one short HTTP call and runs here; an automatic run is a job."""
 import uuid
+from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import select
@@ -13,12 +17,14 @@ from ..auth import Principal, authorize, current_principal
 from ..config import get_settings
 from ..db import get_db
 from ..errors import ApiError
-from ..models import HttpTestRun, Job, Project
-from ..schemas import HttpTestRunIn, HttpTestRunOut, JobOut, ManualTestIn
+from ..models import Artifact, HttpTestRun, Job, Project, WorkspaceMigration
+from ..schemas import DataPackageOut, HttpTestRunIn, HttpTestRunOut, HttpTestSource, JobOut, ManualTestIn
 from ..security import UnsafeInput, validate_test_url
-from ..tomcat_war import http_run
+from ..storage import ArtifactStore
+from ..tomcat_war import autotest, http_run
 
 router = APIRouter(tags=['pruebas'])
+DATA_PACKAGE_MAX = 100 * 1024 * 1024
 
 
 def _project(db, me, project_id, perm):
@@ -42,6 +48,52 @@ def _out(db, run: HttpTestRun) -> dict:
     return d
 
 
+def war_artifact(db, wm: WorkspaceMigration) -> Artifact | None:
+    ids = [v for k, v in ((wm.summary or {}).get('artifacts') or {}).items() if k.endswith('.war')]
+    return db.get(Artifact, uuid.UUID(ids[0])) if ids else None
+
+
+def _containers(wm: WorkspaceMigration) -> list[str]:
+    c = (wm.config or {}).get('containers') or {}
+    return list(c.get('names') or []) if isinstance(c, dict) else []
+
+
+@router.get('/projects/{project_id}/http-tests/sources', response_model=list[HttpTestSource])
+def sources(project_id: uuid.UUID, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """Tomcat WAR migrations of the project, newest first, with what an automatic test needs."""
+    _project(db, me, project_id, 'view')
+    rows = db.scalars(select(WorkspaceMigration).where(WorkspaceMigration.project_id == project_id, WorkspaceMigration.target == 'tomcat-war')
+                      .order_by(WorkspaceMigration.created_at.desc()).limit(20))
+    return [{'workspace_migration_id': w.id, 'scan_id': w.scan_id, 'created_at': w.created_at, 'state': w.state,
+             'build': ((w.summary or {}).get('build') or {}).get('status'), 'containers': _containers(w), 'war': war_artifact(db, w) is not None}
+            for w in rows]
+
+
+@router.post('/projects/{project_id}/http-tests/data-packages', status_code=201, response_model=DataPackageOut)
+async def upload_data_package(project_id: uuid.UUID, request: Request, x_filename: str = Header('datos-prueba.zip', max_length=255),
+                              db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """The client's test data (autotest.DATA_PACKAGE): configuration, database scripts, simulated answers of external
+    systems, parameter values. Checked here and stored as an artifact; only the worker opens it."""
+    _project(db, me, project_id, 'execute')
+    data = bytearray()
+    async for chunk in request.stream():
+        data += chunk
+        if len(data) > DATA_PACKAGE_MAX:
+            raise ApiError(413, 'PAYLOAD_TOO_LARGE', f'Máximo {DATA_PACKAGE_MAX // 1024 // 1024} MB')
+    try:
+        contents = autotest.inspect_data_package(bytes(data))
+    except autotest.AutoTestError as e:
+        raise ApiError(422, 'DATA_PACKAGE_INVALID', str(e)) from None
+    name = 'datos-prueba-' + Path(unquote(x_filename)).name[:150]
+    art = ArtifactStore().put(db, project_id=project_id, kind='test-data', name=name if name.endswith('.zip') else name + '.zip',
+                              data=bytes(data), content_type='application/zip')
+    audit.record(db, actor=me.subject, action='http_test.data_package', entity_type='artifact', entity_id=art.id, project_id=project_id,
+                 details={'sha256': art.sha256, 'size': len(data)} | {k: (len(v) if isinstance(v, list) else v) for k, v in contents.items()},
+                 request=request)
+    db.commit()
+    return {'id': art.id, 'name': art.name, 'size_bytes': art.size_bytes, 'contents': contents}
+
+
 @router.post('/projects/{project_id}/http-tests/manual')
 def manual(project_id: uuid.UUID, body: ManualTestIn, request: Request, db: Session = Depends(get_db),
            me: Principal = Depends(current_principal)):
@@ -58,7 +110,19 @@ def manual(project_id: uuid.UUID, body: ManualTestIn, request: Request, db: Sess
 def start_run(project_id: uuid.UUID, body: HttpTestRunIn, request: Request, idempotency_key: str | None = Header(None),
               db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     _project(db, me, project_id, 'execute')
-    original, migrated = _targets([body.original, body.migrated])
+    original = migrated = None
+    if body.source == 'urls':
+        original, migrated = _targets([body.original, body.migrated])
+    else:
+        wm = db.get(WorkspaceMigration, body.workspace_migration_id)
+        if wm is None or wm.project_id != project_id or wm.target != 'tomcat-war':
+            raise ApiError(404, 'NOT_FOUND', 'Migración Tomcat WAR no encontrada en este proyecto')
+        if war_artifact(db, wm) is None:
+            raise ApiError(409, 'INVALID_STATE', 'Esa migración no tiene WAR compilado: no se puede levantar')
+        if body.data_package_id:
+            art = db.get(Artifact, body.data_package_id)
+            if art is None or art.project_id != project_id or art.kind != 'test-data':
+                raise ApiError(404, 'NOT_FOUND', 'Paquete de datos no encontrado en este proyecto')
     payload = body.model_dump(mode='json')
     endpoint = f'POST /projects/{project_id}/http-tests/runs'
     replay = jobs.idempotent_replay(db, me.subject, idempotency_key, endpoint, payload)
@@ -66,8 +130,11 @@ def start_run(project_id: uuid.UUID, body: HttpTestRunIn, request: Request, idem
         return replay
     if db.scalar(select(HttpTestRun.id).where(HttpTestRun.project_id == project_id, HttpTestRun.state.in_(('queued', 'running')))):
         raise ApiError(409, 'INVALID_STATE', 'Ya hay una prueba automática en curso para este proyecto')
-    run = HttpTestRun(project_id=project_id, name=body.name, original=original, migrated=migrated, screenshots=body.screenshots,
-                      cases=[c.model_dump(mode='json', exclude_none=True) for c in body.cases], created_by=me.subject, summary={})
+    name = body.name or (f"Migración {str(body.workspace_migration_id)[:8]}" + (f' · {body.container}' if body.container else ''))
+    run = HttpTestRun(project_id=project_id, name=name, source=body.source, workspace_migration_id=body.workspace_migration_id,
+                      container=body.container, data_artifact_id=body.data_package_id, original=original, migrated=migrated,
+                      screenshots=body.screenshots, cases=[c.model_dump(mode='json', exclude_none=True) for c in body.cases],
+                      created_by=me.subject, summary={})
     db.add(run)
     db.flush()
     job = jobs.create_job(db, kind='http_compare', project_id=project_id, subject_id=run.id, actor=me.subject)
@@ -75,7 +142,10 @@ def start_run(project_id: uuid.UUID, body: HttpTestRunIn, request: Request, idem
     result = {'httpTestRunId': str(run.id), 'jobId': str(job.id), 'status': 'queued'}
     jobs.remember(db, me.subject, idempotency_key, endpoint, payload, 202, result)
     audit.record(db, actor=me.subject, action='http_test.run', entity_type='http_test_run', entity_id=run.id, project_id=project_id,
-                 details={'name': body.name, 'original': original['url'], 'migrated': migrated['url'], 'cases': len(body.cases)}, request=request)
+                 details={'name': name, 'source': body.source, 'workspaceMigration': str(body.workspace_migration_id or ''),
+                          'container': body.container, 'dataPackage': str(body.data_package_id or ''),
+                          'original': original and original['url'], 'migrated': migrated and migrated['url'], 'cases': len(body.cases)},
+                 request=request)
     db.commit()
     jobs.try_publish(db)
     return result

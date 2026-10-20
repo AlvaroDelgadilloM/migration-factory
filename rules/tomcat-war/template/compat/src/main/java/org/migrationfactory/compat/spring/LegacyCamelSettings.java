@@ -1,12 +1,19 @@
 package org.migrationfactory.compat.spring;
 
+import java.util.List;
+
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
+import org.apache.camel.Message;
 import org.apache.camel.Processor;
+import org.apache.camel.model.ChoiceDefinition;
 import org.apache.camel.model.ModelCamelContext;
 import org.apache.camel.model.ModelLifecycleStrategySupport;
 import org.apache.camel.model.ProcessDefinition;
+import org.apache.camel.model.ProcessorDefinition;
 import org.apache.camel.model.RouteDefinition;
+import org.apache.camel.model.ToDefinition;
+import org.apache.camel.model.WhenDefinition;
 import org.apache.camel.model.rest.RestBindingDefinition;
 import org.apache.camel.spring.xml.CamelContextFactoryBean;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -20,12 +27,20 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 	@Override
 	public Object postProcessAfterInitialization(Object bean, String beanName) {
 		if (bean instanceof CamelContextFactoryBean) {
-			CamelContext context = ((CamelContextFactoryBean) bean).getContext();
+			CamelContextFactoryBean factory = (CamelContextFactoryBean) bean;
+			CamelContext context = factory.getContext();
+			// Stream caching: apagado por omision en Camel 2, encendido desde Camel 3. Con el encendido, el cuerpo de una
+			// peticion que la ruta ya leyo vuelve a estar disponible y, si la ruta no fija respuesta, se devuelve la peticion
+			// en lugar de un cuerpo vacio. Se respeta lo que el XML declare (streamCache="true") y el de cada ruta.
+			if (factory.getStreamCache() == null) {
+				context.setStreamCaching(false);
+			}
 			// Camel 4 "inserta" en el servicio REST la ruta direct a la que apunta y por eso exige
 			// que cada verbo use un direct distinto. Varias rutas actuales comparten el mismo
 			// direct entre verbos; se vuelve al comportamiento de Camel 2 (rutas enlazadas).
 			context.getRestConfiguration().setInlineRoutes(false);
 			((ModelCamelContext) context).addModelLifecycleStrategy(new ProducesContentType());
+			((ModelCamelContext) context).addModelLifecycleStrategy(new CxfOperationHeaders());
 		}
 		return bean;
 	}
@@ -56,6 +71,57 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 				}
 			};
 			route.getOutputs().add(new ProcessDefinition(step));
+		}
+	}
+
+	/**
+	 * Nombre de la operacion SOAP. Camel 2 usaba los headers "operationName" y "operationNamespace" (CxfConstants); desde
+	 * Camel 3 son "CamelCxfOperationName" y "CamelCxfOperationNamespace". El codigo actual lee y escribe los nombres de
+	 * Camel 2: un toD("direct:${header.operationName}") recibia vacio y una llamada cxf: con setHeader("operationName", X)
+	 * no elegia la operacion X, sin ningun error. Se mantienen los dos nombres: al entrar por un endpoint cxf: se copian
+	 * los de Camel 4 a los de Camel 2, y justo antes de cada llamada a cxf: los de Camel 2 a los de Camel 4.
+	 */
+	static final class CxfOperationHeaders extends ModelLifecycleStrategySupport {
+
+		static final String[][] NAMES = { { "CamelCxfOperationName", "operationName" }, { "CamelCxfOperationNamespace", "operationNamespace" } };
+
+		@Override
+		public void onAddRouteDefinition(RouteDefinition route) {
+			String from = route.getInput() == null ? null : route.getInput().getEndpointUri();
+			if (from != null && from.startsWith("cxf:")) {
+				route.getOutputs().add(0, new ProcessDefinition(exchange -> copy(exchange.getIn(), 0, 1)));
+			}
+			beforeCxfCalls(route.getOutputs());
+		}
+
+		private static void beforeCxfCalls(List<ProcessorDefinition<?>> outputs) {
+			for (int i = 0; i < outputs.size(); i++) {
+				ProcessorDefinition<?> p = outputs.get(i);
+				if (p instanceof ToDefinition && ((ToDefinition) p).getUri() != null && ((ToDefinition) p).getUri().startsWith("cxf:")) {
+					outputs.add(i, new ProcessDefinition(exchange -> copy(exchange.getIn(), 1, 0)));
+					i++;
+					continue;
+				}
+				if (p instanceof ChoiceDefinition) {
+					for (WhenDefinition w : ((ChoiceDefinition) p).getWhenClauses()) {
+						beforeCxfCalls(w.getOutputs());
+					}
+					if (((ChoiceDefinition) p).getOtherwise() != null) {
+						beforeCxfCalls(((ChoiceDefinition) p).getOtherwise().getOutputs());
+					}
+				}
+				beforeCxfCalls(p.getOutputs());
+			}
+		}
+
+		/** Copia cada header del nombre `from` al nombre `to` cuando el primero existe. */
+		static void copy(Message in, int from, int to) {
+			for (String[] pair : NAMES) {
+				Object value = in.getHeader(pair[from]);
+				if (value != null) {
+					in.setHeader(pair[to], value);
+				}
+			}
 		}
 	}
 }

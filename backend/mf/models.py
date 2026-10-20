@@ -418,16 +418,22 @@ class WorkspaceMigration(Entity, Base):
 
 
 class HttpTestRun(Entity, Base):
-    """Automatic test (Pruebas > Automáticas): the same cases sent to the original system and to the migrated one, compared
-    in the worker (mf.tomcat_war.http_run). The answers and the evidence report are artifacts; summary keeps what the UI shows."""
+    """Automatic test (Pruebas > Automáticas), compared in the worker. source 'migration': the worker starts the original
+    code (Camel 2) and the migration's WAR (Tomcat) itself and reads the cases from the code (mf.tomcat_war.autotest).
+    source 'urls': two systems already running and the given cases (mf.tomcat_war.http_run). The answers and the evidence
+    report are artifacts; summary keeps what the UI shows."""
     __tablename__ = 'http_test_run'
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     state: Mapped[str] = mapped_column(String(20), default='queued')
     name: Mapped[str] = mapped_column(String(200))
-    original: Mapped[dict] = mapped_column(Json)   # {label, url}
-    migrated: Mapped[dict] = mapped_column(Json)
-    cases: Mapped[list] = mapped_column(Json)      # same format as `migrate.py verify responses --cases`
+    source: Mapped[str] = mapped_column(String(20), default='urls', server_default='urls')  # urls | migration
+    workspace_migration_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    container: Mapped[str | None] = mapped_column(String(60))
+    data_artifact_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)  # client's test data package; none = smoke test
+    original: Mapped[dict | None] = mapped_column(Json, nullable=True)   # {label, url} (source urls)
+    migrated: Mapped[dict | None] = mapped_column(Json, nullable=True)
+    cases: Mapped[list] = mapped_column(Json)      # same format as `migrate.py verify responses --cases`; generated for source migration
     screenshots: Mapped[bool] = mapped_column(Boolean, default=True)
     summary: Mapped[dict] = mapped_column(Json, default=dict)
     created_by: Mapped[str] = mapped_column(String(255))

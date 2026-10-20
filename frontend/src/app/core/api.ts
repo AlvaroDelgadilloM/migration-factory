@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
   Artifact, AuditEvent, Catalog, DiffFile, DiffFileDetail, Execution, Finding, FindingDetail, LogEvent, Member, Module,
-  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, HttpCase, HttpTestRun, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, Upload, Validation,
+  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, Upload, Validation,
 } from './models';
 
 const B = '/api/v1';
@@ -145,6 +145,11 @@ export class Api {
   }
   startHttpRun(projectId: string, body: unknown) {
     return this.send<{ httpTestRunId: string; jobId: string }>('POST', `/projects/${projectId}/http-tests/runs`, body, { 'Idempotency-Key': this.key() });
+  }
+  httpTestSources(projectId: string) { return this.get<HttpTestSource[]>(`/projects/${projectId}/http-tests/sources`); }
+  uploadDataPackage(projectId: string, file: File) {
+    return firstValueFrom(this.http.post<DataPackage>(`${B}/projects/${projectId}/http-tests/data-packages`, file,
+      { headers: { 'Content-Type': 'application/zip', 'X-Filename': encodeURIComponent(file.name) } }));
   }
   httpRuns(projectId: string) { return this.get<HttpTestRun[]>(`/projects/${projectId}/http-tests/runs`); }
   httpRun(id: string) { return this.get<HttpTestRun>(`/http-tests/runs/${id}`); }

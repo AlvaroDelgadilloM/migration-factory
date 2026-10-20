@@ -30,6 +30,14 @@ public final class ServiceRegistry {
 
 	public static Object lookup(String interfaceName, String componentName) {
 		Map<String, Object> byName = SERVICES.get(interfaceName);
+		boolean missing = byName == null || byName.isEmpty()
+				|| (componentName != null && !componentName.isEmpty() && !byName.containsKey(componentName));
+		if (missing && TestDataSources.applies(interfaceName)) {
+			// prueba automatica: datasource que publica otro bundle del servidor (ver TestDataSources)
+			Object stub = TestDataSources.create(interfaceName, Thread.currentThread().getContextClassLoader());
+			register(interfaceName, componentName == null ? "" : componentName, stub);
+			return stub;
+		}
 		if (byName == null || byName.isEmpty()) {
 			throw new IllegalStateException("No hay ningun servicio exportado con la interfaz " + interfaceName);
 		}

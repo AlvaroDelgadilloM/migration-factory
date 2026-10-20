@@ -66,14 +66,26 @@ public class BaselineServer {
 			modules.add(new File(dir));
 		}
 		modules.sort(Comparator.comparingInt(BaselineServer::order).thenComparing(File::getName));
+		// un modulo que no arranca no detiene a los demas, igual que en el WAR migrado (ModuleContextLoaderListener)
+		List<String> failed = new ArrayList<>();
 		for (File m : modules) {
 			long t0 = System.currentTimeMillis();
 			File[] xml = m.listFiles((d, n) -> n.endsWith(".xml"));
 			String[] locations = Arrays.stream(xml).map(f -> f.toURI().toString()).toArray(String[]::new);
-			ApplicationContext ctx = new FileSystemXmlApplicationContext(locations, root);
-			System.out.println("BASELINE modulo " + m.getName() + " iniciado en " + (System.currentTimeMillis() - t0)
-					+ " ms (" + ctx.getBeanDefinitionCount() + " beans)");
+			try {
+				ApplicationContext ctx = new FileSystemXmlApplicationContext(locations, root);
+				System.out.println("BASELINE modulo " + m.getName() + " iniciado en " + (System.currentTimeMillis() - t0)
+						+ " ms (" + ctx.getBeanDefinitionCount() + " beans)");
+			} catch (RuntimeException e) {
+				Throwable cause = e;
+				while (cause.getCause() != null) {
+					cause = cause.getCause();
+				}
+				failed.add(m.getName());
+				System.out.println("BASELINE modulo " + m.getName() + " FALLO: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
+			}
 		}
+		System.out.println("BASELINE modulos iniciados: " + (modules.size() - failed.size()) + " de " + modules.size() + ". Con falla: " + failed);
 		System.out.println("BASELINE LISTO en puerto " + port);
 		server.join();
 	}

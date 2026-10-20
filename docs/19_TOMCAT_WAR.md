@@ -55,12 +55,19 @@ Para levantarlo: `mvn -Prun -DskipTests verify -Dmf.etc=<carpeta etc> [-Dmf.cont
 | `xslt` | opción `saxon=true` del componente `xslt` |
 | `osgi` | registro de servicios OSGi |
 | `spring` | un contexto Spring y un CamelContext por módulo (aislamiento de cada bundle); filtro por contenedor |
-| `servlet` | Tomcat entrega los headers HTTP en minúsculas: se restaura el nombre que esperan las rutas. Una petición sin cuerpo llega con cuerpo vacío, no nulo (`LegacyHttpBinding`) |
+| `servlet` | Tomcat entrega los headers HTTP en minúsculas: se restaura el nombre que esperan las rutas. Una petición con `Content-Length: 0` llega con cuerpo `null`, como en Camel 2 (`LegacyHttpBinding`; Camel 4 entrega un cuerpo vacío) |
 | `cxf` | `setFaultBody` (se lanza el fault guardado) |
 | `sql` | consulta `SelectOne` sin filas: se conserva el cuerpo del mensaje, como en Camel 2 (Camel 4 lo deja en null y la ruta toma otra rama sin dar error) |
 | `spring` (`LegacyCamelSettings`) | `Content-Type` de una respuesta REST que la ruta no fija: primero el `produces` del servicio, como en Camel 2 (Camel 4 mira primero el `Accept`) |
+| `spring` (`LegacyCamelSettings`) | *stream caching* apagado por omisión, como en Camel 2 (encendido desde Camel 3): con él, una ruta que no fija respuesta devolvía el cuerpo de la petición en lugar de vacío. Se respeta `streamCache="true"` del XML y de cada ruta |
+| `spring` (`LegacyCamelSettings.CxfOperationHeaders`) | nombre de la operación SOAP: Camel 2 usaba los headers `operationName`/`operationNamespace` y Camel 3+ `CamelCxfOperationName`/`CamelCxfOperationNamespace`. Se mantienen los dos: al entrar por `cxf:` se copian los de Camel 4 a los de Camel 2, y antes de cada llamada a `cxf:` al revés. Sin esto `toD("direct:${header.operationName}")` recibe vacío y una llamada con `setHeader("operationName", X)` no elige la operación X |
+| `osgi` (`TestDataSources`) | solo en pruebas automáticas (`-Dmf.test.jdbcUrl`): un datasource que publica otro bundle del servidor se resuelve con la base de prueba |
 
-Las tres últimas filas salieron de la prueba de respuestas: son cambios de Camel 4 que no dan error al compilar ni al arrancar.
+Las filas `sql`, `servlet` y `spring` salieron de las pruebas de respuestas: son cambios de Camel 4 que no dan
+error al compilar ni al arrancar. Lo mismo la regla Java `SIMPLE_WITHOUT_PLACEHOLDER`: Camel 2 evaluaba `simple("null")`,
+`simple("body")`, `simple("header.x")` o `simple("exception.message")` (sin `${}`) como la función y Camel 4 los toma como
+texto literal (el cuerpo quedaba en la palabra "null"); se verificó evaluando las mismas expresiones con camel-core 2.23.2 y
+4.18.4. El conversor de XML aplica lo mismo a `<simple>null</simple>`.
 
 Es código que el equipo debe mantener. Pruebas JUnit en `compat/src/test` (direct-vm entre contextos, registro OSGi, xmljson, nombres de headers): viajan con el workspace migrado (`mvn -pl compat test`) y el CI las corre en cada push (job `tomcat-compat`).
 
@@ -144,11 +151,50 @@ Estas comprobaciones no sustituyen las pruebas con los sistemas reales del clien
 
 ## Pruebas en la plataforma (menú «Pruebas»)
 
-Dentro de cada proyecto, el menú **Pruebas** tiene dos opciones. Las dos llaman a los sistemas que indique el usuario, por eso
-solo aceptan URLs de los servidores en **`MF_TEST_ALLOWED_HOSTS`** (`host` o `host:port`, por defecto `localhost,127.0.0.1`):
-el administrador agrega ahí el JBoss de pruebas del cliente y el Tomcat migrado. Requieren el permiso `execute` del proyecto.
+Dentro de cada proyecto, el menú **Pruebas** tiene dos opciones. Requieren el permiso `execute` del proyecto.
 
-- **Automáticas** (`POST /projects/{id}/http-tests/runs`, trabajo `http_compare` del worker): la misma batería de casos al
+### Automáticas: probar una migración (sin preparar nada)
+
+El usuario elige la migración Tomcat WAR (y, si quiere, el contenedor de origen y un paquete de datos) y pulsa **Probar**
+(`POST /projects/{id}/http-tests/runs` con `{"workspaceMigrationId": ...}`; trabajo `http_compare` en la cola larga). El worker
+(`backend/mf/tomcat_war/autotest.py`; en línea de comandos, `migrate.py verify auto`):
+
+1. Recupera el código analizado (snapshot del análisis) y el WAR de la migración.
+2. **Genera la configuración de prueba** de cada lado a partir de las claves que lee el código (incluidos prefijos propios como
+   `%[clave]` o `$[clave]`). De los `.properties` del repositorio conserva solo SQL, números, banderas y nombres; **nunca copia
+   hosts, URLs, usuarios, contraseñas, JDBC ni brokers**: las URLs apuntan a un simulador local, las bases a una H2 por lado
+   (modo Oracle) y los brokers a uno en memoria. El tipo de cada valor faltante sale de cómo lo usa el código (`delay=` es
+   número, `cron=` es cron, el setter Java del bean). Cada lado usa sus propios puertos.
+3. **Lee los servicios del código**: cada operación REST (de las rutas del WAR, con el alias de su servlet) y cada operación
+   SOAP de los WSDL de los endpoints CXF publicados. Un caso por operación.
+4. Levanta el original sobre Camel 2 (Jetty) y el WAR en un Tomcat oficial, cada uno en un puerto libre; un módulo que no
+   arranca no detiene a los demás. Los datasources que publica otro bundle del servidor se resuelven con la base de prueba
+   (`-Dmf.test.jdbcUrl`, solo en pruebas).
+5. Compara, genera la evidencia y apaga todo.
+
+Sin paquete de datos es una **prueba de humo**: bases vacías y un simulador que responde 503 a todo sistema externo; se
+compara si los dos lados se comportan igual. Con el **paquete de datos de prueba** del cliente
+(`POST /projects/{id}/http-tests/data-packages`, un .zip) se usan sus datos:
+
+```text
+etc/<ruta>.properties   configuración de prueba; reemplaza a la generada con la misma ruta
+sql/*.sql               datos iniciales de las bases (H2, modo Oracle), en orden alfabético
+mocks.json              respuestas de los sistemas externos: [{"key": "<clave>", "method": "POST", "contains": "...",
+                        "status": 200, "contentType": "text/xml", "body": "..."}]
+valores.json            valores de los parámetros de ruta: {"memberNumber": "95715637"}
+casos.json              casos extra con el formato de verify responses
+```
+
+El resultado dice cuántos módulos arrancaron en cada lado y cuáles no: si un módulo falla en los dos es la configuración o
+los datos de prueba; si falla solo en uno, hay que revisarlo.
+
+### Automáticas contra sistemas ya levantados y Manuales
+
+Llaman a los sistemas que indique el usuario, por eso solo aceptan URLs de los servidores en **`MF_TEST_ALLOWED_HOSTS`**
+(`host` o `host:port`, por defecto `localhost,127.0.0.1`): el administrador agrega ahí el JBoss de pruebas del cliente y el
+Tomcat migrado.
+
+- **Automáticas contra sistemas levantados** (sección avanzada; `"source": "urls"`): la misma batería de casos al
   original (JBoss) y al migrado (Tomcat). Los casos tienen el formato de `verify responses` (REST, XML o SOAP: `method`,
   `headers`, `body`, `contentType`); se cargan desde un archivo, se escriben en pantalla, se reutilizan de la última prueba o
   se traen de «Manuales». El resultado muestra los totales, los casos con diferencias y cada caso con las dos respuestas lado a
@@ -174,6 +220,14 @@ Los headers `Authorization`, `Cookie` y `Proxy-Authorization` de los casos nunca
   8 son `ERROR_TEXT` (texto de excepciones y de validaciones que imprime cada versión de Camel, páginas 404/405 del
   contenedor) y 1 es `DATA`: un header enviado en minúsculas que el original no reconoce (404) y el migrado sí (200).
 - `verify report` sobre ese resultado: 46 páginas y 46 capturas con Edge headless.
+- **Prueba automática** (`verify auto`, 2026-10-16) del contenedor `mobile` del piloto, migrado **sin** el overlay manual de
+  la prueba de concepto, en modo humo: arrancan **26 de 26 módulos en los dos lados**; 201 casos generados (REST y SOAP de
+  todos los módulos). Resultado: **177 idénticos, 23 que solo cambian el texto de un error** (mensajes de excepción de
+  CXF/Spring, página 404 de Tomcat contra la de Jetty) **y 1 de datos** (un DELETE sin cuerpo a un servicio que espera JSON:
+  pendiente). Antes de las correcciones de esta fecha eran 54 idénticos: esta prueba encontró `SIMPLE_WITHOUT_PLACEHOLDER`,
+  el nombre del header de operación SOAP, el *stream caching* y el cuerpo `null` de `Content-Length: 0`. La misma prueba
+  corrió por la plataforma (pantalla Pruebas → Automáticas → Probar, worker real) con el mismo resultado.
+- Pruebas: `test_tomcat_war_autotest.py` (generador), `test_http_tests.py` (API) y JUnit de la capa (11, `mvn -pl compat test`).
 
 ## Claves de configuración
 
@@ -189,9 +243,11 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
   y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. La comparación de respuestas está en «Pruebas»,
   pero el resultado todavía no se registra solo como evidencia del gate G4.
 - **Capturas en la plataforma**: la imagen del worker no trae navegador; sin él la evidencia sale sin PNG (las páginas HTML sí).
-- **Casos de la prueba de respuestas**: los escribe quien conoce el servicio. No se generan desde WSDL/Rest DSL.
-  En el piloto solo un módulo de 36 tiene casos.
-- **Un solo comando** que levante el original y el migrado, compare y genere el reporte: hoy son pasos separados y los dos
-  servidores se levantan a mano.
+- **Casos generados**: uno por operación REST/SOAP con valores de ejemplo (`1`) o los de `valores.json`, y un cuerpo vacío
+  (`{}` o el elemento de entrada sin contenido). Prueban que los dos lados se comportan igual con esa petición, no los
+  escenarios de negocio: para eso están los casos del cliente (`casos.json` del paquete o la batería manual).
+- **Sistemas externos** en prueba de humo: responden 503. Lo que el original hace con una respuesta real del sistema
+  externo solo se compara con `mocks.json` o contra el ambiente de pruebas del cliente.
+- **Rutas REST definidas en XML** (`<rest>`) no generan casos todavía; las de Java sí.
 - La línea base nunca se ha comparado contra un JBoss Fuse real.
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

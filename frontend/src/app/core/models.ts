@@ -65,10 +65,17 @@ export interface Gate { gate: string; title: string; status: string; detail: str
 // Pruebas (manual and automatic HTTP tests)
 export type HttpTestRun = S['HttpTestRunOut'];
 export type HttpCase = S['HttpCase'];
+export type HttpTestSource = S['HttpTestSource'];
+export type DataPackage = Omit<S['DataPackageOut'], 'contents'> & {
+  contents: { etc: string[]; sql: string[]; mocks: number; values: number; cases: number } };
 export interface HttpAnswer { status: number; type: string; body: string; truncated: boolean }
 export interface HttpCaseResult { name: string; method: string; path: string; state: string; kind: 'ERROR_TEXT' | 'DATA' | null; issues: string[];
   accept: string | null; request: { headers: Record<string, string>; body: string | null }; original: HttpAnswer; migrated: HttpAnswer }
 export interface HttpRunSummary { status?: string; totals?: { cases: number; same: number; different: number; accepted: number; notExecutable: number };
   differencesByKind?: Record<string, number>; screenshots?: number; screenshotProblem?: string | null; cases?: HttpCaseResult[];
-  artifacts?: { evidence: string; responses: string } }
+  artifacts?: { evidence: string; responses: string };
+  // automatic test from a migration (mf.tomcat_war.autotest)
+  mode?: 'HUMO' | 'DATOS'; container?: string; modules?: string[]; generatedCases?: number; externalCalls?: string[];
+  startup?: Record<'original' | 'migrado', { started: number | null; total: number | null; failed: string[] }>;
+  configuration?: { files: number; replaced: number; generated: number; fromDataPackage: string[] } }
 export interface ManualResult { results: (HttpAnswer & { label: string; url: string })[]; state?: string; issues?: string[]; kind?: string | null }

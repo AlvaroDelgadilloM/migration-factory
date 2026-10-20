@@ -67,10 +67,29 @@ def camel2_version(projects: list[Path]) -> str:
     return versions.most_common(1)[0][0]
 
 
-def baseline_libs(work: Path, version: str, log=lambda m: None) -> Path:
-    """Camel 2 libraries the original bundles compile against (resolved once per work directory)."""
+# Camel components Karaf installs as features (not declared in the bundles' poms) and the code reaches by URI scheme
+KARAF_FEATURE_COMPONENTS = {'exec': 'camel-exec', 'ssh': 'camel-ssh', 'scp': 'camel-jsch', 'stream': 'camel-stream',
+                            'velocity': 'camel-velocity', 'freemarker': 'camel-freemarker', 'zipfile': 'camel-zipfile',
+                            'kafka': 'camel-kafka', 'mongodb': 'camel-mongodb', 'jetty': 'camel-jetty', 'netty4': 'camel-netty4',
+                            'smpp': 'camel-smpp', 'ldap': 'camel-ldap', 'jdbc': 'camel-jdbc', 'xpath': 'camel-saxon'}
+
+
+def feature_components(projects: list[Path]) -> list:
+    """Artifacts of KARAF_FEATURE_COMPONENTS the original code uses ("exec:...", 'scp://...')."""
+    found = set()
+    pattern = re.compile(r'["\'](' + '|'.join(KARAF_FEATURE_COMPONENTS) + r'):', re.I)
+    for p in projects:
+        for f in (p / 'src' / 'main').rglob('*') if (p / 'src' / 'main').is_dir() else []:
+            if f.suffix in ('.java', '.xml') and f.is_file():
+                found |= {KARAF_FEATURE_COMPONENTS[m.lower()] for m in pattern.findall(pipeline.read(f))}
+    return sorted(found)
+
+
+def baseline_libs(work: Path, version: str, log=lambda m: None, extra: list = ()) -> Path:
+    """Camel 2 libraries the original bundles compile against (resolved once per work directory). extra: further Camel 2
+    artifactIds (feature_components)."""
     lib = work / 'baseline' / 'lib'
-    marker = work / 'baseline' / f'.resolved-{version}'
+    marker = work / 'baseline' / f".resolved-{version}{'-' + '-'.join(extra) if extra else ''}"
     if marker.exists() and any(lib.glob('*.jar')):
         return lib
     mvn = shutil.which('mvn')
@@ -78,7 +97,10 @@ def baseline_libs(work: Path, version: str, log=lambda m: None) -> Path:
         raise ToolError('mvn no está en el PATH')
     pom = work / 'baseline' / 'pom.xml'
     pom.parent.mkdir(parents=True, exist_ok=True)
-    pom.write_text((VERIFY_DIR / 'baseline-pom.xml').read_text(encoding='utf-8').replace('@CAMEL2_VERSION@', version), encoding='utf-8')
+    deps = ''.join(f'\t\t<dependency><groupId>org.apache.camel</groupId><artifactId>{a}</artifactId><version>${{camel.version}}</version></dependency>\n'
+                   for a in extra)
+    pom.write_text((VERIFY_DIR / 'baseline-pom.xml').read_text(encoding='utf-8').replace('@CAMEL2_VERSION@', version)
+                   .replace('\t</dependencies>', deps + '\t</dependencies>', 1), encoding='utf-8')
     log(f'resolviendo las librerías de Camel {version} (línea base)')
     if _run([mvn, '-B', '-q', '-f', pom, 'dependency:copy-dependencies', '-DoutputDirectory=lib'], work / 'logs' / 'baseline-libs.log') != 0:
         raise ToolError(f"No se pudieron resolver las librerías de la línea base; ver {work / 'logs' / 'baseline-libs.log'}")
@@ -240,6 +262,33 @@ def fix_route(java_file: Path, cls: str, from_uri: str, expected: dict, trial: P
         if got and got.keys() == expected.keys() and all(Counter(got[k]) == Counter(expected[k]) for k in got):
             return {'text': candidate, 'line': text.count('\n', 0, tok.start()) + 1, 'removed': tok.group(0)}
     return None
+
+
+def dump_migrated(source: Path, module_dirs: dict, war_dir: Path, work: Path, log=lambda m: None) -> dict:
+    """Routes (Camel 4) of migrated modules taken straight from an exploded WAR: module_dirs = {artifactId: folder with the
+    module jar unpacked}. Returns {artifactId: {route key: lines}}; a module that cannot be dumped is left out."""
+    tool, logs = work / 'tool', work / 'logs'
+    if not _compile([VERIFY_DIR / 'RouteDump.java'], [], tool, '11', logs / 'tool.log'):
+        raise ToolError(f"No compiló RouteDump.java; ver {logs / 'tool.log'}")
+    lib = war_dir / 'WEB-INF' / 'lib'
+    module_jar = re.compile('^(' + '|'.join(re.escape(m) for m in module_dirs) + r')-\d')
+    lib4 = [j for j in sorted(lib.glob('*.jar')) if not module_jar.match(j.name)]
+    servlet = sorted((Path(os.environ.get('MF_MAVEN_REPO_LOCAL') or Path.home() / '.m2' / 'repository') / 'jakarta/servlet/jakarta.servlet-api').rglob('*.jar'))
+    lib4 += servlet[-1:]
+    projects = {pipeline._head(pipeline.read(p / 'pom.xml'), 'artifactId'): p for p in pipeline.discover(Path(source))}
+    deps = module_dependencies({m: p / 'src' / 'main' / 'java' for m, p in projects.items()})
+    out, equivalences = {}, load_equivalences()
+    for m, classes in sorted(module_dirs.items()):
+        chain = [module_dirs[d] for d in _closure(m, deps) if d in module_dirs] if m in deps else []
+        dump = work / 'dump-auto' / f'{m}.txt'
+        dump.parent.mkdir(parents=True, exist_ok=True)
+        dump.unlink(missing_ok=True)
+        _run([_java('java'), 'RouteDump', classes, dump], logs / f'dump-auto-{m}.log', classpath=[tool] + lib4 + chain)
+        if dump.exists():
+            out[m] = read_dump(dump, equivalences)[0]
+        else:
+            log(f'{m}: no se pudieron leer sus rutas (ver dump-auto-{m}.log)')
+    return out
 
 
 def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, log=lambda m: None, fix: bool = False) -> dict:
@@ -407,7 +456,7 @@ def baseline_command(source: Path, out: Path, modules: list, servlets: str, etc:
     unknown = [m for m in modules if m not in names]
     if unknown:
         raise ToolError(f"Módulos desconocidos: {', '.join(unknown)}")
-    lib2 = baseline_libs(work, camel2_version(projects), log)
+    lib2 = baseline_libs(work, camel2_version(projects), log, feature_components([names[m] for m in modules]))
     compat = pipeline.load_rules()['compatPackage']
     deps = module_dependencies({m: p / 'src' / 'main' / 'java' for m, p in names.items()})
     logs = work / 'logs'
@@ -435,13 +484,57 @@ def baseline_command(source: Path, out: Path, modules: list, servlets: str, etc:
                     pipeline.write(xdir / f.name, blueprint.convert(text, f.name, [], compat, camel2=True))
             if xdir.is_dir():
                 xml_dirs.append(xdir)
-    classpath += [lib2 / '*'] + [Path(c) for c in extra_classpath]
+    # In Karaf each library was its own bundle; on one classpath, jars that embed an older copy of another library's classes
+    # shadow it (ehcache 2.x carries an old terracotta-statistics that ehcache 3.x cannot use). Newer major versions first.
+    jars = sorted(lib2.glob('*.jar'), key=lambda j: (not re.match(r'ehcache-3', j.name), j.name))
+    classpath += jars + [Path(c) for c in extra_classpath]
     cmd = [_java('java')] + [f'--add-opens={o}=ALL-UNNAMED' for o in OPENS] + [f'-Dmf.etc={Path(etc).resolve()}', 'BaselineServer', str(port), servlets]
     return cmd + [str(x) for x in xml_dirs], _env(classpath)
 
 
 # --- responses ---------------------------------------------------------------------------------------------------------
-NORMALIZE = [(re.compile(r'Exchange\[[^\]]*\]'), 'Exchange[ID]')]
+# Differences in how each version PRINTS the same thing (never in what it does): exchange ids; Java identity hashes
+# (Schema@2a925cac); a header predicate, which Camel 2 prints `header{header(x)}` and Camel 4 `header(x)`; the "Simple: "
+# Camel 2 puts before a simple predicate; the "; nested exception is ..." Spring 4/5 appended to an exception message and
+# Spring 6 no longer does (a stack trace is already reduced to its first line).
+NORMALIZE = [(re.compile(r'Exchange\[[^\]]*\]'), 'Exchange[ID]'),
+             (re.compile(r'\b([A-Z][\w$]*)@[0-9a-f]{4,16}\b'), r'\1@ID'),
+             (re.compile(r'header\{header\(([^)]*)\)\}'), r'header(\1)'),
+             (re.compile(r'header\{([\w.\-]+)\}'), r'header(\1)'),
+             (re.compile(r'constant\{([^}]*)\}'), r'\1'),
+             (re.compile(r'Predicate\[Simple: '), 'Predicate['),
+             # same exception, moved to another package in Camel 3/4
+             (re.compile(r'org\.apache\.camel\.processor\.validation\.(PredicateValidationException)'), r'org.apache.camel.support.processor.\1'),
+             (re.compile(r'org\.apache\.camel\.http\.common\.(HttpOperationFailedException)'), r'org.apache.camel.http.base.\1'),
+             (re.compile(r'; nested exception is [\w.$]+(?:Exception|Error)\b[^\n]*'), '')]
+
+
+def _canonical(body: str) -> str:
+    """The body as it is compared: JSON with its keys sorted and XML in canonical form (C14N 2.0: the order of
+    attributes and namespace declarations does not count), so two serializations of the same document are equal.
+    Anything else, as it came."""
+    text = body.strip()
+    if text[:1] in ('{', '['):
+        try:
+            return json.dumps(json.loads(text), sort_keys=True, ensure_ascii=False)
+        except ValueError:
+            return body
+    if text.startswith('<') and not text[:15].lower().startswith(('<!doctype', '<html')):
+        try:
+            from xml.etree.ElementTree import canonicalize
+            return canonicalize(text, strip_text=True)
+        except Exception:  # not well formed: compare as text
+            return body
+    return body
+
+
+def _same_type(a: dict, b: dict) -> bool:
+    """Same Content-Type, or one that differs only in the charset parameter when both bodies are plain ASCII: the bytes on
+    the wire are then identical (Jetty defaults text/* to ISO-8859-1, Tomcat to UTF-8)."""
+    if a['type'] == b['type']:
+        return True
+    strip = lambda t: re.sub(r';?charset=[^;]*', '', t)
+    return strip(a['type']) == strip(b['type']) and a['body'].isascii() and b['body'].isascii()
 
 
 def _send(base: str, case: dict, timeout: int, hosts: tuple = ()) -> dict:
@@ -479,8 +572,8 @@ def compare_pair(a: dict, b: dict, accepted: bool = False) -> tuple[str, list, s
     if a['status'] == 0 or b['status'] == 0:
         return 'NOT_EXECUTABLE', [x['body'] for x in (a, b) if x['status'] == 0], None
     issues = ([f"HTTP {a['status']} -> {b['status']}"] if a['status'] != b['status'] else []) \
-        + ([f"Content-Type '{a['type']}' -> '{b['type']}'"] if a['type'] != b['type'] else []) \
-        + (['cuerpo distinto'] if a['body'] != b['body'] else [])
+        + ([f"Content-Type '{a['type']}' -> '{b['type']}'"] if not _same_type(a, b) else []) \
+        + (['cuerpo distinto'] if _canonical(a['body']) != _canonical(b['body']) else [])
     if not issues:
         return 'SAME', [], None
     return 'ACCEPTED' if accepted else 'DIFFERENT', issues, 'ERROR_TEXT' if a['status'] == b['status'] >= 400 else 'DATA'

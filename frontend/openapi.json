@@ -95,6 +95,23 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "name": "migrationType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(JAVA_CAMEL|DATASTAGE_AIRFLOW)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Migrationtype"
+            }
           }
         ],
         "responses": {
@@ -3091,6 +3108,17 @@
             }
           },
           {
+            "name": "x-migration-type",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW)$",
+              "default": "JAVA_CAMEL",
+              "title": "X-Migration-Type"
+            }
+          },
+          {
             "name": "content-length",
             "in": "header",
             "required": false,
@@ -3822,6 +3850,109 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/http-tests/sources": {
+      "get": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Sources",
+        "description": "Tomcat WAR migrations of the project, newest first, with what an automatic test needs.",
+        "operationId": "sources_api_v1_projects__project_id__http_tests_sources_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HttpTestSource"
+                  },
+                  "title": "Response Sources Api V1 Projects  Project Id  Http Tests Sources Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/http-tests/data-packages": {
+      "post": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Upload Data Package",
+        "description": "The client's test data (autotest.DATA_PACKAGE): configuration, database scripts, simulated answers of external\nsystems, parameter values. Checked here and stored as an artifact; only the worker opens it.",
+        "operationId": "upload_data_package_api_v1_projects__project_id__http_tests_data_packages_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "x-filename",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 255,
+              "default": "datos-prueba.zip",
+              "title": "X-Filename"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataPackageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/http-tests/manual": {
       "post": {
         "tags": [
@@ -4011,6 +4142,215 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpTestRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/datastage-migrations": {
+      "post": {
+        "tags": [
+          "datastage"
+        ],
+        "summary": "Start",
+        "operationId": "start_api_v1_projects__project_id__datastage_migrations_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataStageMigrationIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "datastage"
+        ],
+        "summary": "List For Project",
+        "operationId": "list_for_project_api_v1_projects__project_id__datastage_migrations_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DataStageMigrationOut"
+                  },
+                  "title": "Response List For Project Api V1 Projects  Project Id  Datastage Migrations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datastage-migrations/{dm_id}": {
+      "get": {
+        "tags": [
+          "datastage"
+        ],
+        "summary": "Get One",
+        "operationId": "get_one_api_v1_datastage_migrations__dm_id__get",
+        "parameters": [
+          {
+            "name": "dm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dm Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataStageMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datastage-migrations/{dm_id}/actions": {
+      "patch": {
+        "tags": [
+          "datastage"
+        ],
+        "summary": "Set Action",
+        "description": "Mark one manual action of the worklist done / pending (who and when are recorded; audited).",
+        "operationId": "set_action_api_v1_datastage_migrations__dm_id__actions_patch",
+        "parameters": [
+          {
+            "name": "dm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dm Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataStageActionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataStageMigrationOut"
                 }
               }
             }
@@ -4418,6 +4758,162 @@
           "createdAt"
         ],
         "title": "CatalogOut"
+      },
+      "DataPackageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          },
+          "contents": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Contents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "sizeBytes",
+          "contents"
+        ],
+        "title": "DataPackageOut"
+      },
+      "DataStageActionIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "title": "Key"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "done"
+        ],
+        "title": "DataStageActionIn"
+      },
+      "DataStageMigrationIn": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "pattern": "^[A-Za-z_]+(/[A-Za-z_+-]+){0,2}$",
+            "title": "Timezone",
+            "default": "America/Mexico_City"
+          }
+        },
+        "type": "object",
+        "title": "DataStageMigrationIn"
+      },
+      "DataStageMigrationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "jobId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobid"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "options": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Options"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "results": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Results"
+          },
+          "actionState": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Actionstate",
+            "default": {}
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "jobId",
+          "state",
+          "options",
+          "summary",
+          "results",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "DataStageMigrationOut"
       },
       "DevLogin": {
         "properties": {
@@ -5395,17 +5891,83 @@
       },
       "HttpTestRunIn": {
         "properties": {
-          "name": {
+          "source": {
             "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
+            "enum": [
+              "migration",
+              "urls"
+            ],
+            "title": "Source",
+            "default": "migration"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Name"
           },
+          "workspaceMigrationId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspacemigrationid"
+          },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[\\w.\\-]{1,60}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
+          },
+          "dataPackageId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datapackageid"
+          },
           "original": {
-            "$ref": "#/components/schemas/HttpTarget"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HttpTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "migrated": {
-            "$ref": "#/components/schemas/HttpTarget"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HttpTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cases": {
             "items": {
@@ -5413,7 +5975,6 @@
             },
             "type": "array",
             "maxItems": 500,
-            "minItems": 1,
             "title": "Cases"
           },
           "screenshots": {
@@ -5423,13 +5984,8 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "original",
-          "migrated",
-          "cases"
-        ],
-        "title": "HttpTestRunIn"
+        "title": "HttpTestRunIn",
+        "description": "source 'migration' (default): the worker starts the original code and the migration's WAR and reads the cases from\nthe code; only workspace_migration_id is required (name, container and data package are optional). source 'urls': two\nsystems already running (original, migrated) and the cases to send."
       },
       "HttpTestRunOut": {
         "properties": {
@@ -5463,14 +6019,68 @@
             "type": "string",
             "title": "Name"
           },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "urls"
+          },
+          "workspaceMigrationId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspacemigrationid"
+          },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
+          },
+          "dataArtifactId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataartifactid"
+          },
           "original": {
-            "additionalProperties": true,
-            "type": "object",
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Original"
           },
           "migrated": {
-            "additionalProperties": true,
-            "type": "object",
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Migrated"
           },
           "cases": {
@@ -5517,8 +6127,6 @@
           "jobId",
           "state",
           "name",
-          "original",
-          "migrated",
           "cases",
           "screenshots",
           "summary",
@@ -5526,6 +6134,63 @@
           "createdAt"
         ],
         "title": "HttpTestRunOut"
+      },
+      "HttpTestSource": {
+        "properties": {
+          "workspaceMigrationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Workspacemigrationid"
+          },
+          "scanId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scanid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build"
+          },
+          "containers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Containers"
+          },
+          "war": {
+            "type": "boolean",
+            "title": "War"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspaceMigrationId",
+          "scanId",
+          "createdAt",
+          "state",
+          "build",
+          "containers",
+          "war"
+        ],
+        "title": "HttpTestSource",
+        "description": "A tomcat-war migration that can be tested automatically (its WAR and the analysed source are stored)."
       },
       "JobOut": {
         "properties": {
@@ -6680,11 +7345,21 @@
             ],
             "title": "Sourcetype"
           },
+          "migrationType": {
+            "type": "string",
+            "enum": [
+              "JAVA_CAMEL",
+              "DATASTAGE_AIRFLOW"
+            ],
+            "title": "Migrationtype",
+            "default": "JAVA_CAMEL"
+          },
           "targetRuntime": {
             "type": "string",
             "enum": [
               "spring",
-              "quarkus"
+              "quarkus",
+              "airflow"
             ],
             "title": "Targetruntime"
           },
@@ -6839,6 +7514,11 @@
             ],
             "title": "Targetruntime"
           },
+          "migrationType": {
+            "type": "string",
+            "title": "Migrationtype",
+            "default": "JAVA_CAMEL"
+          },
           "requiredGates": {
             "items": {
               "type": "string"
@@ -6893,6 +7573,18 @@
               }
             ],
             "title": "Lastscan"
+          },
+          "lastDataStage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastdatastage"
           }
         },
         "type": "object",

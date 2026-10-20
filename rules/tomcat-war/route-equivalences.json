@@ -111,6 +111,11 @@
       "pattern": "(\\{constant:)[A-Za-z0-9+/]{22}==(\\})",
       "replace": "\\1<aleatorio>\\2",
       "reason": "valor aleatorio generado al crear la clase (cambia en cada ejecucion)"
+    },
+    {
+      "pattern": "simple:\\$\\{(null|body|in\\.body|out\\.body|bodyAs\\(\\w[\\w.]*\\)|exception|exception\\.message|exception\\.stacktrace|id|exchangeId|camelId|routeId|(?:in\\.|out\\.)?headers?\\.[\\w\\-]+(?:\\.[\\w\\-]+)*|(?:exchangeProperty|property)\\.[\\w\\-]+(?:\\.[\\w\\-]+)*|sys\\.[\\w.\\-]+|sysenv\\.[\\w.\\-]+|date:[\\w:.\\-]+)\\}(?=[}\\s]|$)",
+      "replace": "simple:\\1",
+      "reason": "regla SIMPLE_WITHOUT_PLACEHOLDER"
     }
   ]
 }

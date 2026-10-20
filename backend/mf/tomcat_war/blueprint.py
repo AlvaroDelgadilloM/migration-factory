@@ -21,6 +21,10 @@ _ROOT = re.compile(r'<blueprint\b([^>]*)>', re.S)
 _SERVLET_BEAN = re.compile(r'<bean\b[^>]*OsgiServletRegisterer[^>]*>(.*?)</bean>', re.S)
 _KEPT_NAMESPACES = re.compile(r'osgi\.org|aries\.apache\.org|camel\.apache\.org|XMLSchema-instance|cxf\.apache\.org', re.I)
 UNSUPPORTED = re.compile(r'<cm:|<argument\b|activation=|<reference-list', re.I)
+# functions Camel 2 evaluated as a whole <simple> expression without ${} (same list as rule SIMPLE_WITHOUT_PLACEHOLDER)
+SIMPLE_BARE = re.compile(r'(<simple\b[^>]*>\s*)(null|body|in\.body|out\.body|exception|exception\.message|exception\.stacktrace|id|exchangeId|'
+                         r'camelId|routeId|(?:in\.|out\.)?headers?\.[\w\-]+(?:\.[\w\-]+)*|(?:exchangeProperty|property)\.[\w\-]+(?:\.[\w\-]+)*|'
+                         r'sys\.[\w.\-]+|sysenv\.[\w.\-]+|date:[\w:.\-]+)(\s*</simple>)')
 
 
 def attr(tag: str, name: str):
@@ -159,6 +163,9 @@ def convert(text: str, file: str, report: list, compat: str, etc_property: str =
         text = re.sub(r'(<(?:setProperty|removeProperty)\b[^>]*?)\bpropertyName=', r'\1name=', text)
         text = re.sub(r'<(marshal|unmarshal)\b([^>]*?)\s+ref="([^"]+)"([^>]*?)/>', r'<\1\2\4><custom ref="\3"/></\1>', text)
         text = re.sub(r'quartz2:', 'quartz:', text, flags=re.I)
+        # <simple>null</simple>, <simple>header.x</simple>: Camel 2 evaluated a lone function name without ${}; Camel 4 reads
+        # it as literal text (rule SIMPLE_WITHOUT_PLACEHOLDER of the Java code)
+        text = SIMPLE_BARE.sub(lambda m: f'{m.group(1)}${{{m.group(2)}}}{m.group(3)}', text)
     seen = {}
 
     def unique_id(m):  # editor-generated ids (_to5, _log1...) repeated: Camel 4 requires unique ids

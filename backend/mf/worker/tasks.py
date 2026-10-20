@@ -138,7 +138,7 @@ def run_job(job_id: str):
     s = get_settings()
     workdir = s.work_dir / job_id / f'attempt-{job.attempts}'
     workdir.mkdir(parents=True, exist_ok=True)
-    limit = s.workspace_timeout_seconds if job.kind == 'workspace_migrate' else s.job_timeout_seconds
+    limit = s.workspace_timeout_seconds if job.kind in ('workspace_migrate', 'http_compare') else s.job_timeout_seconds
     ctx = Context(job_id, workdir, deadline=time.monotonic() + limit, emit=lambda l, p, m: emit(job_id, l, p, m))
     hb = Heartbeat(ctx)
     hb.start()
@@ -1051,6 +1051,46 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                                               f"build {build['status']}; {len(res['manualActions'])} punto(s) de revisión manual")
 
 
+def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
+    """Pruebas > Automáticas from a migration: the analysed source (scan snapshot), the migration's WAR and the optional
+    data package, then mf.tomcat_war.autotest starts both sides here, generates the cases and compares."""
+    from ..api.http_tests import war_artifact
+    from ..models import WorkspaceMigration
+    from ..tomcat_war import autotest
+    wm = db.get(WorkspaceMigration, run.workspace_migration_id)
+    scan = db.get(Scan, wm.scan_id) if wm else None
+    war = war_artifact(db, wm) if wm else None
+    if wm is None or war is None or scan is None or not scan.snapshot_artifact_id:
+        raise StepFailure('SOURCE_MISSING', 'La migración ya no tiene su WAR o el análisis su snapshot; repita la migración')
+    set_phase(ctx, 'prepare', 5)
+    snap = db.get(Artifact, scan.snapshot_artifact_id)
+    snap_file = ctx.workdir / 'snapshot.tar.gz'
+    snap_file.write_bytes(ArtifactStore().read(snap))
+    src = ctx.workdir / 'workspace'
+    source.restore_snapshot(snap_file, src, scan.snapshot_hash)  # the code that was migrated, not whatever the source is now
+    war_file = ctx.workdir / 'ROOT.war'
+    war_file.write_bytes(ArtifactStore().read(war))
+    data = None
+    if run.data_artifact_id:
+        data = ctx.workdir / 'datos-prueba.zip'
+        data.write_bytes(ArtifactStore().read(db.get(Artifact, run.data_artifact_id)))
+    set_phase(ctx, 'start-and-compare', 15)
+    env = mavenops.external_env(ctx)  # autotest runs `mvn` (Camel 2 libraries, Tomcat, H2) with the worker's Maven guarantees
+    saved = {k: os.environ.get(k) for k in env}
+    os.environ.update(env)
+    try:
+        return autotest.run(src, war_file, out, run.container or '', data, run.screenshots,
+                            timeout=min(900, get_settings().workspace_timeout_seconds), log=lambda m: ctx.emit('info', 'compare', m))
+    except autotest.AutoTestError as e:
+        raise StepFailure('AUTOTEST_FAILED', str(e)[:2000]) from None
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def do_http_compare(job: Job, ctx: Context):
     """Pruebas > Automáticas: the cases of the run to the original and to the migrated system (mf.tomcat_war.http_run).
     The URLs were validated by the API and are checked again here: the allowlist may have changed since."""
@@ -1060,14 +1100,17 @@ def do_http_compare(job: Job, ctx: Context):
         run = db.get(HttpTestRun, job.subject_id)
         run.state = 'running'
         db.commit()
-        try:
-            original, migrated = ({'label': t['label'], 'url': validate_test_url(t['url'])} for t in (run.original, run.migrated))
-        except UnsafeInput as e:
-            raise StepFailure(e.code, str(e)) from None
-        set_phase(ctx, 'compare', 10)
         out = ctx.workdir / 'http-test'
-        summary = http_run.run(original, migrated, run.cases, out, run.screenshots, get_settings().test_timeout_seconds,
-                               log=lambda m: ctx.emit('info', 'compare', m))
+        if run.source == 'migration':
+            summary = _http_compare_migration(db, run, out, ctx)
+        else:
+            try:
+                original, migrated = ({'label': t['label'], 'url': validate_test_url(t['url'])} for t in (run.original, run.migrated))
+            except UnsafeInput as e:
+                raise StepFailure(e.code, str(e)) from None
+            set_phase(ctx, 'compare', 10)
+            summary = http_run.run(original, migrated, run.cases, out, run.screenshots, get_settings().test_timeout_seconds,
+                                   log=lambda m: ctx.emit('info', 'compare', m))
         set_phase(ctx, 'artifacts', 90)
         ev = _store(db, run.project_id, 'evidence', f'pruebas-{str(run.id)[:8]}-evidencia.zip', (out / 'evidence.zip').read_bytes(), 'application/zip', commit=False)
         rs = _store(db, run.project_id, 'report-json', f'pruebas-{str(run.id)[:8]}-responses.json', (out / 'responses.json').read_text(encoding='utf-8'),

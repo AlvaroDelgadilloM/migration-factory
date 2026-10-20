@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" fill="none">
+  <!-- Fondo Circular Amarillo -->
+  <circle cx="80" cy="80" r="74" fill="#F4BD28" />
+  
+  <!-- Cuerpo del Cóndor -->
+  <path d="M 26 80 C 26 40, 52 18, 75 18 C 45 32, 38 58, 38 80 C 38 102, 45 128, 75 142 C 52 142, 26 120, 26 80 Z" fill="#1C2833" />
+  
+  <!-- Flujos y Flechas de Migración -->
+  <path d="M 38 58 Q 75 58, 110 42" stroke="#1C2833" stroke-width="14" stroke-linecap="round" fill="none" />
+  <polygon points="110,30 134,42 110,54" fill="#1C2833" />
+  
+  <path d="M 38 102 Q 82 102, 118 86" stroke="#1C2833" stroke-width="14" stroke-linecap="round" fill="none" />
+  <polygon points="118,74 142,86 118,98" fill="#1C2833" />
+  
+  <!-- Nodos / Microservicios -->
+  <rect x="102" y="15" width="10" height="10" fill="#1C2833" rx="2" />
+  <rect x="120" y="10" width="10" height="10" fill="#F4BD28" stroke="#1C2833" stroke-width="2.5" rx="2" />
+  <circle cx="140" cy="22" r="4" fill="#1C2833" />
+</svg>

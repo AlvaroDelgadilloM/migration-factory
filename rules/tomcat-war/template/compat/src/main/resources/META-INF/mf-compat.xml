@@ -25,7 +25,7 @@
 	-->
 	<bean id="servlet" class="org.apache.camel.component.servlet.ServletComponent" scope="prototype">
 		<property name="muteException" value="false" />
-		<!-- una peticion sin cuerpo llega a la ruta con cuerpo vacio (como en Camel 2), no null -->
+		<!-- Content-Length: 0 -> cuerpo null, como en Camel 2 (ver LegacyHttpBinding) -->
 		<property name="httpBinding">
 			<bean class="org.migrationfactory.compat.servlet.LegacyHttpBinding">
 				<property name="muteException" value="false" />

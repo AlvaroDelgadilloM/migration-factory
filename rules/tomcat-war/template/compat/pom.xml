@@ -31,11 +31,11 @@
 		</dependency>
 		<dependency>
 			<groupId>org.apache.camel</groupId>
-			<artifactId>camel-http-common</artifactId>
+			<artifactId>camel-sql</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.camel</groupId>
-			<artifactId>camel-sql</artifactId>
+			<artifactId>camel-http-common</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.camel</groupId>

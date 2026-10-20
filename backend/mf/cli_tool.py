@@ -1244,7 +1244,18 @@ def verify_cmd(args, log) -> int:
                                           Path(args.etc), args.port, [c for c in args.classpath.split(os.pathsep) if c], log)
             log(f'línea base en http://localhost:{args.port} (Ctrl+C para detener)')
             return subprocess.run(cmd, env=env).returncode
-        if args.check == 'report':
+        if args.check == 'auto':
+            from .tomcat_war import autotest
+            res = autotest.run(Path(args.project), Path(args.war), out, args.container or '', Path(args.data) if args.data else None,
+                               not args.no_screenshots, args.timeout, log)
+            t = res['totals']
+            mode = 'con paquete de datos' if res['mode'] == 'DATOS' else 'prueba de humo (sin datos del cliente)'
+            o, m = res['startup']['original'], res['startup']['migrado']
+            print(f"Modo: {mode} · contenedor {res['container'] or 'todos'}\n"
+                  f"Arranque: original {o['started']} de {o['total']} módulos, migrado {m['started']} de {m['total']}\n"
+                  f"{t['cases']} casos generados: {t['same']} idénticos, {t['different']} distintos, {t['notExecutable']} sin ejecutar · {res['status']}\n"
+                  f"Evidencia: {out / 'reports' / 'evidence' / 'index.html'}")
+        elif args.check == 'report':
             from .tomcat_war import evidence
             res = evidence.report(out, args.browser, not args.no_screenshots, (args.old_label, args.new_label), log)
             print(f"Reporte: {res['report']}\nCapturas: {res['screenshots']} de {res['pages']} en {res['screenshotsDir']}"
@@ -1406,6 +1417,12 @@ def main(argv=None):
     vp = vsub.add_parser('responses', help='misma petición al original y al migrado; compara código, Content-Type y cuerpo')
     vp.add_argument('--old', required=True); vp.add_argument('--new', required=True); vp.add_argument('--cases', required=True)
     vp.add_argument('--output', required=True); vp.add_argument('--timeout', type=int, default=60)
+    va = vsub.add_parser('auto', help='prueba automática: levanta el original (Camel 2) y el WAR (Tomcat), genera los casos y compara')
+    va.add_argument('project', help='workspace original (el analizado)'); va.add_argument('--war', required=True, help='WAR migrado (migrate --build)')
+    va.add_argument('--container', default='', help='contenedor de origen a reproducir (mobile, web1...); vacío = todos')
+    va.add_argument('--data', help='paquete de datos de prueba (carpeta o .zip); sin él, prueba de humo')
+    va.add_argument('--output', required=True); va.add_argument('--timeout', type=int, default=900, help='segundos para que arranque cada lado')
+    va.add_argument('--no-screenshots', action='store_true')
     vv = vsub.add_parser('report', help='reporte HTML con el original junto al migrado, caso por caso, y capturas de pantalla')
     vv.add_argument('--output', required=True, help='la misma carpeta de salida de verify routes / verify responses')
     vv.add_argument('--browser', help='ejecutable de Edge o Chrome para las capturas (por defecto se busca uno instalado)')

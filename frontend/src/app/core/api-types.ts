@@ -1051,6 +1051,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/http-tests/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sources
+         * @description Tomcat WAR migrations of the project, newest first, with what an automatic test needs.
+         */
+        get: operations["sources_api_v1_projects__project_id__http_tests_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/http-tests/data-packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Data Package
+         * @description The client's test data (autotest.DATA_PACKAGE): configuration, database scripts, simulated answers of external
+         *     systems, parameter values. Checked here and stored as an artifact; only the worker opens it.
+         */
+        post: operations["upload_data_package_api_v1_projects__project_id__http_tests_data_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/http-tests/manual": {
         parameters: {
             query?: never;
@@ -1299,6 +1340,22 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+        };
+        /** DataPackageOut */
+        DataPackageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Contents */
+            contents: {
+                [key: string]: unknown;
+            };
         };
         /** DataStageActionIn */
         DataStageActionIn: {
@@ -1750,14 +1807,31 @@ export interface components {
             /** Url */
             url: string;
         };
-        /** HttpTestRunIn */
+        /**
+         * HttpTestRunIn
+         * @description source 'migration' (default): the worker starts the original code and the migration's WAR and reads the cases from
+         *     the code; only workspace_migration_id is required (name, container and data package are optional). source 'urls': two
+         *     systems already running (original, migrated) and the cases to send.
+         */
         HttpTestRunIn: {
+            /**
+             * Source
+             * @default migration
+             * @enum {string}
+             */
+            source: "migration" | "urls";
             /** Name */
-            name: string;
-            original: components["schemas"]["HttpTarget"];
-            migrated: components["schemas"]["HttpTarget"];
+            name?: string | null;
+            /** Workspacemigrationid */
+            workspaceMigrationId?: string | null;
+            /** Container */
+            container?: string | null;
+            /** Datapackageid */
+            dataPackageId?: string | null;
+            original?: components["schemas"]["HttpTarget"] | null;
+            migrated?: components["schemas"]["HttpTarget"] | null;
             /** Cases */
-            cases: components["schemas"]["HttpCase"][];
+            cases?: components["schemas"]["HttpCase"][];
             /**
              * Screenshots
              * @default true
@@ -1782,14 +1856,25 @@ export interface components {
             state: string;
             /** Name */
             name: string;
+            /**
+             * Source
+             * @default urls
+             */
+            source: string;
+            /** Workspacemigrationid */
+            workspaceMigrationId?: string | null;
+            /** Container */
+            container?: string | null;
+            /** Dataartifactid */
+            dataArtifactId?: string | null;
             /** Original */
-            original: {
+            original?: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** Migrated */
-            migrated: {
+            migrated?: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** Cases */
             cases: {
                 [key: string]: unknown;
@@ -1808,6 +1893,35 @@ export interface components {
              */
             createdAt: string;
             job?: components["schemas"]["JobOut"] | null;
+        };
+        /**
+         * HttpTestSource
+         * @description A tomcat-war migration that can be tested automatically (its WAR and the analysed source are stored).
+         */
+        HttpTestSource: {
+            /**
+             * Workspacemigrationid
+             * Format: uuid
+             */
+            workspaceMigrationId: string;
+            /**
+             * Scanid
+             * Format: uuid
+             */
+            scanId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** State */
+            state: string;
+            /** Build */
+            build: string | null;
+            /** Containers */
+            containers: string[];
+            /** War */
+            war: boolean;
         };
         /** JobOut */
         JobOut: {
@@ -4932,6 +5046,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_api_v1_projects__project_id__http_tests_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HttpTestSource"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_data_package_api_v1_projects__project_id__http_tests_data_packages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-filename"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataPackageOut"];
                 };
             };
             /** @description Validation Error */

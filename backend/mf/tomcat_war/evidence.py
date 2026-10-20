@@ -61,6 +61,38 @@ def find_browser(explicit: str | None = None) -> str | None:
     return None
 
 
+def shoot(cmd: list, png: Path, timeout: int = 60):
+    """One headless screenshot. The browser runs in its own process group and the whole group is stopped afterwards: a
+    headless Edge/Chrome sometimes never exits (or leaves children behind) and would hold the run, or pile up, forever."""
+    kw = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
+    p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+    t0, size, exited = time.monotonic(), -1, None
+    try:
+        while time.monotonic() - t0 < timeout:
+            now = png.stat().st_size if png.exists() else 0
+            if now and (p.poll() is not None or now == size):  # written: the browser exited or the file stopped growing
+                return
+            size = now
+            if p.poll() is not None:
+                exited = exited or time.monotonic()
+                if time.monotonic() - exited > 20:  # exited without writing it
+                    return
+            time.sleep(0.5)
+    finally:
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'], capture_output=True)
+        else:
+            import signal
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+
 def pretty(body: str, ctype: str) -> list:
     """The body as lines, formatted when it is JSON or XML so both sides line up. The comparison itself was done on the raw text."""
     text = body or ''
@@ -183,13 +215,9 @@ def report(out: Path, browser: str | None = None, screenshots: bool = True, labe
             cmd = [exe, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', f'--user-data-dir={profiles / name}',
                    f'--window-size=1500,{height}', f'--screenshot={png}', (target / f'{name}.html').as_uri()]
             try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
-            except (OSError, subprocess.TimeoutExpired) as e:
+                shoot(cmd, png)
+            except OSError as e:
                 problem = f'{name}: {e}'
-            for _ in range(40):  # the launcher may return before the browser process has written the file
-                if png.exists() and png.stat().st_size:
-                    break
-                time.sleep(0.5)
             if png.exists() and png.stat().st_size:
                 shots += 1
                 log(f'captura {png.name}')

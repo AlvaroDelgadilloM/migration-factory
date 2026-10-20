@@ -103,7 +103,7 @@ def test_manual_request_to_one_or_two_systems(client, token, project, systems):
 
 def test_automatic_run_is_queued_and_never_returns_credentials(client, token, project, systems):
     old, new = systems
-    body = {'name': 'member-inquiry', 'original': {'label': 'JBoss', 'url': old}, 'migrated': {'label': 'Tomcat', 'url': new},
+    body = {'source': 'urls', 'name': 'member-inquiry', 'original': {'label': 'JBoss', 'url': old}, 'migrated': {'label': 'Tomcat', 'url': new},
             'cases': [{'name': 'puntos', 'path': '/points/1', 'headers': {'Authorization': 'Bearer secreto', 'memberNumber': '1'}}]}
     r = client.post(f'{API}/projects/{project}/http-tests/runs', headers=token('ana.arquitecta') | {'Idempotency-Key': str(uuid.uuid4())}, json=body)
     assert r.status_code == 202 and r.json()['status'] == 'queued', r.text
@@ -130,3 +130,43 @@ def test_run_compares_both_systems_and_packs_the_evidence(tmp_path, systems):
     assert 'evidencia/index.html' in names and 'evidencia/caso-002.html' in names
     page = zipfile.ZipFile(tmp_path / 'evidence.zip').read('evidencia/caso-001.html').decode()
     assert 'JBoss' in page and 'Tomcat' in page and 'sesion=1' not in page
+
+
+def test_run_from_a_migration_needs_its_war_and_a_valid_data_package(client, token, project):
+    import io
+    import zipfile as zf
+    from mf import db as dbmod
+    from sqlalchemy import select
+    from mf.models import RuleCatalog, Scan, WorkspaceMigration
+    with dbmod.session() as db:
+        scan = Scan(project_id=uuid.UUID(project), ref='-', status='succeeded', created_by='ana.arquitecta',
+                    catalog_id=db.scalar(select(RuleCatalog.id)))
+        db.add(scan)
+        db.flush()
+        wm = WorkspaceMigration(project_id=uuid.UUID(project), scan_id=scan.id, target='tomcat-war', java='21', accepted={}, approved=[],
+                                created_by='ana.arquitecta', state='succeeded', config={'containers': {'names': ['mobile', 'web1']}},
+                                summary={'build': {'status': 'PASS'}, 'artifacts': {}})
+        db.add(wm)
+        db.commit()
+        wm_id = str(wm.id)
+    auth = token('ana.arquitecta')
+    src = client.get(f'{API}/projects/{project}/http-tests/sources', headers=auth).json()
+    assert src[0]['workspaceMigrationId'] == wm_id and src[0]['containers'] == ['mobile', 'web1'] and src[0]['war'] is False
+    r = client.post(f'{API}/projects/{project}/http-tests/runs', headers=auth, json={'workspaceMigrationId': wm_id, 'container': 'mobile'})
+    assert r.status_code == 409 and 'WAR' in r.json()['message']  # nothing to start
+    assert client.post(f'{API}/projects/{project}/http-tests/runs', headers=auth, json={}).status_code == 422
+
+    def pkg(files):
+        b = io.BytesIO()
+        with zf.ZipFile(b, 'w') as z:
+            for n, t in files.items():
+                z.writestr(n, t)
+        return b.getvalue()
+    up = lambda data: client.post(f'{API}/projects/{project}/http-tests/data-packages', headers=auth | {'X-Filename': 'datos.zip'}, content=data)
+    ok = up(pkg({'datos/etc/com.x/app.properties': 'a=1\n', 'datos/sql/01.sql': 'create table t(x int);', 'datos/valores.json': '{"id": "7"}',
+                 'datos/mocks.json': '[{"key": "ws.x", "status": 200, "body": "<ok/>"}]'}))
+    assert ok.status_code == 201, ok.text
+    assert ok.json()['contents'] == {'etc': ['com.x/app.properties'], 'sql': ['01.sql'], 'mocks': 1, 'values': 1, 'cases': 0}
+    assert up(pkg({'../etc/x.properties': 'a=1'})).json()['code'] == 'DATA_PACKAGE_INVALID'
+    assert up(pkg({'programa.exe': 'MZ'})).json()['code'] == 'DATA_PACKAGE_INVALID'
+    assert up(b'no es zip').status_code == 422
