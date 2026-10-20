@@ -28,6 +28,10 @@ import { VersionPicker } from '../../shared/version-picker';
           <ng-template #item let-p>{{ p.name }} · v{{ p.version }} · {{ p.status }}</ng-template></p-select>
         <mf-version-picker [entry]="versionEntry()" [(java)]="java" [(spring)]="spring" />
         <mf-action label="Crear plan" icon="pi pi-plus" [busy]="busy() === 'create'" [disabledReason]="createReason()" (run)="create()" />
+        @if (ctx.destination().runtime === 'tomcat') {
+          <small class="muted">El destino elegido en Inventario es Tomcat WAR: esa migración se hace en Inventario → «Migración por oleadas»
+            (ahí está Java 25). Los planes son para Spring Boot y Quarkus.</small>
+        }
         <label for="pv">Versión</label>
         <p-select inputId="pv" [options]="plans.data() ?? []" optionValue="id" [ngModel]="planId()" (ngModelChange)="planId.set($event)" placeholder="Sin planes">
           <ng-template #selectedItem let-p>v{{ p.version }} · {{ p.status }}</ng-template><ng-template #item let-p>v{{ p.version }} · {{ p.status }}</ng-template></p-select>
@@ -148,8 +152,10 @@ export class PlanPage {
       const id = this.projectId();
       this.ctx.select(id);
       this.profiles.load(() => this.api.profiles({ status: 'validated' })).then(ps => {
-        const rt = this.ctx.project()?.targetRuntime;
+        // the destination chosen in Inventario (Spring Boot / Quarkus), else the project's runtime
+        const d = this.ctx.destination(), rt = d.runtime === 'tomcat' ? this.ctx.project()?.targetRuntime : d.runtime;
         this.profileId = ps?.find(p => p.runtime === rt && !p.dependencyMapping?.['deployment'])?.id ?? ps?.[0]?.id ?? null;
+        this.java.set(d.java);  // the picker falls back to a validated Java if this profile does not accept it
       });
       const page = await this.scans.load(() => this.api.scans(id, { limit: 50 }));
       this.scanId.set(page?.items.find(s => s.status === 'succeeded')?.id ?? null);

@@ -2658,6 +2658,11 @@ export interface components {
             target: "tomcat-war" | "profile";
             /** Profileid */
             profileId?: string | null;
+            /**
+             * Runtime
+             * @enum {string}
+             */
+            runtime: "tomcat" | "spring" | "quarkus";
             /** Label */
             label: string;
             /** Java */

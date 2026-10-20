@@ -8,16 +8,17 @@ import { TableModule } from 'primeng/table';
 import { TabsModule } from 'primeng/tabs';
 import { Api } from '../../core/api';
 import { UiError } from '../../core/errors';
-import { Artifact, Module, Page, Route, Scan } from '../../core/models';
+import { Artifact, Module, Page, Route, Scan, TargetVersions } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { CursorPager, Loader } from '../../shared/state';
 import { ActionButton, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
+import { VersionPicker } from '../../shared/version-picker';
 import { WorkspacePanel } from './workspace';
 import { WorkspaceMigrationPanel } from './ws-migration';
 
 @Component({
   selector: 'mf-inventory',
-  imports: [FormsModule, InputTextModule, MessageModule, SelectModule, TableModule, TabsModule, ActionButton, JobLog, PageHeader, StateView, StatusTag, WorkspacePanel, WorkspaceMigrationPanel],
+  imports: [FormsModule, InputTextModule, MessageModule, SelectModule, TableModule, TabsModule, ActionButton, JobLog, PageHeader, StateView, StatusTag, VersionPicker, WorkspacePanel, WorkspaceMigrationPanel],
   template: `
     <mf-page-header title="Inventario" crumb="INVENTARIO" [subtitle]="ctx.project()?.name">
       @if (ctx.project()?.sourceType === 'git') {
@@ -26,9 +27,17 @@ import { WorkspaceMigrationPanel } from './ws-migration';
       } @else if (ctx.project()) {
         <small class="muted">Origen {{ ctx.project()!.sourceType === 'zip' ? 'ZIP' : 'carpeta local' }}: se analiza un snapshot nuevo</small>
       }
-      <p-select [options]="targets" optionLabel="label" optionValue="value" [(ngModel)]="target" ariaLabel="Runtime objetivo" />
       <mf-action label="Analizar" icon="pi pi-play" [busy]="starting()" [disabledReason]="scanBlockReason()" (run)="startScan()" />
     </mf-page-header>
+    <section class="destination" aria-label="Destino de la migración">
+      <span class="vp"><label for="dest">Destino</label>
+        <p-select inputId="dest" [options]="destinations" optionLabel="label" optionValue="value" [ngModel]="ctx.destination().runtime"
+                  (ngModelChange)="ctx.setDestination({ runtime: $event })" [style]="{ minWidth: '19rem' }" /></span>
+      <mf-version-picker [entry]="destinationEntry()" [java]="ctx.destination().java" (javaChange)="setJava($event)"
+                         [spring]="ctx.destination().spring" (springChange)="setSpring($event)" />
+      <small class="muted">Se usa al analizar y como valor inicial en «Migración por oleadas» y en Plan.
+        @if (ctx.destination().runtime !== 'tomcat') { Java 25 está validado con Tomcat WAR (Fuse/Karaf). }</small>
+    </section>
     @if (startError(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
 
     <mf-state [loading]="scans.loading()" [error]="scans.error()" [hasData]="!!scans.data()" [empty]="scans.data()?.items?.length === 0"
@@ -166,23 +175,43 @@ export class Inventory {
   scanId = signal<string | null>(null);
   dsl = signal<string | null>(null);
   ref = signal('');
-  target = signal<'spring' | 'quarkus'>('spring');
   starting = signal(false);
   startError = signal<UiError | null>(null);
   expanded: Record<string, boolean> = {};
-  targets = [{ label: 'Spring Boot', value: 'spring' }, { label: 'Quarkus', value: 'quarkus' }];
+  destinations = [{ label: 'Tomcat WAR · Fuse/Karaf → Camel 4', value: 'tomcat' }, { label: 'Spring Boot', value: 'spring' },
+    { label: 'Quarkus', value: 'quarkus' }];
+  versions = new Loader<TargetVersions[]>();
+  /** Java/Spring the chosen destination accepts (Tomcat WAR, or the validated Spring Boot / Quarkus profile). */
+  destinationEntry = computed(() => {
+    const rt = this.ctx.destination().runtime;
+    return (this.versions.data() ?? []).find(v => v.runtime === rt) ?? null;
+  });
   dsls = [{ label: 'Todas', value: null }, { label: 'Java (aprox.)', value: 'java' }, { label: 'XML', value: 'xml' }];
   lastGood = computed(() => this.scans.data()?.items.find(s => s.status === 'succeeded') ?? null);
   scanBlockReason = computed(() => !this.ctx.perms() ? 'Cargando permisos…' : this.ctx.can('scan') ? null : `Su rol (${this.ctx.role()}) no permite analizar`);
 
   constructor() {
     effect(() => { const id = this.projectId(); this.ctx.select(id); this.loadScans(true); });
-    effect(() => { const p = this.ctx.project(); if (p?.targetRuntime) this.target.set(p.targetRuntime as 'spring' | 'quarkus'); });
+    this.versions.load(() => this.api.targetVersions());
+    // until someone chooses: the project's runtime, or Tomcat WAR when the analysis recommends it (a Fuse/Karaf workspace)
+    effect(() => { const p = this.ctx.project(); if (p?.targetRuntime === 'spring' || p?.targetRuntime === 'quarkus') this.ctx.suggestDestination(p.targetRuntime); });
+    effect(() => {
+      const ws = this.scan.data()?.summary?.['workspace'] as { shared?: { recommendedTarget?: { target?: string } } } | undefined;
+      if (ws?.shared?.recommendedTarget?.target === 'tomcat-war') this.ctx.suggestDestination('tomcat');
+    });
     effect(() => {  // a DataStage project has its own screens (old links to its inventory land on its summary)
       const p = this.ctx.project();
       if (p?.migrationType === 'DATASTAGE_AIRFLOW') this.router.navigate(['/p', p.id, 'ds'], { replaceUrl: true });
     });
     effect(() => { const id = this.scanId(); if (id) this.loadScan(id); });
+  }
+
+  setJava(java: string) { if (java !== this.ctx.destination().java) this.ctx.setDestination({ java }); }
+  /** the picker fills the only compatible Spring line by itself: that is not a choice to remember */
+  setSpring(spring: string | null) {
+    const cur = this.ctx.destination();
+    if (spring === cur.spring) return;
+    if (cur.spring === null) this.ctx.destination.update(d => ({ ...d, spring })); else this.ctx.setDestination({ spring });
   }
 
   scanLabel(s: Scan) { return `${new Date(s.createdAt).toLocaleString()} · ${s.status} · ${s.commitSha ? short(s.commitSha) : 'snap ' + short(s.snapshotHash)}`; }
@@ -215,7 +244,9 @@ export class Inventory {
     this.starting.set(true);
     this.startError.set(null);
     try {
-      const r = await this.api.startScan(this.projectId(), { ref: this.ref() || null, target: this.target(), projectRoot: projectRoot ?? null });
+      // Tomcat WAR keeps the Camel/Spring analysis (Blueprint becomes Spring XML); Quarkus has its own rules
+      const target = this.ctx.destination().runtime === 'quarkus' ? 'quarkus' : 'spring';
+      const r = await this.api.startScan(this.projectId(), { ref: this.ref() || null, target, projectRoot: projectRoot ?? null });
       await this.loadScans();
       this.scanId.set(r.scanId);
       this.loadScan(r.scanId);

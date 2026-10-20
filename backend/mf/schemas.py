@@ -743,6 +743,7 @@ class SpringChoice(Dto):
 class TargetVersions(Dto):
     target: Literal['tomcat-war', 'profile']
     profile_id: str | None = None
+    runtime: Literal['tomcat', 'spring', 'quarkus']
     label: str
     java: list[JavaChoice]
     spring: list[SpringChoice]

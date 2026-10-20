@@ -8187,6 +8187,15 @@
             ],
             "title": "Profileid"
           },
+          "runtime": {
+            "type": "string",
+            "enum": [
+              "tomcat",
+              "spring",
+              "quarkus"
+            ],
+            "title": "Runtime"
+          },
           "label": {
             "type": "string",
             "title": "Label"
@@ -8209,6 +8218,7 @@
         "type": "object",
         "required": [
           "target",
+          "runtime",
           "label",
           "java",
           "spring"

@@ -78,6 +78,11 @@ code { font-size: .92em; background: var(--mf-line-2); padding: 1px 5px; border-
 .card { background: var(--mf-surface); border: 1px solid var(--mf-line); border-radius: var(--mf-radius); padding: 18px 22px; box-shadow: var(--mf-shadow); }
 .card h3 { margin: 0 0 12px; font-size: 16px; }
 .toolbar, .filters { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; margin: 0 0 16px; }
+.destination { display: flex; gap: .75rem 1rem; align-items: flex-end; flex-wrap: wrap; margin: 0 0 16px; padding: 12px 16px; background: #fff;
+  border: 1px solid var(--mf-line); border-radius: 12px; }
+.destination .vp { display: inline-flex; flex-direction: column; gap: 4px; }
+.destination .vp label { font-size: 12px; color: var(--mf-muted); }
+.destination > small { flex-basis: 100%; }
 .filters span { display: flex; flex-direction: column; gap: 4px; } .filters label { font-size: 12px; color: var(--mf-muted); }
 .inline { display: inline-flex !important; flex-direction: row !important; gap: .5rem; align-items: center; }
 .pager { display: flex; gap: 1rem; align-items: center; justify-content: flex-end; padding: 10px 0; }

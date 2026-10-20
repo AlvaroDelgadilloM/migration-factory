@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
@@ -137,10 +137,17 @@ export class WorkspaceMigrationPanel {
 
   constructor() {
     this.versions.load(() => this.api.targetVersions());
-    this.profiles.load(async () => {
-      const ps = (await this.api.profiles()).filter(p => p.status === 'validated');
-      this.profileId ??= this.recommended()?.target === this.TOMCAT ? this.TOMCAT : ps.find(p => p.runtime === 'spring' && !p.dependencyMapping?.['deployment'])?.id ?? ps[0]?.id ?? null;
-      return ps;
+    this.profiles.load(async () => (await this.api.profiles()).filter(p => p.status === 'validated'));
+    // the destination chosen at the top of Inventario is where this panel starts (and follows when it changes there)
+    effect(() => {
+      const d = this.ctx.destination(), ps = this.profiles.data();
+      if (!ps) return;
+      untracked(() => {
+        this.profileId = d.runtime === 'tomcat' ? this.TOMCAT
+          : ps.find(p => p.runtime === d.runtime && !p.dependencyMapping?.['deployment'])?.id ?? ps.find(p => p.runtime === d.runtime)?.id ?? null;
+        this.java.set(d.java);
+        this.spring.set(d.spring);
+      });
     });
     effect(() => { const id = this.scanId(); this.list.load(() => this.api.workspaceMigrations(id)); });
   }

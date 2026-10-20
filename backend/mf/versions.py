@@ -17,7 +17,7 @@ def tomcat_war() -> dict:
     p = pipeline.load_rules()['profile']
     validated = [v for v in JAVA_CHOICES if v in [str(x) for x in p.get('javaReleases', [])]]
     return {
-        'target': 'tomcat-war', 'label': p['name'],
+        'target': 'tomcat-war', 'runtime': 'tomcat', 'label': p['name'],
         'java': [{'version': v, 'validated': v in validated, 'reason': None if v in validated else NOT_VALIDATED} for v in JAVA_CHOICES],
         'spring': [{'key': f"spring-{p['springVersion']}", 'label': f"Spring Framework {p['springVersion']} · Camel {p['camelVersion']}",
                     'java': validated}],
@@ -30,7 +30,7 @@ def profile_target(profile) -> dict:
     validated = ['21']
     platform = (f'Spring Boot {profile.runtime_version}' if profile.runtime == 'spring' else f'Quarkus {profile.runtime_version}')
     return {
-        'target': 'profile', 'profileId': str(profile.id), 'label': profile.name,
+        'target': 'profile', 'profileId': str(profile.id), 'runtime': profile.runtime, 'label': profile.name,
         'java': [{'version': v, 'validated': v in validated, 'reason': None if v in validated else NOT_VALIDATED} for v in JAVA_CHOICES],
         'spring': [{'key': f'{profile.key}@{profile.version}', 'label': f'{platform} · Camel {profile.camel_version}', 'java': validated}],
     }
