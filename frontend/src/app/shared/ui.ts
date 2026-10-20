@@ -16,7 +16,7 @@ import { streamEvents } from '../core/sse';
   template: `
     <header class="page-header">
       <div>
-        <small class="crumb">MIGRATION FACTORY / {{ crumb() }}</small>
+        <small class="crumb">CONDOR MIGRATION FACTORY / {{ crumb() }}</small>
         <h1>{{ title() }}</h1>
         @if (subtitle()) { <p class="muted">{{ subtitle() }}</p> }
       </div>

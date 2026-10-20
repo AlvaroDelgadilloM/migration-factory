@@ -26,8 +26,8 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
     <p-toast position="bottom-right" />
     <a class="skip" href="#main">Saltar al contenido</a>
     <aside class="sidebar" aria-label="Navegación principal">
-      <a class="brand" routerLink="/portfolio" aria-label="Migration Factory, ir a Cartera">
-        <mf-logo [size]="36" /><span><h2>Migration Factory</h2><p>Integraciones</p></span>
+      <a class="brand" routerLink="/portfolio" aria-label="Condor Migration Factory, ir a Cartera">
+        <mf-logo [size]="36" /><span><h2>Condor</h2><p>Migration Factory</p></span>
       </a>
       <nav>
         <a routerLink="/portfolio" routerLinkActive="active"><i class="pi pi-th-large" aria-hidden="true"></i> Cartera</a>

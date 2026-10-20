@@ -21,8 +21,8 @@ const ROLE_HINT: Record<string, string> = {
   imports: [ButtonModule, MessageModule, Logo],
   template: `
     <div class="wrap">
-      <section class="hero" aria-label="Migration Factory">
-        <div class="brandrow"><mf-logo [size]="44" /><span>Migration Factory</span></div>
+      <section class="hero" aria-label="Condor Migration Factory">
+        <div class="brandrow"><mf-logo [size]="44" /><span>Condor Migration Factory</span></div>
         <h1>Moderniza tus integraciones con evidencia, no con suposiciones.</h1>
         <ul class="benefits">
           <li><i class="pi pi-sync" aria-hidden="true"></i><div><strong>Java / Camel</strong><span>JBoss y Fuse con Camel 2 → Camel 4 en Spring Boot, Quarkus o Tomcat.</span></div></li>

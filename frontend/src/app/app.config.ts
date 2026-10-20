@@ -1,6 +1,7 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { ApplicationConfig, inject, provideAppInitializer, provideBrowserGlobalErrorListeners } from '@angular/core';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { ApplicationConfig, inject, Injectable, provideAppInitializer, provideBrowserGlobalErrorListeners } from '@angular/core';
+import { Title } from '@angular/platform-browser';
+import { provideRouter, RouterStateSnapshot, TitleStrategy, withComponentInputBinding } from '@angular/router';
 import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
 import { provideOAuthClient } from 'angular-oauth2-oidc';
@@ -18,6 +19,18 @@ const Factory = definePreset(Aura, {
   },
 });
 
+const PRODUCT = 'Condor Migration Factory';
+
+/** Browser tab: "<page> · Condor Migration Factory" (the route titles name only the page). */
+@Injectable({ providedIn: 'root' })
+export class ProductTitle extends TitleStrategy {
+  private title = inject(Title);
+  override updateTitle(state: RouterStateSnapshot) {
+    const page = this.buildTitle(state);
+    this.title.setTitle(page && !page.includes(PRODUCT) ? `${page} · ${PRODUCT}` : page ?? PRODUCT);
+  }
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -26,6 +39,7 @@ export const appConfig: ApplicationConfig = {
     provideOAuthClient(),
     providePrimeNG({ theme: { preset: Factory, options: { darkModeSelector: false } } }),
     MessageService,
+    { provide: TitleStrategy, useClass: ProductTitle },
     provideAppInitializer(() => inject(AuthService).init()),
   ],
 };
