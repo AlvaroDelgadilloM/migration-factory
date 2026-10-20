@@ -75,7 +75,7 @@ def legacy():
         # Oracle binds by position of appearance, not by number: the named binds keep AMOUNT and ORDER_ID in their place
         cur.executemany('UPDATE MF_LEGACY.ORDER_TOTALS SET AMOUNT = :amount WHERE ORDER_ID = :id',
                         [{'id': i, 'amount': a} for i, a in staged])                                   # JP_PUBLISH
-        updated = sum(cur.getarraydmlrowcounts()) if hasattr(cur, 'getarraydmlrowcounts') else None
+        updated = cur.rowcount                                  # rows of the whole executemany
         c.commit()
     changed('MF_LEGACY')
     print('legado: FIRST_ORDERS', first, '· ORDER_TOTALS actualizadas', updated)
