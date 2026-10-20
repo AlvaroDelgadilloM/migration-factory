@@ -697,6 +697,7 @@ class DataStageMigrationOut(Dto):
     summary: dict
     results: dict
     action_state: dict = {}
+    reconciliation: dict = {}
     created_by: str
     created_at: datetime
     job: JobOut | None = None

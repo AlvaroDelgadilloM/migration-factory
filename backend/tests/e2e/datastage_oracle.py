@@ -6,7 +6,7 @@ jobs (a Transformer processes rows in order, its stage variables keep the previo
 the parallel engine's null handling since 11.5). It cross-checks the set-based LAG() translation; equivalence with the real
 DataStage still comes from running both on the client's environment.
 
-    python datastage_oracle.py setup | ddl <staging.sql> | legacy | tamper    (MF_E2E_ORACLE_DSN, MF_E2E_ORACLE_PASSWORD; synthetic data only)
+    python datastage_oracle.py setup | ddl <staging.sql> | legacy | changed | tamper    (MF_E2E_ORACLE_DSN, MF_E2E_ORACLE_PASSWORD; synthetic data only)
 """
 from __future__ import annotations
 
@@ -72,9 +72,25 @@ def legacy():
     with connect() as c:
         cur = c.cursor()
         cur.executemany("INSERT INTO MF_LEGACY.FIRST_ORDERS VALUES (:1, :2, :3, SYSTIMESTAMP)", first)
-        cur.executemany('UPDATE MF_LEGACY.ORDER_TOTALS SET AMOUNT = :2 WHERE ORDER_ID = :1', staged)   # JP_PUBLISH
+        # Oracle binds by position of appearance, not by number: the named binds keep AMOUNT and ORDER_ID in their place
+        cur.executemany('UPDATE MF_LEGACY.ORDER_TOTALS SET AMOUNT = :amount WHERE ORDER_ID = :id',
+                        [{'id': i, 'amount': a} for i, a in staged])                                   # JP_PUBLISH
+        updated = sum(cur.getarraydmlrowcounts()) if hasattr(cur, 'getarraydmlrowcounts') else None
         c.commit()
-    print('legado: FIRST_ORDERS', first)
+    changed('MF_LEGACY')
+    print('legado: FIRST_ORDERS', first, '· ORDER_TOTALS actualizadas', updated)
+
+
+def changed(schema='MF_TARGET'):
+    """The run wrote something: a job that ran no task (or wrote nothing) must not reconcile as equal to an idle legacy."""
+    with connect() as c:
+        cur = c.cursor()
+        first = cur.execute(f'SELECT COUNT(*) FROM {schema}.FIRST_ORDERS').fetchone()[0]
+        totals = dict(cur.execute(f'SELECT ORDER_ID, AMOUNT FROM {schema}.ORDER_TOTALS').fetchall())
+    moved = {k for k, v in TOTALS if totals.get(k) != v}
+    if not first or not moved:
+        sys.exit(f'{schema}: el job no escribió (FIRST_ORDERS={first}, ORDER_TOTALS cambiadas={sorted(moved)})')
+    print(f'{schema}: FIRST_ORDERS={first}, ORDER_TOTALS cambiadas={sorted(moved)}')
 
 
 def tamper():
@@ -86,4 +102,4 @@ def tamper():
 
 if __name__ == '__main__':
     cmd = sys.argv[1]
-    ddl(sys.argv[2]) if cmd == 'ddl' else {'setup': setup, 'legacy': legacy, 'tamper': tamper}[cmd]()
+    ddl(sys.argv[2]) if cmd == 'ddl' else {'setup': setup, 'legacy': legacy, 'changed': changed, 'tamper': tamper}[cmd]()

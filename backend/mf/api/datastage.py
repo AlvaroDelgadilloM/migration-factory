@@ -2,12 +2,13 @@
 worker (job kind datastage_migrate): parsing, generation and the DagBag gate never run inside an HTTP request."""
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Body, Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import audit, jobs
 from ..auth import Principal, authorize, current_principal
+from ..datastage import reconcile
 from ..db import get_db
 from ..errors import ApiError
 from ..models import DataStageMigration, Job, now
@@ -85,5 +86,36 @@ def set_action(dm_id: uuid.UUID, body: DataStageActionIn, request: Request, db: 
     dm.action_state = state
     audit.record(db, actor=me.subject, action='datastage_action.' + ('done' if body.done else 'reopen'), entity_type='datastage_migration',
                  entity_id=dm.id, project_id=dm.project_id, details={'key': body.key, 'note': body.note}, request=request)
+    db.commit()
+    return _out(db, dm)
+
+
+MAX_RESULT_BYTES = 5_000_000
+
+
+@router.post('/datastage-migrations/{dm_id}/reconciliations', response_model=DataStageMigrationOut)
+def upload_reconciliation(dm_id: uuid.UUID, request: Request, result: dict = Body(...), db: Session = Depends(get_db),
+                          me: Principal = Depends(current_principal)):
+    """Evidence of the reconciliation run in the client's environment (tests/reconciliation/run_reconciliation.py of the
+    generated project): evaluated here, kept with the migration and audited. Nothing connects to the client's databases."""
+    dm = db.get(DataStageMigration, dm_id)
+    if dm is None:
+        raise ApiError(404, 'NOT_FOUND', 'Recurso no encontrado')
+    authorize(db, me, dm.project_id, 'execute')
+    if int(request.headers.get('content-length') or 0) > MAX_RESULT_BYTES:
+        raise ApiError(413, 'PAYLOAD_TOO_LARGE', 'El resultado supera 5 MB')
+    if dm.state not in ('succeeded', 'partial_success'):
+        raise ApiError(409, 'INVALID_STATE', 'La migración no terminó: no hay nada que reconciliar todavía')
+    try:
+        ev = reconcile.evaluate(result, set((dm.results or {}).keys()))
+    except reconcile.InvalidResult as e:
+        raise ApiError(422, 'RECONCILIATION_INVALID', str(e)) from None
+    at = now().isoformat(timespec='seconds')
+    ev |= {'uploadedAt': at, 'uploadedBy': me.subject}
+    history = [{'at': at, 'by': me.subject, 'status': ev['status'], 'counts': ev['counts']}] + list((dm.reconciliation or {}).get('history', []))
+    dm.reconciliation = {'latest': ev, 'history': history[:20]}
+    audit.record(db, actor=me.subject, action='datastage_reconciliation.upload', entity_type='datastage_migration', entity_id=dm.id,
+                 project_id=dm.project_id, details={'status': ev['status'], 'counts': ev['counts'], 'legacy': ev['legacy'],
+                                                    'target': ev['target']}, request=request)
     db.commit()
     return _out(db, dm)

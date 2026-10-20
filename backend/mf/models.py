@@ -451,4 +451,6 @@ class DataStageMigration(Entity, Base):
     results: Mapped[dict] = mapped_column(Json, default=dict)     # job -> {complexity, migratability, state, steps}
     # worklist progress: action key -> {done, by, at, note}; keys are stable across runs (job|stage|text), carried to the next run
     action_state: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')
+    # reconciliation evidence (mf.datastage.reconcile): {'latest': evaluation, 'history': [{at, by, status, counts}]}
+    reconciliation: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')
     created_by: Mapped[str] = mapped_column(String(255))

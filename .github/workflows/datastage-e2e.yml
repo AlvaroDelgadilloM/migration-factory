@@ -57,8 +57,14 @@ jobs:
           export AIRFLOW_CONN_ORACLE_P_CONN="oracle://MF_TARGET:$(python -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MF_E2E_ORACLE_PASSWORD"]))')@localhost:1521?service_name=FREEPDB1"
           export AIRFLOW_VAR_P_CONN__P_SCHEMA=MF_TARGET AIRFLOW_VAR_P_CONN__P_USER=ETL_E2E
           $AF/airflow dags list-import-errors
-          $AF/airflow dags test js_master 2026-01-01 2>&1 | tee /tmp/dag.log | tail -40
+          # logical date after the DAG's start_date (2026-01-01 in America/Mexico_City): an earlier one schedules no task
+          # and the run is "successful" without doing anything. P_RUN_DATE (the data date) stays the DAG default.
+          $AF/airflow dags test js_master 2026-01-02 2>&1 | tee /tmp/dag.log | tail -60
           grep -q "DagRun Finished: dag_id=js_master.*state=success" /tmp/dag.log
+          for t in ja_100_load.db_400_insert_first ja_100_load.ds_500_orders_stage ja_300_publish.db_200_update_totals; do
+            grep -q "Marking task as SUCCESS. dag_id=js_master, task_id=$t" /tmp/dag.log || { echo "la tarea $t no se ejecutó"; exit 1; }
+          done
+          $AF/python backend/tests/e2e/datastage_oracle.py changed
       - name: Reconciliación (debe ser igual)
         run: |
           export AIRFLOW_CONN_ORACLE_RECON="oracle://system:$(python -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["MF_E2E_ORACLE_PASSWORD"]))')@localhost:1521?service_name=FREEPDB1"
