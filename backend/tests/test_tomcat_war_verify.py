@@ -196,6 +196,26 @@ def test_unreachable_system_is_not_a_pass(tmp_path, two_servers):
     assert res['status'] == 'NOT_EXECUTABLE' and res['cases'][0]['state'] == 'NOT_EXECUTABLE'
 
 
+def test_a_side_that_did_not_answer_in_time_is_retried_once_on_both_sides(tmp_path, two_servers):
+    """Seen on Posadas services that call external systems: one side times out on one run and not on the next."""
+    import time
+    old, _ = two_servers
+    calls = []
+
+    def slow_once(path, headers):
+        calls.append(path)
+        if len(calls) == 1:
+            time.sleep(3)  # longer than the case timeout: no answer the first time
+        return 200, 'application/json', '{"points": 801}'
+    s, url = server(slow_once)
+    try:
+        res = verify.responses(old, url, write_cases(tmp_path, [{'name': 'puntos', 'path': '/points/1'}]), tmp_path / 'out', timeout=1)
+    finally:
+        s.shutdown()
+    assert res['cases'][0]['state'] == 'SAME' and res['cases'][0]['retried'] is True and res['status'] == 'PASS'
+    assert res['totals']['notExecutable'] == 0 and len(calls) == 2
+
+
 def test_g4_evidence_needs_both_checks(tmp_path, two_servers):
     old, new = two_servers
     verify.responses(old, new, write_cases(tmp_path, [{'name': 'puntos', 'path': '/points/1'}]), tmp_path / 'out')

@@ -601,6 +601,17 @@ def responses(old: str, new: str, cases_file: Path, out: Path, timeout: int = 60
         sent = {k: ('***' if k.lower() in ('authorization', 'cookie') else v) for k, v in (c.get('headers') or {}).items()}
         results.append({'name': c['name'], 'method': c.get('method', 'GET'), 'path': c['path'], 'state': state, 'kind': kind, 'issues': issues,
                         'accept': c.get('accept'), 'request': {'headers': sent, 'body': c.get('body')}, 'original': a, 'migrated': b})
+    # A side that did not answer in time (seen on services that call external systems, either side, run to run) is not a
+    # difference yet: those cases go once more to BOTH sides at the end, with twice the time; the retry is recorded.
+    for r, c in zip(results, cases):
+        if r['state'] != 'NOT_EXECUTABLE':
+            continue
+        a, b = _send(old, c, timeout * 2, hosts), _send(new, c, timeout * 2, hosts)
+        state, issues, kind = compare_pair(a, b, bool(c.get('accept')))
+        totals[r['state']] -= 1
+        totals[state] += 1
+        r.update(state=state, issues=issues, kind=kind, original=a, migrated=b, retried=True)
+        log(f"{state:<14} {c['name']} (reintento)" + (f" ({'; '.join(issues)})" if issues and state != 'NOT_EXECUTABLE' else ''))
     status = ('NOT_EXECUTABLE' if totals['NOT_EXECUTABLE'] == len(cases) else 'FAIL' if totals['DIFFERENT'] or totals['NOT_EXECUTABLE']
               else 'PASS_WITH_ACCEPTED' if totals['ACCEPTED'] else 'PASS')
     result = {'check': 'responses', 'status': status, 'original': old, 'migrated': new,
