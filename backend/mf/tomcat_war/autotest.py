@@ -14,6 +14,7 @@ configuration, simulated answers and parameter values.
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -190,10 +191,10 @@ def dummy(key: str, mock: str, jdbc: str, files: Path, use: str = '') -> str:
     k, u = key.lower(), use.lower()
     if re.search(r'(^|\.)(sql|query|sp|procedure)(\.|$)', k):  # before the secret check: sql.select.token is a query
         return 'select 1 from dual'
+    if u == 'cron' or u.endswith('.cron') or re.search(r'cron|periodicity', k):  # before it too: token.cron.cleanup is a cron
+        return '0+0+3+1+1+?'
     if SECRET_KEY.search(key):
         return 'mf-prueba'
-    if u == 'cron' or u.endswith('.cron') or re.search(r'cron|periodicity', k):
-        return '0+0+3+1+1+?'
     if re.search(r'delay|period|timeout|interval|ttl|millis', u):
         return '30000'
     if re.search(r'size|count|max|min|increment|attempts|retries|limit', u):
@@ -222,7 +223,9 @@ def dummy(key: str, mock: str, jdbc: str, files: Path, use: str = '') -> str:
         return f'{mock}/{key}'
     if re.search(r'mail|email|recipient|sender|from$|\.to$', k):
         return 'prueba@example.com'
-    if re.search(r'path|dir|folder|file', k):
+    if re.search(r'path|dir|folder', k):  # a folder the code joins a file name to (path + name): it exists and ends in /
+        return (files / key).as_posix() + '/'
+    if re.search(r'file', k):
         return (files / key).as_posix()
     return '1'  # ids, codes, queue names and numbers all accept it
 
@@ -231,6 +234,8 @@ def safe(key: str, value: str, mock: str, jdbc: str, files: Path) -> tuple[str, 
     """(value to use, replaced). Only values that cannot reach a real system are kept: SQL, numbers, flags, names, cron."""
     v = value.strip()
     if not v or SQL_VALUE.match(v):
+        return value, False
+    if re.search(r'cron', key, re.I) and not SCHEME.match(v):  # a schedule is never a secret (token.cron.cleanup)
         return value, False
     if SECRET_KEY.search(key):
         return 'mf-prueba', True
@@ -248,8 +253,8 @@ def safe(key: str, value: str, mock: str, jdbc: str, files: Path) -> tuple[str, 
         return 'prueba@example.com', True
     if HOST.match(v):
         return f"127.0.0.1:9/{key}", True
-    if re.match(r'^(/|[A-Za-z]:[\\/])', v):
-        return (files / key).as_posix(), True
+    if re.match(r'^(/|[A-Za-z]:[\\/])', v):  # a folder keeps its trailing separator: the code appends a file name to it
+        return (files / key).as_posix() + ('/' if v.endswith(('/', '\\')) else ''), True
     return value, False
 
 
@@ -268,6 +273,16 @@ def _props(text: str) -> dict:
             out[m.group(1)] = m.group(2).rstrip('\\')
             key = m.group(1) if s.endswith('\\') else None
     return out
+
+
+@functools.lru_cache(maxsize=1)
+def _test_public_key() -> str:
+    """A freshly generated RSA public key (PEM), only so code that loads one at startup can start: nothing is signed or
+    encrypted for real with it and its private half is discarded."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key()
+    return key.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode('ascii')
 
 
 def build_etc(projects: dict, modules: dict, target: Path, mock: str, jdbc: str, data: Path | None) -> dict:
@@ -320,6 +335,12 @@ def build_etc(projects: dict, modules: dict, target: Path, mock: str, jdbc: str,
                     value = SCHEME.sub('', value)
                 written[locations[-1]][key] = value
                 report['generated'] += 1
+    base = files.as_posix()
+    for folder in {v for values in written.values() for v in values.values() if v.startswith(base) and v.endswith('/')}:
+        # a folder the code reads a file from: it exists, and holds a throwaway RSA public key under the generic value
+        # (Posadas common-epay reads <path><key file> as a PEM public key at startup)
+        Path(folder).mkdir(parents=True, exist_ok=True)
+        (Path(folder) / 'mf-prueba').write_text(_test_public_key(), encoding='ascii')
     for rel, values in written.items():
         f = target / rel
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -634,6 +655,10 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
     work.mkdir(parents=True, exist_ok=True)
     data = _data_dir(data, work)
     mode = 'DATOS' if data else 'HUMO'
+    own = Path(war).parent.parent.parent / f'webapp-{container}' / 'target' / Path(war).name if container else None
+    if own and own.is_file() and own.resolve() != Path(war).resolve():  # the migration split the WARs by container
+        log(f'usando el WAR del contenedor {container}: {own}')
+        war = own
     log(f"prueba automática ({'con paquete de datos' if data else 'de humo, sin datos del cliente'})")
     modules = explode_war(Path(war), work / 'migrated')
     deployed = {n: m for n, m in modules.items() if not container or container in m['containers'] or not m['containers']}

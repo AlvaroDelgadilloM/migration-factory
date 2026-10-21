@@ -45,7 +45,8 @@ def test_rules_load_and_every_camel_artifact_is_in_the_verified_bom():
     ('import org.apache.camel.processor.aggregate.AggregationStrategy;', 'import org.apache.camel.AggregationStrategy;'),
     ('.log("x ${property.count}")', '.log("x ${exchangeProperty.count}")'),
     ('simple("${header.a} == \'x\' and ${body} != null")', 'simple("${header.a} == \'x\' && ${body} != null")'),
-    ('.simple("${exception.message")', '.simple("${exception.message}")'),
+    ('.simple("${exception.message")', f'.expression({COMPAT}.simple.UnclosedSimple.of("${{exception.message"))'),  # fails like Camel 2
+    ('.log("${exception.message")', '.log("${exception.message}")'),
     ('.to("xslt:x.xsl?failOnNullBody=false &saxon=true")', '.to("xslt:x.xsl?failOnNullBody=false&saxon=true")'),
     ('.get("/h").route().setBody().constant("OK");', '.get("/h").to("language:constant:OK");'),
     ('.filter(xpath("//a = 1").booleanResult())', '.filter(xpath("//a = 1", Boolean.class))'),
@@ -146,7 +147,7 @@ def test_services_nobody_exports_and_manual_points_make_the_result_partial(tmp_p
     assert res['status'] == 'PARTIAL_SUCCESS'
     assert res['unresolvedServices'] == [{'module': 'orders-api', 'bean': 'auditStore', 'interface': 'demo.audit.AuditStore', 'componentName': 'auditStorePrimary'}]
     md = (tmp_path / 'out/reports/tomcat-war-report.md').read_text(encoding='utf-8')
-    assert 'demo.audit.AuditStore' in md and 'SIMPLE_UNCLOSED_BRACE' in md
+    assert 'demo.audit.AuditStore' in md and 'SIMPLE_UNCLOSED_EXPRESSION' in md and 'error latente del código original' in md
     saved = json.loads((tmp_path / 'out/reports/tomcat-war-report.json').read_text(encoding='utf-8'))
     assert saved['profile'] == 'tomcat-war-camel-4.18' and saved['totals'] == res['totals']
 
@@ -162,6 +163,38 @@ def test_client_config_patches_containers_and_war_dependencies(tmp_path):
     props = (ws / 'modules/orders-api/src/main/resources/META-INF/modules/orders-api/module.properties').read_text()
     assert 'containers=a,b' in props                                                      # no CI file: deployed everywhere
     assert '<artifactId>h2</artifactId>' in (ws / 'webapp/pom.xml').read_text(encoding='utf-8')
+
+
+def test_same_class_in_bundles_of_different_containers_gets_one_war_per_container(tmp_path):
+    """Posadas: nochespremio-booking-mob (mobile) and -web (web1, web2) carry 55 classes with the same name. Karaf isolates
+    them per bundle; in one WAR the first jar wins and web1 ran mob's REST paths. One WAR per container keeps them apart."""
+    src = tmp_path / 'src'
+    shutil.copytree(FIXTURE, src)
+    (src / 'orders-api/ci.yml').write_text('SKIP_B: true\n', encoding='utf-8')
+    (src / 'common-services/ci.yml').write_text('SKIP_A: true\n', encoding='utf-8')
+    dup = src / 'common-services/src/main/java/demo/orders/OrdersRoute.java'
+    dup.parent.mkdir(parents=True)
+    shutil.copy(src / 'orders-api/src/main/java/demo/orders/OrdersRoute.java', dup)
+    cfg = tmp_path / 'config.json'
+    cfg.write_text(json.dumps({'containers': {'names': ['a', 'b'], 'file': 'ci.yml', 'skipPattern': 'SKIP_{NAME}: true'}}), encoding='utf-8')
+    res = pipeline.migrate(src, tmp_path / 'out', cfg)
+    ws = tmp_path / 'out/migrated-workspace'
+    assert res['wars'] == {'a': 'webapp-a/target/ROOT.war', 'b': 'webapp-b/target/ROOT.war'}
+    root = (ws / 'pom.xml').read_text(encoding='utf-8')
+    assert '<module>webapp-a</module>' in root and '<module>webapp-b</module>' in root
+    pom_a = (ws / 'webapp-a/pom.xml').read_text(encoding='utf-8')
+    assert '<artifactId>migrated-war-a</artifactId>' in pom_a and '<artifactId>orders-api</artifactId>' in pom_a
+    assert '<artifactId>common-services</artifactId>' not in pom_a and 'migrated-modules-all' not in pom_a
+    assert '<artifactId>common-services</artifactId>' in (ws / 'webapp-b/pom.xml').read_text(encoding='utf-8')
+    # a module without containers (it only registers servlets: web-fragment.xml, no routes) is in every WAR, as at runtime
+    assert all('<artifactId>web-servlets</artifactId>' in (ws / f'webapp-{c}/pom.xml').read_text(encoding='utf-8') for c in 'ab')
+    assert '<param-value>b</param-value>' in (ws / 'webapp-b/src/main/webapp/WEB-INF/web.xml').read_text(encoding='utf-8')
+    assert any('no desplegarlo' in m for m in res['manualActions'])
+    # the same clash inside one container cannot be split: it is a manual action, no extra WARs
+    (src / 'common-services/ci.yml').write_text('', encoding='utf-8')
+    (src / 'orders-api/ci.yml').write_text('', encoding='utf-8')
+    res = pipeline.migrate(src, tmp_path / 'out2', cfg)
+    assert res['wars'] == {} and any('mismo contenedor' in m for m in res['manualActions'])
 
 
 def test_java_release_is_chosen_among_the_validated_ones(tmp_path):

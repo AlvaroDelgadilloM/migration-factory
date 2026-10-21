@@ -48,8 +48,13 @@ def _out(db, run: HttpTestRun) -> dict:
     return d
 
 
-def war_artifact(db, wm: WorkspaceMigration) -> Artifact | None:
-    ids = [v for k, v in ((wm.summary or {}).get('artifacts') or {}).items() if k.endswith('.war')]
+def war_artifact(db, wm: WorkspaceMigration, container: str | None = None) -> Artifact | None:
+    """The WAR to test: the container's own one when the migration had to split them (duplicate classes between containers,
+    mf.tomcat_war.pipeline.container_wars), otherwise the single WAR."""
+    wars = {k: v for k, v in ((wm.summary or {}).get('artifacts') or {}).items() if k.endswith('.war')}
+    own = [v for k, v in wars.items() if container and k.endswith(f'.webapp-{container}.ROOT.war')]
+    single = [v for k, v in wars.items() if '.webapp-' not in k]
+    ids = own or single
     return db.get(Artifact, uuid.UUID(ids[0])) if ids else None
 
 

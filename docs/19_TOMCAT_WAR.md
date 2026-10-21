@@ -94,6 +94,13 @@ Las decisiones de un cliente no viven en el motor:
   Spring no se elige aparte: la fija la de Camel (4.18.4 está compilado contra Spring 6.2.19 / Spring Boot 3.5).
 - `containers`: si varios contenedores de origen despliegan subconjuntos distintos de bundles, cada módulo guarda dónde va
   y el WAR arranca con `-Dmf.container=<nombre>`. Hay bundles alternativos entre sí (mismas rutas REST) que no pueden convivir.
+  **Clases con el mismo nombre en dos bundles**: Karaf las aísla (un class loader por bundle); en un WAR todos los jars
+  comparten uno y gana el primero, así que un módulo correría el código del otro sin error (Posadas:
+  `nochespremio-booking-mob` y `-web`, 55 clases; web1 publicaba las rutas de mobile). Si los dos módulos van a contenedores
+  distintos, se genera además **un WAR por contenedor** (`webapp-<nombre>/target/ROOT.war`, solo sus módulos y el contenedor
+  en su `web.xml`) y el `webapp/ROOT.war` de todos los módulos queda marcado como no desplegable. Si coinciden en un
+  contenedor (o una dependencia interna los junta) no hay separación automática: queda como acción manual. Las pruebas
+  automáticas usan solas el WAR del contenedor que prueban.
 - `patches`: ajustes que no son mecánicos. **Si el texto ya no coincide, la migración se detiene**: nunca se aplican a ciegas.
 - `overlay`: archivos que se copian encima del resultado (p. ej. datasources del ambiente destino).
 
@@ -263,6 +270,9 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
   escenarios de negocio: para eso están los casos del cliente (`casos.json` del paquete o la batería manual).
 - **Sistemas externos** en prueba de humo: responden 503. Lo que el original hace con una respuesta real del sistema
   externo solo se compara con `mocks.json` o contra el ambiente de pruebas del cliente.
+- **Configuración generada**: un cron nunca se trata como secreto (`token.cron.cleanup`); una carpeta (`path`, `dir`)
+  existe y termina en `/`, con una clave pública RSA desechable `mf-prueba` adentro para el código que carga una al arrancar.
+  Un caso sin respuesta en un lado se reintenta una vez al final en los dos lados, con el doble de tiempo (`retried`).
 - **Rutas REST definidas en XML** (`<rest>`, también `<verb method>`) generan casos leyendo el XML; la comparación de
   estructura (`verify routes`) sigue sin incluirlas.
 - La línea base nunca se ha comparado contra un JBoss Fuse real.

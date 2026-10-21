@@ -242,6 +242,12 @@ def migrate_module(src: Path, dst: Path, rules: dict, cfg: dict, compat: str, re
         if f.suffix == '.java':
             orig = read(f)
             text = apply_java_rules(orig, rules, compat, f.name, report)
+            for r in rules['javaRules']:  # kept as the original behaves, but the client should know it is a bug there
+                n = len(r['_re'].findall(orig)) if r.get('latentBug') else 0
+                if n:
+                    line = f"[MANUAL] {f.name} : error latente del código original x{n}: {r['latentBug']}"
+                    report.append('  ' + line)
+                    info['manual'].append(line)
             text, n = apply_patches(text, cfg.get('patches', []), artifact_id, f.name, report)
             totals['patches'] += n
             for r in rules['manualPatterns']:
@@ -399,12 +405,14 @@ def migrate(source: Path, out: Path, config: Path | None = None, log=lambda m: N
         if not ov.is_dir():
             raise InvalidInput(f'overlay no es un directorio: {ov}')
         shutil.copytree(ov, ws, dirs_exist_ok=True)
+    wars, clashes = container_wars(ws, modules, cfg, report)
     unresolved = blueprint.unresolved_imports({m['artifactId']: m.pop('xml') for m in modules})
-    manual = [f"{m['artifactId']}: {line}" for m in modules for line in m['manual']]
+    manual = [f"{m['artifactId']}: {line}" for m in modules for line in m['manual']] + clashes
     result = {
         'profile': rules['profile']['key'], 'rulesVersion': rules['version'], 'source': str(source), 'output': str(ws),
         'status': 'PARTIAL_SUCCESS' if manual or unresolved else 'SUCCEEDED',
         'totals': totals | {'modules': len(modules)}, 'modules': modules, 'manualActions': manual, 'unresolvedServices': unresolved,
+        'wars': wars,
         'configKeys': config_keys.scan(source),  # keys the code reads that must come from the target etc folder
     }
     reports = out / 'reports'
@@ -412,6 +420,86 @@ def migrate(source: Path, out: Path, config: Path | None = None, log=lambda m: N
     (reports / 'tomcat-war-report.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     (reports / 'tomcat-war-report.md').write_text(report_markdown(result, report), encoding='utf-8')
     return result
+
+
+def class_names(module_dir: Path) -> set:
+    java = module_dir / 'src' / 'main' / 'java'
+    return {f.relative_to(java).with_suffix('').as_posix().replace('/', '.') for f in java.rglob('*.java')} if java.is_dir() else set()
+
+
+def container_wars(ws: Path, modules: list, cfg: dict, report: list) -> tuple[dict, list]:
+    """In Karaf every bundle has its own class loader: two bundles may carry the same class (Posadas: nochespremio-booking-mob
+    and -web, 55 classes) as long as they run in different containers. In one WAR all jars share a class loader and the first
+    jar wins, so a module would silently run the other one's code. When the clashing modules never share a container, one WAR
+    per container is generated (webapp-<name>, only its modules, its container in web.xml); the all-modules webapp/ROOT.war is
+    then not deployable. Clashes inside one container cannot be split: manual action. Returns ({container: war path}, manual)."""
+    names = (cfg.get('containers') or {}).get('names') or []
+    classes = {m['artifactId']: class_names(ws / 'modules' / m['artifactId']) for m in modules}
+    where = {m['artifactId']: set(m.get('containers') or []) for m in modules}
+    split, manual = False, []
+    ids = sorted(classes)
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            same = classes[a] & classes[b]
+            if not same:
+                continue
+            example = sorted(same)[0]
+            if where[a] and where[b] and not where[a] & where[b]:
+                split = True
+                report.append(f"== clases duplicadas: {a} ({', '.join(sorted(where[a]))}) y {b} ({', '.join(sorted(where[b]))}): "
+                              f"{len(same)} (p. ej. {example}); van en WAR distintos")
+            else:
+                manual.append(f"{a} y {b}: {len(same)} clase(s) con el mismo nombre (p. ej. {example}) en el mismo contenedor; en un WAR "
+                              f"solo se carga una. Renombrar el paquete en uno de los dos o desplegarlos por separado")
+    if not split or not names:
+        return {}, manual
+    # a container's WAR also carries the modules its own ones depend on: the clashing pair must not meet there either
+    deps = {m['artifactId']: {d.split(':')[1] for d in m.get('dependencies') or [] if d.count(':') >= 1 and d.split(':')[1] in classes}
+            for m in modules}
+
+    def closure(start):
+        seen, todo = set(), list(start)
+        while todo:
+            a = todo.pop()
+            if a not in seen:
+                seen.add(a)
+                todo += deps.get(a, ())
+        return seen
+    def belongs(m, c):  # as the runtime filter: a module without containers (servlet registerers, libraries) goes everywhere
+        return not where[m['artifactId']] or c in where[m['artifactId']]
+    for c in names:
+        inside = closure(m['artifactId'] for m in modules if belongs(m, c))
+        together = [(a, b) for i, a in enumerate(ids) for b in ids[i + 1:] if a in inside and b in inside and classes[a] & classes[b]]
+        if together:
+            manual += [f"{a} y {b}: clases con el mismo nombre que terminan juntas en el WAR del contenedor {c} (dependencia interna); "
+                       f"renombrar el paquete en uno de los dos" for a, b in together]
+            return {}, manual
+    root_pom = read(ws / 'pom.xml')
+    for c in names:
+        own = [m for m in modules if belongs(m, c)]
+        dst = ws / f'webapp-{c}'
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(ws / 'webapp', dst)
+        pom = read(dst / 'pom.xml')
+        deps = ''.join(_dep_xml(m['groupId'], m['artifactId'], m['version']) for m in own)
+        own_deps = f'\n\t\t<!-- Solo los modulos del contenedor {c} -->\n' + deps.rstrip('\n')
+        pom = re.sub(r'\s*<dependency>\s*<groupId>[^<]+</groupId>\s*<artifactId>migrated-modules-all</artifactId>.*?</dependency>',
+                     lambda _: own_deps, pom, count=1, flags=re.S)
+        pom = pom.replace('<artifactId>migrated-war</artifactId>', f'<artifactId>migrated-war-{c}</artifactId>', 1)
+        pom = pom.replace('<mf.container></mf.container>', f'<mf.container>{c}</mf.container>', 1)
+        write(dst / 'pom.xml', pom)
+        web = read(dst / 'src/main/webapp/WEB-INF/web.xml')
+        param = (f'<context-param>\n\t\t<!-- WAR del contenedor de origen {c} (solo sus modulos) -->\n'
+                 f'\t\t<param-name>mf.container</param-name>\n\t\t<param-value>{c}</param-value>\n\t</context-param>\n\t<context-param>')
+        write(dst / 'src/main/webapp/WEB-INF/web.xml', web.replace('<context-param>', param, 1))
+        if f'<module>webapp-{c}</module>' not in root_pom:
+            root_pom = root_pom.replace('<module>webapp</module>', f'<module>webapp</module>\n\t\t<module>webapp-{c}</module>', 1)
+        report.append(f"  [gen] webapp-{c}/target/ROOT.war : {len(own)} modulos del contenedor {c}")
+    write(ws / 'pom.xml', root_pom)
+    manual.append('webapp/target/ROOT.war reúne módulos con clases duplicadas: no desplegarlo; desplegar el ROOT.war de webapp-<contenedor> '
+                  'de cada contenedor')
+    return {c: f'webapp-{c}/target/ROOT.war' for c in names}, manual
 
 
 def _patched(report) -> set:

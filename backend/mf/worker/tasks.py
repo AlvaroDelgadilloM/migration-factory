@@ -1019,6 +1019,8 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
     war = next(iter(sorted(ws_dir.glob('webapp/target/*.war'))), None)
     if war is not None:
         keep(war, f'ws-{tag}.{war.name}', 'candidate-zip', 'application/zip', text=False)
+    for cw in sorted(ws_dir.glob('webapp-*/target/*.war')):  # one WAR per container when classes clash between containers
+        keep(cw, f'ws-{tag}.{cw.parent.parent.name}.{cw.name}', 'candidate-zip', 'application/zip', text=False)
     for t in ws_dir.rglob('target'):  # the deliverable is the source workspace; the WAR is its own download
         if t.is_dir():
             shutil.rmtree(t, ignore_errors=True)
@@ -1066,7 +1068,7 @@ def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
     from ..tomcat_war import autotest
     wm = db.get(WorkspaceMigration, run.workspace_migration_id)
     scan = db.get(Scan, wm.scan_id) if wm else None
-    war = war_artifact(db, wm) if wm else None
+    war = war_artifact(db, wm, run.container) if wm else None
     if wm is None or war is None or scan is None or not scan.snapshot_artifact_id:
         raise StepFailure('SOURCE_MISSING', 'La migración ya no tiene su WAR o el análisis su snapshot; repita la migración')
     set_phase(ctx, 'prepare', 5)

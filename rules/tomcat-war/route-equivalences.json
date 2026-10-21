@@ -63,6 +63,11 @@
       "reason": "regla SIMPLE_UNCLOSED_BRACE"
     },
     {
+      "pattern": "\\{simple\\{\\$\\{([\\w\\.]+)\\}\\}",
+      "replace": "{simple:\\1}",
+      "reason": "regla SIMPLE_UNCLOSED_EXPRESSION (compat UnclosedSimple: misma expresión sin cerrar, falla al evaluarse como en Camel 2)"
+    },
+    {
       "pattern": "^(\\s*)to uri=language:constant:(.*)$",
       "replace": "\\1setBody {constant:\\2}",
       "reason": "regla REST_INLINE_CONSTANT_ROUTE"

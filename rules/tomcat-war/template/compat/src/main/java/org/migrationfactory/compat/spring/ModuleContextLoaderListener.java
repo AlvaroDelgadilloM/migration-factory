@@ -46,7 +46,7 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 		boolean failFast = Boolean.getBoolean("mf.modules.failFast");
 		List<Module> modules;
 		try {
-			modules = findModules();
+			modules = findModules(container(sce.getServletContext()));
 		} catch (Exception e) {
 			throw new IllegalStateException("No se pudieron localizar los modulos", e);
 		}
@@ -97,7 +97,20 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 		}
 	}
 
-	private List<Module> findModules() throws Exception {
+	/**
+	 * Contenedor de origen a reproducir: -Dmf.container o, en un WAR generado para un solo contenedor, el context-param
+	 * mf.container de su web.xml. Vacio = todos los modulos.
+	 */
+	static String container(jakarta.servlet.ServletContext servletContext) {
+		String value = System.getProperty("mf.container", "").trim();
+		if (value.isEmpty() && servletContext != null) {
+			String param = servletContext.getInitParameter("mf.container");
+			value = param == null ? "" : param.trim();
+		}
+		return value;
+	}
+
+	private List<Module> findModules(String container) throws Exception {
 		Map<String, Module> byName = new TreeMap<>();
 		for (Resource r : new PathMatchingResourcePatternResolver().getResources(MODULES_PATTERN)) {
 			String[] parts = r.getURL().toString().split("/");
@@ -108,9 +121,8 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 			m.exports |= xml.contains("compat.osgi.ServiceExport");
 			m.imports |= xml.contains("compat.osgi.ServiceImport");
 		}
-		// -Dmf.container=mobile|web1|web2: solo los modulos que hoy van a ese contenedor de
-		// Karaf (module.properties). Sin la propiedad se cargan todos.
-		String container = System.getProperty("mf.container", "").trim();
+		// mobile|web1|web2: solo los modulos que hoy van a ese contenedor de Karaf (module.properties).
+		// Sin contenedor se cargan todos.
 		if (!container.isEmpty()) {
 			for (java.util.Iterator<Module> it = byName.values().iterator(); it.hasNext();) {
 				Module m = it.next();

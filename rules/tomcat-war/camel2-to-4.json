@@ -76,11 +76,19 @@
       "level": "AUTO_TEST"
     },
     {
+      "id": "SIMPLE_UNCLOSED_EXPRESSION",
+      "pattern": "\\.simple\\(\\s*\"(\\$\\{[\\w\\.]+)\"\\s*\\)",
+      "replace": ".expression(@COMPAT@.simple.UnclosedSimple.of(\"\\1\"))",
+      "level": "AUTO",
+      "latentBug": "simple(\"${...\") sin llave de cierre: falla al evaluarse (si está en un onException, el cliente recibe 500 en lugar de la respuesta prevista). Se migró igual que en Camel 2; corregirlo con la llave cambia la respuesta y es decisión del cliente",
+      "reason": "simple(\"${exception.message\") sin llave de cierre: Camel 2 la compilaba y fallaba al evaluarla (en un onException eso es un 500); Camel 4 no arranca el contexto. Se conserva el comportamiento de Camel 2 y el reporte la marca como error latente del original (corregirla cambia la respuesta: Posadas common-catalogue 500 -> 400)."
+    },
+    {
       "id": "SIMPLE_UNCLOSED_BRACE",
-      "pattern": "(\\$\\{[\\w\\.]+)\"\\)",
+      "pattern": "(?<!UnclosedSimple\\.of\\(\")(\\$\\{[\\w\\.]+)\"\\)",
       "replace": "\\1}\")",
       "level": "AUTO_TEST",
-      "note": "expresion simple sin llave de cierre: Camel 2 lo toleraba"
+      "note": "expresion simple sin llave de cierre fuera de .simple(...) (p. ej. log): Camel 4 no arranca con ella; se cierra"
     },
     {
       "id": "URI_STRAY_SPACE",

@@ -38,6 +38,20 @@ def test_missing_values_follow_what_the_code_does_with_them(tmp_path):
     assert autotest._scheme_in_code('ws.drools.url', code, d) and not autotest._scheme_in_code('sql.q', code, d)
 
 
+def test_a_schedule_is_not_a_secret_and_a_folder_exists_for_what_the_code_reads(tmp_path):
+    """Posadas web1/web2: member-security (cron token.cron.cleanup) and common-epay (<smart.file.path><key file> as an RSA PEM)
+    did not start on either side with the generated configuration."""
+    mock, jdbc = 'http://127.0.0.1:1/', 'jdbc:h2:x'
+    assert autotest.safe('token.cron.cleanup', '0 0/30 * * * ?', mock, jdbc, tmp_path) == ('0 0/30 * * * ?', False)
+    assert autotest.dummy('token.cron.cleanup', mock, jdbc, tmp_path) == '0+0+3+1+1+?'
+    folder, changed = autotest.safe('smart.file.path', '/opt/cliente/llaves/', mock, jdbc, tmp_path)
+    assert changed and folder.endswith('/') and 'cliente' not in folder
+    assert autotest.dummy('smart.file.path', mock, jdbc, tmp_path).endswith('/')
+    pem = autotest._test_public_key()
+    from cryptography.hazmat.primitives import serialization
+    assert serialization.load_pem_public_key(pem.encode()).key_size == 2048       # a real RSA public key, generated here
+
+
 def test_rest_cases_use_the_servlet_alias_and_parameter_values(tmp_path):
     project = tmp_path / 'm'
     (project / 'src/main/java').mkdir(parents=True)
