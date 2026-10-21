@@ -10,6 +10,16 @@ import { PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { DataStageStore, DsJob } from './store';
 import { FlowDiagram } from './flow-diagram';
 
+const FACTORS: Record<string, string> = {
+  stage: 'etapas o actividades en total', oracle: 'conexiones a Oracle', transformer: 'transformadores (lógica de columnas que se reescribe en SQL)',
+  join_merge: 'uniones de datos (join/merge)', remdup_sort: 'ordenamientos o quitar duplicados', shell: 'comandos del sistema operativo',
+  routine: 'rutinas de DataStage que hay que reescribir a mano', temp_dataset: 'datasets temporales intermedios',
+  branch: 'condiciones o puntos de sincronización (caminos alternativos)', parameter: 'parámetros del job',
+  file: 'archivos de entrada o salida', error_handling: 'manejo de errores (excepciones o terminadores)',
+  untranslated_expression: 'expresiones que no se pudieron traducir automáticamente', cdc_scd: 'detección de cambios / historia (CDC o SCD)',
+  plsql: 'llamadas a PL/SQL',
+};
+
 /** DataStage → Airflow · Jobs: full-width table with filters; a click opens the job's detail beside the list. */
 @Component({
   selector: 'mf-ds-jobs',
@@ -60,7 +70,9 @@ import { FlowDiagram } from './flow-diagram';
           <mf-flow-diagram [flow]="f" />
         }
         <h3>Por qué esta complejidad</h3>
-        <ul class="small">@for (x of j.reasons; track x) { <li>{{ x }}</li> }</ul>
+        <p class="small muted">La complejidad es una suma de puntos: cada elemento del job suma según lo difícil que es migrarlo.
+          Menos de 15 puntos es baja, menos de 35 media, menos de 70 alta y desde 70 muy alta.</p>
+        <ul class="small">@for (x of j.reasons; track x) { <li>{{ reason(x) }}</li> }</ul>
         @if (j.dependsOn.length || j.calls.length) {
           <h3>Dependencias</h3>
           @if (j.calls.length) { <p class="small"><strong>Llama a:</strong> @for (c of j.calls; track c) { <span class="chip mono">{{ c }}</span> }</p> }
@@ -107,5 +119,11 @@ export class DsJobs {
       .map(j => ({ ...j, pending: this.ds.actions().filter(a => a.job === j.name && a.severity === 'manual' && !st[a.key]?.done).length }));
   });
   conf(c: string) { return ({ HIGH: 'Alta', MEDIUM: 'Media', LOW: 'Baja' } as Record<string, string>)[c] ?? c; }
+  /** "branch ×3 (+9)" from the analysis → plain Spanish; an unknown factor is shown as it came */
+  reason(r: string) {
+    const m = /^(\w+) ×([\d.]+) \(\+([\d.]+)\)$/.exec(r);
+    const what = m && FACTORS[m[1]];
+    return what ? `${m![2]} × ${what}: +${m![3]} puntos` : r;
+  }
   stepLabel(s: string) { return ({ OK: 'Listo', REVIEW: 'Revisar', MANUAL: 'Manual' } as Record<string, string>)[s] ?? s; }
 }

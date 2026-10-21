@@ -6,11 +6,22 @@ export interface SeqFlow {
 }
 
 const W = 236, H = 92, GX = 56, GY = 16, PAD = 12;
-const TYPE: Record<string, { label: string; color: string }> = {
-  CJobActivity: { label: 'Job', color: '#0b8a8f' }, CCondition: { label: 'Condición', color: '#b54708' },
-  CTerminatorActivity: { label: 'Terminador', color: '#b42318' }, CExceptionHandler: { label: 'Excepción', color: '#b42318' },
-  CExecCommandActivity: { label: 'Comando', color: '#5b21b6' }, CUserVarsActivity: { label: 'Variables', color: '#1d4f91' },
-  CSequencer: { label: 'Sincronizador', color: '#475569' },
+/** label, color and a plain-language explanation of what the activity does in DataStage and what it became in Airflow */
+const TYPE: Record<string, { label: string; color: string; ds: string; af: string }> = {
+  CJobActivity: { label: 'Job', color: '#0b8a8f', ds: 'Ejecuta otro job de DataStage (el que mueve o transforma los datos).',
+    af: 'Un grupo de tareas (TaskGroup) con los pasos de ese job; si el job es otra secuencia, se lanza su DAG y se espera a que termine.' },
+  CUserVarsActivity: { label: 'Variables', color: '#1d4f91', ds: 'Calcula valores (fechas, conteos, banderas) que usan los pasos siguientes.',
+    af: 'Una tarea Python que calcula esos valores y los deja en XCom, la memoria compartida entre tareas de Airflow.' },
+  CCondition: { label: 'Condición', color: '#b54708', ds: 'Revisa un valor y decide por qué camino sigue la secuencia.',
+    af: 'Una tarea de ramificación (BranchPythonOperator): evalúa la condición y solo deja correr la rama elegida; las demás se saltan.' },
+  CTerminatorActivity: { label: 'Terminador', color: '#b42318', ds: 'Detiene la secuencia con un mensaje (normalmente porque algo no cuadró).',
+    af: 'Una tarea Python que falla a propósito con ese mensaje, para que el DAG quede en rojo y se note.' },
+  CExceptionHandler: { label: 'Excepción', color: '#b42318', ds: 'Se activa cuando cualquier actividad de la secuencia falla.',
+    af: 'Una tarea vacía con la regla one_failed: Airflow la ejecuta solo si alguna tarea anterior falló, y de ahí sigue el manejo del error.' },
+  CExecCommandActivity: { label: 'Comando', color: '#5b21b6', ds: 'Ejecuta un comando del sistema operativo (script, copia de archivos…).',
+    af: 'Una tarea Bash (BashOperator) con el mismo comando. Revísela: no se ejecutó durante el análisis.' },
+  CSequencer: { label: 'Sincronizador', color: '#475569', ds: 'Espera a que terminen varias ramas antes de continuar.',
+    af: 'Una tarea vacía cuya regla (trigger_rule) indica si espera a todas las ramas o basta con una.' },
 };
 
 /** DataStage sequence next to the Airflow DAG generated from it: each box is one DataStage activity (top) and the Airflow task
@@ -18,6 +29,10 @@ const TYPE: Record<string, { label: string; color: string }> = {
 @Component({
   selector: 'mf-flow-diagram',
   template: `
+    <p class="small intro">Una <strong>secuencia</strong> de DataStage no mueve datos: es el «director» que decide en qué orden corren otros jobs y
+      qué hacer si algo falla. En Airflow eso es un <strong>DAG</strong>: una lista de tareas unidas por flechas que marcan el orden.
+      Cada caja es una actividad de la secuencia (arriba, su nombre y tipo en DataStage) y la tarea de Airflow que se generó a partir de ella
+      (abajo, después de la flecha →, con el tipo de tarea). Se lee de izquierda a derecha.</p>
     <div class="legend small">
       <span><i class="ln"></i> sin condición</span><span><i class="ln cond"></i> condición</span>
       @if (handlers().length) { <span><i class="pi pi-bolt fail-i"></i> {{ handlers().join(', ') }}: se activa si falla cualquier job</span> }
@@ -51,11 +66,26 @@ const TYPE: Record<string, { label: string; color: string }> = {
           </g>
         }
       </svg>
-    </div>`,
+    </div>
+    <details class="gloss small">
+      <summary>¿Qué significa cada tipo de caja?</summary>
+      <dl>
+        @for (t of present(); track t.label) {
+          <dt><i class="sw" [style.background]="t.color"></i>{{ t.label }}</dt>
+          <dd><span><strong>En DataStage:</strong> {{ t.ds }}</span><span><strong>En Airflow:</strong> {{ t.af }}</span></dd>
+        }
+        <dt><i class="ln"></i> Flecha gris</dt><dd><span>El paso siguiente corre cuando el anterior termina bien.</span></dd>
+        <dt><i class="ln cond"></i> Flecha ámbar punteada</dt><dd><span>Camino que solo se sigue si se cumple una condición (pase el cursor sobre la flecha para verla).</span></dd>
+      </dl>
+    </details>`,
   styles: [`.scroll{overflow:auto;border:1px solid var(--mf-line);border-radius:12px;background:#f8fafc;padding:4px}
     svg{display:block}.t1{font:600 12.5px ui-monospace,Menlo,monospace;fill:#16293a}.t2{font:600 11.5px system-ui}
     .t3{font:11.5px ui-monospace,Menlo,monospace;fill:#16293a}.t4{font:11px system-ui;fill:#536679}
-    .fail-i{color:#dc2626}
+    .fail-i{color:#dc2626}.intro{margin:0 0 10px;max-width:72rem;line-height:1.5}
+    .gloss{margin-top:10px}.gloss summary{cursor:pointer;font-weight:600;color:var(--mf-teal)}
+    .gloss dl{display:grid;grid-template-columns:minmax(9rem,max-content) 1fr;gap:8px 16px;margin:10px 0 0}
+    .gloss dt{font-weight:600;display:flex;gap:8px;align-items:center}.gloss dd{margin:0;display:flex;flex-direction:column;gap:2px}
+    .sw{display:inline-block;width:10px;height:10px;border-radius:3px}
     .legend{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 8px;align-items:center}.legend span{display:inline-flex;gap:6px;align-items:center}
     .ln{display:inline-block;width:22px;border-top:2px solid #94a3b8}.ln.cond{border-top:2px dashed #d97706}.ln.fail{border-top:2px dashed #dc2626}`],
 })
@@ -65,6 +95,8 @@ export class FlowDiagram {
   H = H;
   /** exception handlers fire on any job failure: shown as a note instead of one arrow per job crossing the diagram */
   handlers = computed(() => this.flow().nodes.filter(n => n.type === 'CExceptionHandler').map(n => n.name));
+  /** only the activity types this sequence uses, in glossary order */
+  present = computed(() => { const used = new Set(this.flow().nodes.map(n => n.type)); return Object.entries(TYPE).filter(([k]) => used.has(k)).map(([, v]) => v); });
   clip(s: string, n: number) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 
   layout = computed(() => {
