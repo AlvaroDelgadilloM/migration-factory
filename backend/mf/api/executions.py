@@ -364,6 +364,11 @@ def _mark_subject_cancelled(db, job):
         r = db.get(HttpTestRun, job.subject_id)
         if r and r.state == 'queued':
             r.state = 'cancelled'
+    elif job.kind == 'datastage_migrate':  # without it a cancelled run stayed 'queued' and refused every new run of the project
+        from ..models import DataStageMigration
+        d = db.get(DataStageMigration, job.subject_id)
+        if d and d.state == 'queued':
+            d.state = 'cancelled'
 
 
 @router.get('/jobs/{job_id}/logs', response_model=list[LogEvent])

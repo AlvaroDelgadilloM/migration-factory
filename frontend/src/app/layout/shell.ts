@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
@@ -8,6 +8,7 @@ import { filter, map } from 'rxjs';
 import { AuthService } from '../core/auth';
 import { ProjectContext } from '../core/project-context';
 import { Logo } from '../shared/ui';
+import { FlowProgress } from '../shared/flow-progress';
 
 const PROJECT_SCREENS = [
   ['inventory', 'Inventario', 'pi-sitemap'], ['findings', 'Hallazgos', 'pi-exclamation-triangle'], ['plan', 'Plan', 'pi-list-check'],
@@ -21,7 +22,7 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
 
 @Component({
   selector: 'mf-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ButtonModule, TagModule, ToastModule, Logo],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ButtonModule, TagModule, ToastModule, Logo, FlowProgress],
   template: `
     <p-toast position="bottom-right" />
     <a class="skip" href="#main">Saltar al contenido</a>
@@ -80,7 +81,10 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
           <p-button icon="pi pi-sign-out" [text]="true" [rounded]="true" severity="secondary" ariaLabel="Salir" (onClick)="auth.logout()" />
         </span>
       </header>
-      <main id="main" tabindex="-1"><router-outlet /></main>
+      <main id="main" tabindex="-1">
+        @if (ctx.projectId() && !isDs() && onProjectScreen()) { <mf-flow-progress /> }
+        <router-outlet />
+      </main>
     </div>`,
 })
 export class Shell {
@@ -90,6 +94,9 @@ export class Shell {
   tests = TEST_SCREENS;
   dsScreens = DS_SCREENS;
   isDs = computed(() => this.ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW');
+  private url = signal('');
+  /** the progress bar belongs to the five Java/Camel step screens, not to settings or tests */
+  onProjectScreen = computed(() => /^\/p\/[^/]+\/(inventory|findings|plan|execution|diff|validation)/.test(this.url()));
   private nameParts = computed(() => /^(.*?)\s*\((.*)\)\s*$/.exec(this.auth.me()?.name ?? '') ?? [null, this.auth.me()?.name ?? '', '']);
   displayName = computed(() => this.nameParts()[1] || this.auth.me()?.name || '');
   roleText = computed(() => this.nameParts()[2] || (this.auth.me()?.isAdmin ? 'administrador' : ''));
@@ -101,6 +108,8 @@ export class Shell {
 
   constructor() {
     // keep the project context in sync with /p/:projectId/... urls
+    this.url.set(this.router.url);
+    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => this.url.set(this.router.url));
     this.router.events.pipe(filter(e => e instanceof NavigationEnd), map(() => this.projectFromUrl())).subscribe(id => {
       if (id) this.ctx.select(id);
     });

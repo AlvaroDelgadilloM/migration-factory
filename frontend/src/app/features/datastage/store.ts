@@ -4,11 +4,13 @@ import { UiError } from '../../core/errors';
 import { DataStageMigration } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
+import { SeqFlow } from './flow-diagram';
 
 export interface DsJob {
   name: string; jobType: string; complexity: string; score: number; migratability: string; confidence: string; state: string;
   dependsOn: string[]; calls: string[]; manualActions: string[]; dag: string | null; reasons: string[]; stages: number; sourceFile: string;
   steps: { task: string; kind: string; stage: string; status: string; issues: string[]; sqlFile: string | null }[];
+  flow: SeqFlow | null;
 }
 export interface DsAction { key: string; job: string; stage: string; category: string; severity: 'manual' | 'review'; source: string; text: string }
 
@@ -28,7 +30,7 @@ export class DataStageStore {
   readonly jobs = computed<DsJob[]>(() => Object.entries((this.current()?.results ?? {}) as Record<string, any>).map(([name, r]) => ({
     name, jobType: r.jobType, complexity: r.complexity, score: r.score, migratability: r.migratability, confidence: r.confidence,
     state: r.state, dependsOn: r.dependsOn ?? [], calls: r.calls ?? [], manualActions: r.manualActions ?? [], dag: r.dag ?? null,
-    reasons: r.reasons ?? [], stages: r.stages ?? 0, sourceFile: r.sourceFile ?? '', steps: r.steps ?? [] })));
+    reasons: r.reasons ?? [], stages: r.stages ?? 0, sourceFile: r.sourceFile ?? '', steps: r.steps ?? [], flow: r.flow ?? null })));
   readonly actions = computed<DsAction[]>(() => this.summary()?.actions ?? []);
   readonly actionState = computed(() => (this.current()?.actionState ?? {}) as Record<string, { done: boolean; by: string; at: string; note?: string }>);
   readonly pilot = computed(() => Object.fromEntries(Object.entries((this.summary()?.pilot ?? {}) as Record<string, string>).map(([k, v]) => [v, k])));

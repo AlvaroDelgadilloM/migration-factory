@@ -1306,7 +1306,7 @@ def do_datastage_migrate(job: Job, ctx: Context):
         dm.results = {n: {k: j.get(k) for k in ('jobType', 'complexity', 'score', 'migratability', 'confidence', 'reasons',
                                                     'dependsOn', 'calls', 'stages', 'sourceFile')}
                       | {'state': j['migration']['state'], 'dag': j['migration'].get('dag'), 'manualActions': j['manualActions'],
-                         'steps': j['migration'].get('steps', [])}
+                         'steps': j['migration'].get('steps', []), 'flow': j['migration'].get('flow')}
                       for n, j in rep['jobs'].items()}
         dm.summary = {k: rep[k] for k in ('status', 'functionalValidation', 'technicalValidation', 'parse', 'counts', 'gates', 'pilot',
                                           'manualActions', 'actions', 'airflow')} | {

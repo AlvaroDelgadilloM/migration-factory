@@ -250,7 +250,17 @@ with DAG(
             state = 'SEMIAUTOMATIC'
         else:
             state = 'AUTO_MIGRATED'
-        self.results[seq.name] = {'state': state, 'dag': rel, 'jobs': called}
+        operator = {'CJobActivity': 'TaskGroup del job', 'CCondition': 'BranchPythonOperator', 'CTerminatorActivity': 'PythonOperator (falla)',
+                    'CExceptionHandler': 'EmptyOperator · one_failed', 'CExecCommandActivity': 'BashOperator',
+                    'CUserVarsActivity': 'PythonOperator · XCom', 'CSequencer': 'EmptyOperator · trigger_rule'}
+        flow = {'nodes': [{'name': s.name, 'type': s.stage_type, 'task': tids[s.name], 'operator': operator.get(s.stage_type, 'manual'),
+                           'job': s.properties.get('Jobname')} for s in seq.stages],
+                'edges': [{'from': l.source_stage, 'to': l.target_stage, 'trigger': (l.trigger or {}).get('type'),
+                           'expression': (l.trigger or {}).get('expression')} for l in seq.links if l.source_stage in tids and l.target_stage in tids]
+                + [{'from': s.name, 'to': h, 'trigger': 'failure', 'expression': None}
+                   for h in (a.name for a in seq.stages if a.stage_type == 'CExceptionHandler')
+                   for s in seq.stages if s.stage_type == 'CJobActivity']}
+        self.results[seq.name] = {'state': state, 'dag': rel, 'jobs': called, 'flow': flow}
 
     def job_dag(self, job):
         body = [f'    with TaskGroup(group_id={ident(job.name)!r}, tooltip={job.name!r}) as {ident(job.name)}:'] + self.job_tasks(job)

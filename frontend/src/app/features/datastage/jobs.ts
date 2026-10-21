@@ -8,11 +8,12 @@ import { SelectButtonModule } from 'primeng/selectbutton';
 import { TableModule } from 'primeng/table';
 import { PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { DataStageStore, DsJob } from './store';
+import { FlowDiagram } from './flow-diagram';
 
 /** DataStage → Airflow · Jobs: full-width table with filters; a click opens the job's detail beside the list. */
 @Component({
   selector: 'mf-ds-jobs',
-  imports: [FormsModule, DrawerModule, IconFieldModule, InputIconModule, InputTextModule, SelectButtonModule, TableModule, PageHeader, StateView, StatusTag],
+  imports: [FormsModule, DrawerModule, IconFieldModule, InputIconModule, InputTextModule, SelectButtonModule, TableModule, PageHeader, StateView, StatusTag, FlowDiagram],
   template: `
     <mf-page-header title="Jobs" crumb="DATASTAGE → AIRFLOW" subtitle="Cada job de DataStage, su complejidad y lo que se generó para Airflow." />
     <mf-state [loading]="ds.list.loading()" [error]="ds.list.error()" [hasData]="!!ds.list.data()" [empty]="!ds.jobs().length"
@@ -49,11 +50,15 @@ import { DataStageStore, DsJob } from './store';
       <p class="muted small">{{ rows().length }} de {{ ds.jobs().length }} jobs. Haga clic en una fila para ver etapas, SQL generado y dependencias.</p>
     </mf-state>
 
-    <p-drawer [(visible)]="openFlag" position="right" [style]="{ width: 'min(46rem, 96vw)' }" [header]="selected?.name ?? ''">
+    <p-drawer [(visible)]="openFlag" position="right" [style]="{ width: selected?.flow ? 'min(78rem, 98vw)' : 'min(46rem, 96vw)' }" [header]="selected?.name ?? ''">
       @if (selected; as j) {
         <p><mf-status [value]="j.state" /> <mf-status [value]="j.jobType" /> <mf-status [value]="j.complexity" />
           <span class="muted small"> · {{ j.stages }} etapas · {{ j.sourceFile }}</span></p>
         @if (j.dag) { <p class="small">DAG: <code>{{ j.dag }}</code></p> }
+        @if (j.flow; as f) {
+          <h3>Secuencia de DataStage → DAG de Airflow</h3>
+          <mf-flow-diagram [flow]="f" />
+        }
         <h3>Por qué esta complejidad</h3>
         <ul class="small">@for (x of j.reasons; track x) { <li>{{ x }}</li> }</ul>
         @if (j.dependsOn.length || j.calls.length) {

@@ -564,3 +564,18 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
   (`examples/jboss-legacy-shop/evidence/migrated-java25`). Pruebas: `tests/test_java25.py` (4) y `tests/test_versions.py`
   ajustado.
 - Pendiente: variante WAR para Tomcat 11 con Spring Boot 4 (el WAR individual sigue en Spring Boot 3.5 / Tomcat 10.1).
+
+## Interfaz: avance del flujo, diagrama DataStage → Airflow, celular y pruebas E2E (2026-10-21)
+
+- **Barra de avance Java/Camel** (`shared/flow-progress.ts`, en `layout/shell.ts`): Analizar → Hallazgos → Plan → Ejecución → Validación con estado real (último análisis, plan y ejecución) y un botón al siguiente paso. Solo enlaza; no lanza nada. Oculta en proyectos DataStage.
+- **Diagrama de secuencia** (`features/datastage/flow-diagram.ts`): en el detalle de una secuencia, cada actividad DataStage junto a la tarea y operador de Airflow que generó; condiciones en ámbar punteado; el manejador de excepciones se muestra como nota (se activa si falla cualquier job). El backend agrega `flow` (nodos + aristas) al resultado de cada secuencia (`datastage/generation.py`, `worker/tasks.py`). Requiere volver a migrar para que aparezca en migraciones previas.
+- **Celular** (`styles.css`, ≤860 px): menú lateral convertido en fila horizontal desplazable, barra superior compacta, tarjetas en 2 columnas, sin desplazamiento horizontal de página.
+- **Corrección:** cancelar una migración DataStage en cola la marca `cancelled` (antes quedaba `queued` y bloqueaba nuevas ejecuciones). Prueba `test_cancelling_a_queued_datastage_run_frees_the_project`.
+- **Pruebas E2E** (`frontend/e2e/ui.spec.ts`, `@playwright/test` 1.64.1 fijado, Node ≥ 20): login demo, barra de avance y navegación, diagrama de una secuencia, sin desplazamiento horizontal en 390 px. Se corren contra un stack levantado con datos (proyecto Java analizado y DataStage migrado): `cd frontend && npx playwright install chromium && E2E_BASE_URL=http://127.0.0.1:3240 npm run e2e`. **No están en CI** (necesitan stack + datos).
+
+| Suite | Resultado (2026-10-21) |
+|---|---|
+| Backend `pytest` | OK, sin fallos |
+| Frontend Vitest | 19/19 OK |
+| `ng build` | OK |
+| E2E Playwright (escritorio + celular, contra dev server local) | 6 OK, 2 omitidas por diseño (una por viewport) |

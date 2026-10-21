@@ -146,7 +146,18 @@ td .add { color: #067647; } td .del { color: #b42318; }
 .p-message { border-radius: 12px !important; }
 
 @media (max-width: 860px) {
-  .sidebar { position: static; width: auto; } .sidebar nav { flex-direction: row; flex-wrap: wrap; }
-  .main-col { margin-left: 0; } main { padding: 16px; } .split { grid-template-columns: 1fr; } .topbar { position: static; padding: 10px 16px; }
+  /* phone / small tablet: the side menu becomes a compact top bar whose links scroll sideways */
+  .sidebar { position: static; width: auto; padding: 10px 12px 6px; }
+  .brand { padding: 0 2px 8px; } .brand p { display: none; }
+  .sidebar nav { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding-bottom: 6px; scrollbar-width: thin; }
+  .sidebar nav a, .sidebar nav .nav-disabled { white-space: nowrap; padding: 7px 10px; font-size: 13.5px; }
+  .sidebar nav a.active { box-shadow: inset 0 -3px 0 #2fd0c8; }
+  .sidebar .project-card, .sidebar .hint, .sidebar .nav-title { display: none; }
+  .sidebar .bottom, .sidebar .nav-group { display: contents; }
+  .main-col { margin-left: 0; } main { padding: 16px; } .split { grid-template-columns: 1fr; }
+  .topbar { position: static; padding: 8px 16px; } .topbar .who small, .topbar .trail .muted { display: none; }
+  .page-header h1 { font-size: 23px; } .page-header .actions { width: 100%; }
+  .p-selectbutton { display: flex !important; flex-wrap: wrap; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .cards b { font-size: 23px; }
 }
 .brand, .brand:hover { color: #fff; text-decoration: none; }

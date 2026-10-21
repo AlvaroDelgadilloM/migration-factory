@@ -228,3 +228,21 @@ def test_platform_datastage_project_upload_job_and_artifacts(client, token, tmp_
         zf.writestr('docs/51.md', '# x')
     none = client.post('/api/v1/uploads', content=md.getvalue(), headers=hdr | {'X-Migration-Type': 'AUTO'})
     assert none.status_code == 422 and 'ni exportaciones DataStage' in none.text and '1 .md' in none.text
+
+
+def test_cancelling_a_queued_datastage_run_frees_the_project(client, token, tmp_path):
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as zf:
+        zf.write(FIX / 'shop_flow.dsx', 'x/shop_flow.dsx')
+    hdr = token('ana.arquitecta') | {'Content-Type': 'application/zip', 'X-Filename': 'dsx.zip', 'X-Migration-Type': 'AUTO'}
+    up = client.post('/api/v1/uploads', content=buf.getvalue(), headers=hdr).json()
+    pid = client.post('/api/v1/projects', headers=token('ana.arquitecta'), json={
+        'name': f'DS cancel {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': up['id'], 'targetRuntime': 'airflow',
+        'migrationType': 'DATASTAGE_AIRFLOW'}).json()['id']
+    first = client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={}).json()
+    assert client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={}).status_code == 409
+    assert client.post(f"/api/v1/jobs/{first['jobId']}/cancel", headers=token('ana.arquitecta')).status_code == 202
+    dm = client.get(f"/api/v1/datastage-migrations/{first['dataStageMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert dm['state'] == 'cancelled'
+    assert client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={}).status_code == 202
