@@ -10,7 +10,7 @@ import { EffortEstimate, Page, Plan, PlanStep, Profile, Scan, TargetVersions } f
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
 import { ActionButton, PageHeader, StateView, StatusTag, TrafficLight, short } from '../../shared/ui';
-import { VersionPicker } from '../../shared/version-picker';
+import { VersionPicker, profileFor } from '../../shared/version-picker';
 
 @Component({
   selector: 'mf-plan',
@@ -154,7 +154,7 @@ export class PlanPage {
       this.profiles.load(() => this.api.profiles({ status: 'validated' })).then(ps => {
         // the destination chosen in Inventario (Spring Boot / Quarkus), else the project's runtime
         const d = this.ctx.destination(), rt = d.runtime === 'tomcat' ? this.ctx.project()?.targetRuntime : d.runtime;
-        this.profileId = ps?.find(p => p.runtime === rt && !p.dependencyMapping?.['deployment'])?.id ?? ps?.[0]?.id ?? null;
+        this.profileId = profileFor(ps, { runtime: rt ?? 'spring', java: d.java, spring: d.spring }) ?? ps?.[0]?.id ?? null;
         this.java.set(d.java);  // the picker falls back to a validated Java if this profile does not accept it
       });
       const page = await this.scans.load(() => this.api.scans(id, { limit: 50 }));

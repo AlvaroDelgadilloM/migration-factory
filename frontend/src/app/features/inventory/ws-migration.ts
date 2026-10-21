@@ -10,7 +10,7 @@ import { Profile, TargetVersions, WorkspaceMigration } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
 import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
-import { VersionPicker } from '../../shared/version-picker';
+import { VersionPicker, profileFor } from '../../shared/version-picker';
 
 /** Doc 18 on the platform: migrate every project of the workspace by waves (dependencies first). */
 @Component({
@@ -147,7 +147,7 @@ export class WorkspaceMigrationPanel {
       if (!ps) return;
       untracked(() => {
         this.profileId = d.runtime === 'tomcat' ? this.TOMCAT
-          : ps.find(p => p.runtime === d.runtime && !p.dependencyMapping?.['deployment'])?.id ?? ps.find(p => p.runtime === d.runtime)?.id ?? null;
+          : profileFor(ps, d) ?? ps.find(p => p.runtime === d.runtime)?.id ?? null;
         this.java.set(d.java);
         this.spring.set(d.spring);
       });

@@ -12,7 +12,7 @@ import { Artifact, Module, Page, Route, Scan, TargetVersions } from '../../core/
 import { ProjectContext } from '../../core/project-context';
 import { CursorPager, Loader } from '../../shared/state';
 import { ActionButton, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
-import { VersionPicker } from '../../shared/version-picker';
+import { VersionPicker, runtimeEntry } from '../../shared/version-picker';
 import { WorkspacePanel } from './workspace';
 import { WorkspaceMigrationPanel } from './ws-migration';
 
@@ -50,7 +50,7 @@ import { WorkspaceMigrationPanel } from './ws-migration';
       <mf-version-picker [entry]="destinationEntry()" [java]="ctx.destination().java" (javaChange)="setJava($event)"
                          [spring]="ctx.destination().spring" (springChange)="setSpring($event)" />
       <small class="muted">Se usa al analizar y como valor inicial en «Migración por oleadas» y en Plan.
-        @if (ctx.destination().runtime !== 'tomcat') { Java 25 está validado con Tomcat WAR (Fuse/Karaf). }</small>
+        @if (ctx.destination().runtime === 'quarkus') { Java 25 está validado con Tomcat WAR y con Spring Boot 4.1 + Camel 4.22. }</small>
     </section>
     @if (startError(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
 
@@ -236,8 +236,7 @@ export class Inventory {
   });
   /** Java/Spring the chosen destination accepts (Tomcat WAR, or the validated Spring Boot / Quarkus profile). */
   destinationEntry = computed(() => {
-    const rt = this.ctx.destination().runtime;
-    return (this.versions.data() ?? []).find(v => v.runtime === rt) ?? null;
+    return runtimeEntry(this.versions.data(), this.ctx.destination().runtime);
   });
   dsls = [{ label: 'Todas', value: null }, { label: 'Java (aprox.)', value: 'java' }, { label: 'XML', value: 'xml' }];
   lastGood = computed(() => this.scans.data()?.items.find(s => s.status === 'succeeded') ?? null);
