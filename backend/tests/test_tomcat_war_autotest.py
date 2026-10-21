@@ -49,6 +49,22 @@ def test_rest_cases_use_the_servlet_alias_and_parameter_values(tmp_path):
     assert cases[1]['body'] == '{}' and cases[1]['contentType'] == 'application/json'
 
 
+def test_rest_declared_in_xml_also_gets_cases(tmp_path):
+    """RouteDump only reads RouteBuilders: <rest> of a Blueprint/Spring XML is read from the XML itself."""
+    project = tmp_path / 'x'
+    (project / 'src/main/resources/OSGI-INF/blueprint').mkdir(parents=True)
+    (project / 'src/main/resources/OSGI-INF/blueprint/rest.xml').write_text('''<blueprint><camelContext>
+      <restConfiguration component="servlet"><endpointProperty key="servletName" value="XServlet"/></restConfiguration>
+      <rest path="/orders"><get uri="/{id}"><to uri="direct:get"/></get><post><to uri="direct:new"/></post></rest>
+      <!-- <rest path="/old"><get uri="/x"/></rest> -->
+      <camel:rest path="/admin"><camel:verb method="delete" uri="/cache"/></camel:rest>
+    </camelContext></blueprint>''', encoding='utf-8')
+    dumps = autotest.xml_rest({'x': project}, ['x'])
+    assert sorted(k.split(' | ')[1] for k in dumps['x']) == ['rest:delete:/admin:/cache', 'rest:get:/orders:/{id}', 'rest:post:/orders']
+    cases = autotest.rest_cases(dumps, {'x': project}, {'XServlet': '/api'}, {'id': '42'})
+    assert sorted((c['method'], c['path']) for c in cases) == [('DELETE', '/api/admin/cache'), ('GET', '/api/orders/42'), ('POST', '/api/orders')]
+
+
 def test_soap_cases_come_from_the_published_endpoints_wsdl(tmp_path):
     mod = tmp_path / 'svc'
     (mod / 'META-INF/modules/svc').mkdir(parents=True)

@@ -333,6 +333,38 @@ def _join(*parts: str) -> str:
     return '/' + '/'.join(p.strip('/') for p in parts if p and p.strip('/'))
 
 
+_XML_REST = re.compile(r'<(?:[\w-]+:)?rest\b([^>]*)>(.*?)</(?:[\w-]+:)?rest\s*>', re.S)
+_XML_VERB = re.compile(r'<(?:[\w-]+:)?(get|post|put|patch|delete|head|options|verb)\b([^>]*?)/?>', re.I)
+
+
+def _attr(attrs: str, name: str) -> str | None:
+    m = re.search(r'\b' + name + r'\s*=\s*"([^"]*)"', attrs)
+    return m.group(1) if m else None
+
+
+def xml_rest(projects: dict, modules) -> dict:
+    """REST operations declared in Blueprint/Spring XML (<rest path="/base"><get uri="/x"/>…</rest>, also <verb method="get">)
+    as the route keys RouteDump gives for Java REST DSL (rest:<verb>:<base>:<uri>): RouteDump only reads RouteBuilders."""
+    out = {}
+    for module in modules:
+        project = projects.get(module)
+        res = project / 'src' / 'main' / 'resources' if project else None
+        if not res or not res.is_dir():
+            continue
+        for f in sorted(res.rglob('*.xml')):
+            text = re.sub(r'<!--.*?-->', '', pipeline.read(f), flags=re.S)
+            for rest in _XML_REST.finditer(text):
+                base = _attr(rest.group(1), 'path') or ''
+                for v in _XML_VERB.finditer(rest.group(2)):
+                    verb = (_attr(v.group(2), 'method') if v.group(1).lower() == 'verb' else v.group(1)) or ''
+                    if not verb:
+                        continue
+                    uri = _attr(v.group(2), 'uri') or ''
+                    key = f"{f.name} | rest:{verb.lower()}:{base}" + (f':{uri}' if uri else '')
+                    out.setdefault(module, {})[key] = []
+    return out
+
+
 def rest_cases(dumps: dict, projects: dict, aliases: dict, values: dict) -> list:
     """One case per REST operation of the route dumps: rest:<verb>:<path> or rest:<verb>:<base>:<path>."""
     cases = []
@@ -618,6 +650,8 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
     log(f"{len(deployed)} módulos en el contenedor '{container or 'todos'}'; leyendo sus servicios")
     java_migrated = str(Path(migrated_java_home) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')) if migrated_java_home else None
     dumps = verify.dump_migrated(source, {n: m['dir'] for n, m in deployed.items()}, work / 'migrated' / 'war', work, log, java_migrated)
+    for module, ops in xml_rest(projects, deployed).items():  # REST declared in XML: not in the RouteBuilder dumps
+        dumps[module] = {**dumps.get(module, {}), **ops}
     cases = rest_cases(dumps, projects, aliases, values) + soap_cases(deployed)
     if data and (data / 'casos.json').is_file():
         extra = json.loads((data / 'casos.json').read_text(encoding='utf-8'))

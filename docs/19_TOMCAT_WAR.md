@@ -252,15 +252,19 @@ en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, 
 - **Plataforma**: corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war",
   "config": {...}, "verifyRoutes": true}`; pantalla Inventario → destino «Tomcat WAR»). El análisis de workspace lo recomienda
   cuando la mayoría de los proyectos son OSGi/Blueprint. Acepta el archivo del cliente salvo `overlay` (carpeta del servidor)
-  y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. La comparación de respuestas está en «Pruebas»,
-  pero el resultado todavía no se registra solo como evidencia del gate G4.
-- **Capturas en la plataforma**: la imagen del worker no trae navegador; sin él la evidencia sale sin PNG (las páginas HTML sí).
+  y, tras compilar, ejecuta `verify routes` (G4) con el Maven del worker. Al terminar «Pruebas → Automáticas» sobre la
+  migración, su resultado queda como la mitad de respuestas de G4 (`equivalence.responses`, con la evidencia) y G4 se recalcula:
+  `FAIL` si difieren las rutas o las respuestas; `PASS` solo con estructura idéntica y respuestas idénticas **con datos del
+  cliente**; una prueba de humo deja G4 en `REVIEW`.
+- **Capturas en la plataforma**: la imagen del worker trae el Chromium de Playwright (amd64 y arm64; `MF_BROWSER`); la CI
+  comprueba una captura dentro de la imagen con el usuario sin privilegios.
 - **Casos generados**: uno por operación REST/SOAP con valores de ejemplo (`1`) o los de `valores.json`, y un cuerpo vacío
   (`{}` o el elemento de entrada sin contenido). Prueban que los dos lados se comportan igual con esa petición, no los
   escenarios de negocio: para eso están los casos del cliente (`casos.json` del paquete o la batería manual).
 - **Sistemas externos** en prueba de humo: responden 503. Lo que el original hace con una respuesta real del sistema
   externo solo se compara con `mocks.json` o contra el ambiente de pruebas del cliente.
-- **Rutas REST definidas en XML** (`<rest>`) no generan casos todavía; las de Java sí.
+- **Rutas REST definidas en XML** (`<rest>`, también `<verb method>`) generan casos leyendo el XML; la comparación de
+  estructura (`verify routes`) sigue sin incluirlas.
 - La línea base nunca se ha comparado contra un JBoss Fuse real.
 
 - Las pruebas del backend no corren en Windows (el worker usa el módulo POSIX `resource`); se ejecutaron en macOS: pasan.

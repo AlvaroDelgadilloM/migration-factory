@@ -1007,8 +1007,7 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
             status = 'PARTIAL_SUCCESS'
         if equivalence['routeStructure']['status'] == 'FAIL':
             reason = 'ROUTE_STRUCTURE_DIFFERENCES'  # a route Camel 4 builds differently without error: review before deploying
-    g4 = ('FAIL' if equivalence['routeStructure']['status'] == 'FAIL' else 'REVIEW')  # PASS needs responses too (docs/19)
-    res['equivalence'] = equivalence | {'g4': g4}
+    res['equivalence'] = equivalence | {'g4': g4_status(equivalence)}
     (out / 'reports' / 'tomcat-war-report.json').write_text(json.dumps(res, ensure_ascii=False, indent=2))
     set_phase(ctx, 'artifacts', 90)
     tag, arts = str(wm.id)[:8], {}
@@ -1104,6 +1103,34 @@ def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
                 os.environ[k] = v
 
 
+def g4_status(equivalence: dict) -> str:
+    """tomcat-war G4 (docs/19): FAIL when the routes or the responses differ; PASS only with identical route structure AND
+    identical responses on the client's data (a smoke test without data proves the same behaviour, not the business cases)."""
+    routes, resp = (equivalence.get('routeStructure') or {}).get('status'), equivalence.get('responses') or {}
+    if routes == 'FAIL' or resp.get('status') == 'FAIL':
+        return 'FAIL'
+    if routes == 'PASS' and resp.get('status') in ('PASS', 'PASS_WITH_ACCEPTED') and resp.get('mode') == 'DATOS':
+        return 'PASS'
+    return 'REVIEW'
+
+
+def _register_responses(db, run, summary: dict, evidence_id: str):
+    """An automatic test of a tomcat-war migration is the response half of its G4 evidence: stored with the migration (latest
+    run) and the gate recomputed, so nobody has to copy results by hand."""
+    from ..models import WorkspaceMigration
+    wm = db.get(WorkspaceMigration, run.workspace_migration_id) if run.workspace_migration_id else None
+    if wm is None or (wm.summary or {}).get('target') != 'tomcat-war':
+        return
+    eq = dict((wm.summary or {}).get('equivalence') or {})
+    eq['responses'] = {'status': summary['status'], 'mode': summary.get('mode'), 'container': summary.get('container') or None,
+                       'totals': summary['totals'], 'differencesByKind': summary.get('differencesByKind', {}),
+                       'generatedCases': summary.get('generatedCases'), 'httpTestRunId': str(run.id), 'evidence': evidence_id,
+                       'at': now().isoformat(timespec='seconds'),
+                       'detail': None if summary.get('mode') == 'DATOS' else 'Prueba de humo (sin datos del cliente): G4 queda en revisión'}
+    eq['g4'] = g4_status(eq)
+    wm.summary = {**wm.summary, 'equivalence': eq}  # new dict: JSON column change is tracked
+
+
 def do_http_compare(job: Job, ctx: Context):
     """Pruebas > Automáticas: the cases of the run to the original and to the migrated system (mf.tomcat_war.http_run).
     The URLs were validated by the API and are checked again here: the allowlist may have changed since."""
@@ -1129,6 +1156,8 @@ def do_http_compare(job: Job, ctx: Context):
         rs = _store(db, run.project_id, 'report-json', f'pruebas-{str(run.id)[:8]}-responses.json', (out / 'responses.json').read_text(encoding='utf-8'),
                     'application/json', ctx, commit=False)
         run.summary = summary | {'artifacts': {'evidence': str(ev.id), 'responses': str(rs.id)}}
+        if run.source == 'migration':
+            _register_responses(db, run, summary, str(ev.id))
         db.commit()
         if summary['status'] in ('PASS', 'PASS_WITH_ACCEPTED'):
             return None

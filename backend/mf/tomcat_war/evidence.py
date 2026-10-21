@@ -48,6 +48,7 @@ th{background:#f1f4f8} a{color:#0b5cad;text-decoration:none}
 
 
 def find_browser(explicit: str | None = None) -> str | None:
+    explicit = explicit or os.environ.get('MF_BROWSER')  # the worker image sets it (Playwright's Chromium)
     if explicit:
         return explicit if Path(explicit).is_file() else shutil.which(explicit)
     for name in BROWSERS:
@@ -214,6 +215,10 @@ def report(out: Path, browser: str | None = None, screenshots: bool = True, labe
             height = min(max(700, 330 + lines * 19), 12000)
             cmd = [exe, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', f'--user-data-dir={profiles / name}',
                    f'--window-size=1500,{height}', f'--screenshot={png}', (target / f'{name}.html').as_uri()]
+            if os.environ.get('MF_BROWSER_CONTAINER') == '1':
+                # in the worker container (non-root, no user namespaces, small /dev/shm) Chromium's sandbox cannot start; it
+                # only opens the local evidence pages written just above
+                cmd[1:1] = ['--no-sandbox', '--disable-dev-shm-usage']
             try:
                 shoot(cmd, png)
             except OSError as e:

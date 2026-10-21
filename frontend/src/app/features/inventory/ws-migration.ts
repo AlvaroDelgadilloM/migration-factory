@@ -70,7 +70,10 @@ import { VersionPicker } from '../../shared/version-picker';
             <p>Equivalencia (G4): <mf-status [value]="eq.g4" /> · estructura de rutas <mf-status [value]="eq.routeStructure?.status" />
               @if (eq.routeStructure?.totals; as t) { ({{ t.identical }} idénticas, {{ t.unexpected }} distintas, {{ t.expectedByPatch }} por parche) }
               @if (eq.routeStructure?.detail) { <small class="muted">{{ eq.routeStructure.detail }}</small> }
-              · respuestas <mf-status [value]="eq.responses?.status" /></p>
+              · respuestas <mf-status [value]="eq.responses?.status ?? 'NOT_RUN'" />
+              @if (eq.responses?.totals; as rt) { ({{ rt.same }} idénticas de {{ rt.cases }} casos
+                @if (eq.responses.mode === 'HUMO') { · prueba de humo, sin datos del cliente } · {{ eq.responses.at?.slice(0, 10) }}) }
+              @if (!eq.responses?.totals) { <small class="muted">— se llena solo al correr Pruebas → Automáticas sobre esta migración</small> }</p>
           }
           @if (tw(m).configKeys; as ck) {
             <p>Claves de configuración: {{ ck.used }} usadas · {{ ck.definedInRepository }} definidas en el repositorio ·

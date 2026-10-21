@@ -170,3 +170,25 @@ def test_run_from_a_migration_needs_its_war_and_a_valid_data_package(client, tok
     assert up(pkg({'../etc/x.properties': 'a=1'})).json()['code'] == 'DATA_PACKAGE_INVALID'
     assert up(pkg({'programa.exe': 'MZ'})).json()['code'] == 'DATA_PACKAGE_INVALID'
     assert up(b'no es zip').status_code == 422
+
+
+def test_an_automatic_test_of_a_migration_becomes_its_g4_response_evidence():
+    """docs/19: the responses half of G4 comes from Pruebas > Automáticas by itself; a smoke test keeps G4 in review."""
+    import types
+    import uuid as _uuid
+    from mf.worker.tasks import _register_responses, g4_status
+    assert g4_status({'routeStructure': {'status': 'PASS'}, 'responses': {'status': 'PASS', 'mode': 'DATOS'}}) == 'PASS'
+    assert g4_status({'routeStructure': {'status': 'PASS'}, 'responses': {'status': 'PASS', 'mode': 'HUMO'}}) == 'REVIEW'
+    assert g4_status({'routeStructure': {'status': 'PASS'}, 'responses': {'status': 'FAIL', 'mode': 'DATOS'}}) == 'FAIL'
+    assert g4_status({'routeStructure': {'status': 'FAIL'}}) == 'FAIL'
+    assert g4_status({'routeStructure': {'status': 'PASS'}}) == 'REVIEW'                    # no responses yet
+    wm = types.SimpleNamespace(summary={'target': 'tomcat-war', 'equivalence': {'routeStructure': {'status': 'PASS'}, 'g4': 'REVIEW'}})
+    db = types.SimpleNamespace(get=lambda model, key: wm)
+    run = types.SimpleNamespace(id=_uuid.uuid4(), workspace_migration_id=_uuid.uuid4())
+    summary = {'status': 'PASS', 'mode': 'DATOS', 'container': 'mobile', 'generatedCases': 3,
+               'totals': {'cases': 3, 'same': 3, 'different': 0, 'accepted': 0, 'notExecutable': 0}}
+    _register_responses(db, run, summary, 'ev-1')
+    eq = wm.summary['equivalence']
+    assert eq['g4'] == 'PASS' and eq['responses']['evidence'] == 'ev-1' and eq['responses']['httpTestRunId'] == str(run.id)
+    _register_responses(db, run, summary | {'mode': 'HUMO'}, 'ev-2')                        # the latest run is the evidence
+    assert wm.summary['equivalence']['g4'] == 'REVIEW' and 'humo' in wm.summary['equivalence']['responses']['detail']

@@ -6,6 +6,7 @@ import java.io.OutputStreamWriter;
 import java.util.List;
 
 import org.apache.camel.Exchange;
+import org.apache.camel.StreamCache;
 import org.apache.camel.spi.DataFormat;
 import org.apache.camel.support.ExchangeHelper;
 import org.apache.camel.support.service.ServiceSupport;
@@ -90,7 +91,9 @@ public class XmlJsonDataFormat extends ServiceSupport implements DataFormat {
 
 	@Override
 	public void marshal(Exchange exchange, Object graph, OutputStream stream) throws Exception {
-		InputStream xml = exchange.getContext().getTypeConverter().convertTo(InputStream.class, exchange, graph);
+		// as camel-xmljson 2.23: a String body is read as text, anything else as a stream when it converts to one
+		InputStream xml = graph instanceof String ? null
+				: exchange.getContext().getTypeConverter().convertTo(InputStream.class, exchange, graph);
 		JSON json;
 		if (xml != null) {
 			json = serializer.readFromStream(xml);
@@ -106,12 +109,23 @@ public class XmlJsonDataFormat extends ServiceSupport implements DataFormat {
 	@Override
 	public Object unmarshal(Exchange exchange, InputStream stream) throws Exception {
 		Object body = exchange.getIn().getBody();
+		// as camel-xmljson 2.23 (bytecode): an empty request (no body, an empty stream cache or empty text) is not JSON to
+		// parse; it stays empty and the next step decides (e.g. the schema validator answers its own 400). Parsing it threw
+		// "Invalid JSON String" and turned that 400 into a 500.
+		if (body == null) {
+			return null;
+		}
+		if (body instanceof StreamCache cache && cache.length() <= 0) {
+			return body;
+		}
 		JSON json;
 		if (body instanceof JSON) {
 			json = (JSON) body;
 		} else {
-			String text = exchange.getContext().getTypeConverter().mandatoryConvertTo(String.class, exchange,
-					body != null ? body : stream);
+			String text = exchange.getContext().getTypeConverter().convertTo(String.class, exchange, body);
+			if (text == null || text.isEmpty()) {
+				return null;
+			}
 			json = JSONSerializer.toJSON(text);
 		}
 		return encoding == null ? serializer.write(json) : serializer.write(json, encoding);

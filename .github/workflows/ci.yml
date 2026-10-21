@@ -65,3 +65,13 @@ jobs:
           docker build -f docker/api.Dockerfile -t migration-factory/api:ci .
           docker build -f docker/worker.Dockerfile -t migration-factory/worker:ci .
           docker build -f docker/frontend.Dockerfile -t migration-factory/frontend:ci .
+      - name: Capturas de la evidencia dentro de la imagen del worker (usuario sin privilegios)
+        run: |
+          docker run --rm migration-factory/worker:ci python -c "
+          import tempfile; from pathlib import Path; from mf.tomcat_war import evidence
+          d = Path(tempfile.mkdtemp()); (d / 'p.html').write_text('<h1>evidencia</h1>')
+          exe = evidence.find_browser(); assert exe, 'sin navegador'
+          png = d / 'p.png'
+          evidence.shoot([exe, '--no-sandbox', '--disable-dev-shm-usage', '--headless=new', '--disable-gpu', '--user-data-dir=' + str(d / 'prof'),
+                          '--window-size=800,600', '--screenshot=' + str(png), (d / 'p.html').as_uri()], png)
+          assert png.exists() and png.stat().st_size > 1000, 'no generó la captura'; print('captura OK', exe, png.stat().st_size)"

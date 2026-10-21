@@ -12,6 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 # one only to build and run Java 25 results.
 COPY --from=jdk25 /opt/java/openjdk /opt/jdk-25
 RUN /opt/jdk-25/bin/java -version
+# Screenshots of the test evidence (mf.tomcat_war.evidence): Playwright's Chromium, pinned, with its system libraries. Ubuntu's
+# own chromium is a snap stub that does not run in a container and Google Chrome has no linux/arm64 build; Playwright publishes
+# both. Only the browser stays: the downloader venv is removed. It opens only the local evidence pages the worker writes.
+RUN python3 -m venv /tmp/pw && /tmp/pw/bin/pip install "playwright==1.49.1" \
+    && PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright /tmp/pw/bin/playwright install --with-deps chromium \
+    && ln -s "$(ls -d /opt/ms-playwright/chromium-*/chrome-linux/chrome | head -1)" /usr/local/bin/chromium \
+    && rm -rf /tmp/pw /var/lib/apt/lists/* \
+    && chromium --version
 # DataStage -> Airflow DAG_PARSE_GATE: Apache Airflow in its own venv (pinned with the official constraints), used only to
 # import the GENERATED DAGs with DagBag in a separate process; the platform venv never imports Airflow.
 RUN python3 -m venv /opt/airflow-venv \
@@ -25,7 +33,8 @@ COPY backend/ ./
 COPY rules/ /app/rules/
 COPY examples/ /app/examples/
 ENV PATH=/opt/venv/bin:$PATH MF_RULES_CATALOG=/app/rules/catalog.json MAVEN_HOME=/usr/share/maven \
-    MF_AIRFLOW_PYTHON=/opt/airflow-venv/bin/python MF_JDK25_HOME=/opt/jdk-25
+    MF_AIRFLOW_PYTHON=/opt/airflow-venv/bin/python MF_JDK25_HOME=/opt/jdk-25 \
+    MF_BROWSER=/usr/local/bin/chromium MF_BROWSER_CONTAINER=1
 USER 10001
 # The base image entrypoint writes to /root/.m2; not needed (maven.repo.local is set per run).
 ENTRYPOINT []
