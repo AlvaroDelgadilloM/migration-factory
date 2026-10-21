@@ -83,6 +83,13 @@ code { font-size: .92em; background: var(--mf-line-2); padding: 1px 5px; border-
 .destination .vp { display: inline-flex; flex-direction: column; gap: 4px; }
 .destination .vp label { font-size: 12px; color: var(--mf-muted); }
 .destination > small { flex-basis: 100%; }
+.destination .origin { display: flex; flex-direction: column; gap: 4px; min-width: 15rem; max-width: 26rem; padding-right: 4px; }
+.destination .o-title { font-size: 12px; color: var(--mf-muted); }
+.destination .origin dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 13px; }
+.destination .origin dl div { display: contents; }
+.destination .origin dt { color: var(--mf-muted); }
+.destination .origin dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.destination .arrow { align-self: center; color: var(--mf-muted); font-size: 18px; }
 /* the picker's fields line up with Destino; its note goes on its own line under all of them */
 .destination mf-version-picker { display: contents; }
 .destination .vp-hint { flex-basis: 100%; margin: -6px 0 0; }

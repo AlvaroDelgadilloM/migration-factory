@@ -29,7 +29,21 @@ import { WorkspaceMigrationPanel } from './ws-migration';
       }
       <mf-action label="Analizar" icon="pi pi-play" [busy]="starting()" [disabledReason]="scanBlockReason()" (run)="startScan()" />
     </mf-page-header>
-    <section class="destination" aria-label="Destino de la migración">
+    <section class="destination" aria-label="Origen y destino de la migración">
+      <div class="origin" aria-label="Origen detectado">
+        <span class="o-title">Origen <small class="muted">· detectado del código</small></span>
+        @if (origin(); as o) {
+          <dl>
+            <div><dt>Plataforma</dt><dd>{{ o.platform }}</dd></div>
+            <div><dt>Camel</dt><dd>{{ o.camel }}</dd></div>
+            <div><dt>Java</dt><dd>{{ o.java }}</dd></div>
+            <div><dt>Spring</dt><dd>{{ o.spring }}</dd></div>
+          </dl>
+        } @else {
+          <small class="muted">Se detecta al analizar el código («Analizar»).</small>
+        }
+      </div>
+      <i class="pi pi-arrow-right arrow" aria-hidden="true"></i>
       <span class="vp"><label for="dest">Destino</label>
         <p-select inputId="dest" [options]="destinations" optionLabel="label" optionValue="value" [ngModel]="ctx.destination().runtime"
                   (ngModelChange)="ctx.setDestination({ runtime: $event })" [style]="{ minWidth: '19rem' }" /></span>
@@ -181,6 +195,45 @@ export class Inventory {
   destinations = [{ label: 'Tomcat WAR · Fuse/Karaf → Camel 4', value: 'tomcat' }, { label: 'Spring Boot', value: 'spring' },
     { label: 'Quarkus', value: 'quarkus' }];
   versions = new Loader<TargetVersions[]>();
+  /** What the analysed code runs on today, from the selected analysis: vendor platform (BOM/parent), Blueprint/OSGi or JBoss
+   *  signals, and the Java / Camel / Spring versions of its modules (or of each project of a workspace). */
+  origin = computed(() => {
+    const s = this.scan.data();
+    if (!s || s.status !== 'succeeded') return null;
+    const sum = (s.summary ?? {}) as Record<string, any>;
+    const mods = this.modules.data() ?? [];
+    const techs: string[] = ((sum['workspace']?.projects ?? []) as { technologies?: string[] }[]).flatMap(p => p.technologies ?? []);
+    const java = new Set<string>(), camel = new Set<string>(), spring = new Set<string>();
+    const javaLabel = (v: string) => v.trim().replace(/^1\./, '');
+    for (const m of mods) {
+      const j = m.javaResolved || m.javaObserved;
+      if (j) java.add(javaLabel(j));
+      for (const c of (m.camelVersions ?? []) as string[]) if (c && c !== '?') camel.add(c);
+      for (const d of (m.dependencies ?? []) as { groupId?: string; artifactId?: string; versionResolved?: string }[])
+        if (d.groupId === 'org.springframework' && d.versionResolved && /^spring-(core|context|beans)$/.test(d.artifactId ?? '')) spring.add(d.versionResolved);
+    }
+    for (const t of techs) {
+      if (t.startsWith('Java ')) t.slice(5).split(',').forEach(v => v.trim() && java.add(javaLabel(v)));
+      if (t.startsWith('Camel ')) t.slice(6).split(',').forEach(v => v.trim() && v.trim() !== '?' && camel.add(v.trim()));
+    }
+    const plat = sum['platform'] as { platform?: string; vendorBoms?: { version?: string }[] } | null;
+    const bomVersion = plat?.vendorBoms?.find(b => b.version)?.version;
+    const osgi = techs.includes('Blueprint/OSGi') || mods.some(m => m.packaging === 'bundle');
+    const jboss = techs.includes('JBoss') || !!sum['legacyRuntime']?.jndiDataSources?.length;
+    const platform = plat?.platform === 'RED_HAT_FUSE_KARAF' ? 'Red Hat Fuse · Karaf (OSGi Blueprint)'
+      : plat?.platform === 'RED_HAT_FUSE_SPRING_BOOT' ? 'Red Hat Fuse · Spring Boot'
+      : plat?.platform === 'RED_HAT_FUSE' ? 'Red Hat Fuse'
+      : plat?.platform === 'APACHE_KARAF_OSGI' || osgi ? 'Karaf / Fuse (OSGi Blueprint)'
+      : jboss ? 'JBoss / EAP'
+      : mods.some(m => m.packaging === 'war' || m.packaging === 'ear') ? 'Servidor de aplicaciones (WAR/EAR)' : 'Java / Maven';
+    const list = (xs: Set<string>, prefix = '') => xs.size ? [...xs].sort().map(v => prefix + v).join(', ') : null;
+    return {
+      platform: platform + (bomVersion ? ` ${bomVersion}` : ''),
+      camel: list(camel) ?? 'no detectado',
+      java: list(java, 'Java ') ?? 'no declarado en los POM',
+      spring: list(spring) ?? (osgi ? 'no usa (Blueprint)' : 'no detectado'),
+    };
+  });
   /** Java/Spring the chosen destination accepts (Tomcat WAR, or the validated Spring Boot / Quarkus profile). */
   destinationEntry = computed(() => {
     const rt = this.ctx.destination().runtime;
