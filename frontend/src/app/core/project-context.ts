@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal, untracked } from '@angular/core';
 import { Api } from './api';
 import { Permissions, Project } from './models';
 
@@ -45,7 +45,9 @@ export class ProjectContext {
 
   /** A default that does not count as a choice (nothing is remembered). */
   suggestDestination(runtime: DestinationRuntime) {
-    if (!this.destinationChosen() && this.destination().runtime !== runtime) this.destination.update(d => ({ ...d, runtime, spring: null }));
+    untracked(() => {  // never a dependency of the caller's effect: it writes the signal it would read
+      if (!this.destinationChosen() && this.destination().runtime !== runtime) this.destination.update(d => ({ ...d, runtime, spring: null }));
+    });
   }
 
   setDestination(d: Partial<Destination>) {

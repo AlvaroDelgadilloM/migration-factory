@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { InputTextModule } from 'primeng/inputtext';
@@ -193,11 +193,14 @@ export class Inventory {
   constructor() {
     effect(() => { const id = this.projectId(); this.ctx.select(id); this.loadScans(true); });
     this.versions.load(() => this.api.targetVersions());
-    // until someone chooses: the project's runtime, or Tomcat WAR when the analysis recommends it (a Fuse/Karaf workspace)
-    effect(() => { const p = this.ctx.project(); if (p?.targetRuntime === 'spring' || p?.targetRuntime === 'quarkus') this.ctx.suggestDestination(p.targetRuntime); });
+    // until someone chooses, ONE suggestion: Tomcat WAR when the analysis recommends it (a Fuse/Karaf workspace), else the
+    // project's runtime. It only reads the project and the scan: reading the destination here would make it re-run on its own write.
     effect(() => {
+      const p = this.ctx.project();
       const ws = this.scan.data()?.summary?.['workspace'] as { shared?: { recommendedTarget?: { target?: string } } } | undefined;
-      if (ws?.shared?.recommendedTarget?.target === 'tomcat-war') this.ctx.suggestDestination('tomcat');
+      const rt = ws?.shared?.recommendedTarget?.target === 'tomcat-war' ? 'tomcat'
+        : p?.targetRuntime === 'spring' || p?.targetRuntime === 'quarkus' ? p.targetRuntime : null;
+      if (rt) untracked(() => this.ctx.suggestDestination(rt));
     });
     effect(() => {  // a DataStage project has its own screens (old links to its inventory land on its summary)
       const p = this.ctx.project();

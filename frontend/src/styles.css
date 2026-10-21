@@ -83,6 +83,9 @@ code { font-size: .92em; background: var(--mf-line-2); padding: 1px 5px; border-
 .destination .vp { display: inline-flex; flex-direction: column; gap: 4px; }
 .destination .vp label { font-size: 12px; color: var(--mf-muted); }
 .destination > small { flex-basis: 100%; }
+/* the picker's fields line up with Destino; its note goes on its own line under all of them */
+.destination mf-version-picker { display: contents; }
+.destination .vp-hint { flex-basis: 100%; margin: -6px 0 0; }
 .filters span { display: flex; flex-direction: column; gap: 4px; } .filters label { font-size: 12px; color: var(--mf-muted); }
 .inline { display: inline-flex !important; flex-direction: row !important; gap: .5rem; align-items: center; }
 .pager { display: flex; gap: 1rem; align-items: center; justify-content: flex-end; padding: 10px 0; }
