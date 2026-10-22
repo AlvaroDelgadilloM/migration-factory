@@ -73,31 +73,31 @@ Documento 16 (estado real del job y POM del candidato), verificado con el proyec
 ## 3. Funcionalidades parciales
 
 - **PR borrador**: (verificado 2026-10-13 contra GitHub real) proyecto Git sobre AlvaroDelgadilloM/migration-factory, raíz examples/pilot-orders, apply con Maven real, revisión independiente → PR borrador #2 (rama mf/35659167, 8 archivos, solo la fixture). Bug encontrado y corregido: `prConfig` se guardaba en snake_case y el worker/UI lo leían en camelCase (KeyError credentialRef); regresión en test_api. GitLab/Bitbucket no implementados.
-- **Origen Git**: probado con un repositorio local en pruebas (validación de URL sustituida solo en el test); no se ejecutó un piloto contra un host Git real.
-- **Carpeta de mi computadora con plataforma remota**: se sube con el selector de carpeta del navegador (copia, no ruta). Un agente local que lea la carpeta sin subirla no está implementado.
+- **Origen Git**: (resuelto 2026-10-22) piloto contra github.com real: política de URL con DNS real, `git clone`, migración (`test_git_source_against_a_real_host`, `MF_NETWORK_TESTS=1`).
+- **Carpeta de mi computadora con plataforma remota**: (resuelto 2026-10-22) agente local (`migrate.py agent push`, origen «agente local»): ver sección 2026-10-22.
 - **Selector de carpeta del navegador**: el diálogo del sistema operativo no se automatizó en la prueba de UI; el ZIP que genera está cubierto por pruebas y validado contra el lector de Python.
 - **Nueva versión de ZIP para un proyecto existente**: (resuelto 2026-10-12) `PUT /projects/{id}/upload` (owner) y UI en Proyecto → Origen.
 - **OIDC**: validación JWT por JWKS/discovery y flujo Code+PKCE en la UI implementados; **no probado contra un IdP real** (Keycloak no levantado). El modo `dev` sí está probado.
-- **Gestor de secretos**: referencias `vault:` aceptadas, pero el adaptador devuelve `VAULT_NOT_CONFIGURED`.
-- **ArtifactStore**: solo sistema de archivos local; S3/Blob pendiente.
-- **Frontend**: Plan, Ejecución, Diff, Validación, Reglas, Auditoría y Proyecto compilan y están conectadas a la API, pero **no se recorrieron en el navegador** (sesión interrumpida por el límite de uso). Sin pruebas unitarias de frontend.
+- **Gestor de secretos**: (resuelto 2026-10-22) `vault:montaje/ruta[#campo]` contra HashiCorp Vault KV v2, probado con un Vault real.
+- **ArtifactStore**: (resuelto 2026-10-22) backend S3 compatible (AWS S3, MinIO) para artefactos y ZIPs, probado con MinIO real. Azure Blob no.
+- **Frontend**: (resuelto) Vitest 19 pruebas y Playwright: flujo Java completo en navegador (2026-10-22).
 - **Rutas Java**: detección por regex (aproximada, marcada así en API y UI); sin AST.
 
 ## 4. Pendientes
 
-0. Inyección por constructor (sin receta verificada; revisión manual) y conversión de properties legacy a YAML (se conservan para no cambiar su carga).
+0. (Resuelto) Inyección por constructor: modernización `MOD_FIELD_INJECTION` (2026-10-06). Properties → YAML: `MOD_PROPERTIES_YAML` (2026-10-22).
 
-1. Prueba E2E de UI (Plan → Ejecución → Diff → Validación) y pruebas unitarias Angular (Vitest).
-2. Perfil Docker Compose con Keycloak para probar OIDC de extremo a extremo.
+1. (Resuelto 2026-10-22) E2E de UI del flujo completo (`frontend/e2e/flow.spec.ts`) y workflow diario `UI e2e`.
+2. (Resuelto 2026-10-12) `docker-compose.oidc.yml` + `scripts/oidc_e2e.py`.
 3. Re-ejecución manual de suites/fases (botones deshabilitados con explicación en la UI).
-4. Carga de archivos de evidencia (deshabilitado con explicación).
-5. Aislamiento fuerte de builds: runner efímero por job (Kubernetes Job + gVisor/Kata) y egress restringido por red (hoy: mirror Maven obligatorio en settings, red separada, contenedor sin privilegios).
-6. Caché `~/.m2` compartida entre proyectos (riesgo de envenenamiento): aislar por proyecto.
+4. (Resuelto 2026-10-12) `POST /executions/{id}/evidence-files`.
+5. (Implementado 2026-10-22, falta probar en clúster) `MF_EXECUTION_MODE=k8s`: pod efímero gVisor por job + NetworkPolicy + proxy de salida (`deploy/k8s`).
+6. (Resuelto 2026-10-22) repositorio Maven local por proyecto (`MF_MAVEN_REPO_PER_PROJECT`).
 7. Paginación por offset opaco (keyset si los volúmenes crecen).
 
 ## 5. Limitaciones verificadas
 
-- `camel-upgrade-recipes` cubre **solo 3.x→4.x**: el paso Camel 2→3 es manual y bloquea hasta que un arquitecto resuelve el hallazgo con motivo.
+- `camel-upgrade-recipes` cubre solo 3.x→4.x; desde 2026-10-22 el paso Camel 2→3 es una receta automática generada desde los jars (ver sección), liberada cuando un arquitecto acepta CAMEL2_VERSION. Lo que Camel 3 eliminó (1 039 clases) no se adivina.
 - `vm:`/`direct-vm:` no se transforman; quedan como paso MANUAL bloqueante del PR.
 - El candidato puede compilar y pasar pruebas sin ser equivalente: G4 exige evidencia externa.
 - PrimeNG 22 exige clave de licencia (licencia PrimeUI); se eligió PrimeNG 21.1.10 (MIT) con Angular 21.2.25.
@@ -579,3 +579,48 @@ vm/direct-vm y Blueprint siguen siendo decisiones manuales por diseño (no reemp
 | Frontend Vitest | 19/19 OK |
 | `ng build` | OK |
 | E2E Playwright (escritorio + celular, contra dev server local) | 6 OK, 2 omitidas por diseño (una por viewport) |
+
+## Pendientes cerrados (2026-10-22)
+
+Cada punto con su prueba. Backend `pytest` completo en verde; frontend Vitest 19/19; Playwright 6 + flujo completo.
+
+- **Caché Maven por proyecto** (`mavenops.repo_local`): `/m2/projects/<id>`; un plugin malicioso solo envenena la caché de su
+  proyecto. `test_maven_local_repository_is_per_project`.
+- **Migración en paralelo dentro de una oleada**: ya existía en el motor (probada en `test_parallel_migration_inside_a_wave`); se
+  activa en la plataforma con `MF_WORKSPACE_MIGRATION_PARALLELISM=2` en `worker-long` (límite de memoria 4 GB).
+- **DataStage: programación de los DAGs**: cron por DAG guardado en la plataforma (validado, auditado), heredado por la siguiente
+  migración y escrito en el DAG y en `config/schedules.yaml`. UI: detalle de la secuencia. `test_dag_schedule_*`.
+- **DataStage: propuestas de IA** (doc 58, `mf/datastage/ai_fallback.py`): para cada expresión que el traductor rechaza, el
+  modelo propone SQL de Oracle; validadores determinísticos (sin sentencias ni comentarios, balanceo, solo columnas conocidas);
+  nunca se aplica (`ai-proposals.md`). Apagado por defecto (`MF_AI_ENABLED`, clave `MF_CRED_AI`). Se envía la expresión y nombres
+  de columnas, nunca datos. Probado con un modelo simulado; **no se probó contra la API real** (no hay clave en este entorno).
+- **Vault** (`security.vault_read`): `vault:montaje/ruta[#campo]`, token `MF_CRED_VAULT_TOKEN`; probado contra Vault 1.20 real.
+- **S3** (`storage.S3Blobs`): artefactos y ZIPs; sin volumen compartido. Probado contra MinIO real (subida, artefactos del worker,
+  descarga, borrado del proyecto).
+- **PR borrador GitLab y Bitbucket** (`worker/providers.py`): GitLab.com o propio (`Draft:`), Bitbucket Cloud (`draft: true`),
+  usuario de token por proveedor. Probado con respuestas simuladas; **no contra GitLab/Bitbucket reales** (sin credenciales).
+- **Origen Git real**: piloto contra github.com (este repositorio, público).
+- **SBOM completo + vulnerabilidades**: CycloneDX Maven plugin 2.9.3 (transitivas) y osv-scanner 2.7.0 con la base OSV local
+  (el inventario no sale del worker). Piloto real: 101 componentes, 1 vulnerabilidad moderada (log4j-api 2.24.3).
+- **Properties → YAML** (`MOD_PROPERTIES_YAML`): conversión verificada por ida y vuelta; bloquea índices y claves prefijo.
+- **Tomcat 11 WAR** (perfil `tomcat-11-war-spring-boot-4.1-camel-4.22`, CLI `--target tomcat11`): ejemplo JBoss con Java 25 en
+  `tomcat:11.0.27-jdk25-temurin`, 9/9 casos iguales al legado (`examples/jboss-legacy-shop/evidence/migrated-tomcat11`).
+- **Camel 2 → 3 automático** (`mf/camel2to3.py`, `rules/camel/camel2-to-camel3-types.json` generado por
+  `scripts/gen_camel2to3_map.py` desde camel-core 2.24.3 vs 3.22.4): 331 clases movidas (OpenRewrite ChangeType), 10 excluidas
+  con motivo (p. ej. `spring.Main`), `@EndpointInject/@Produce/@Consume uri=` → `value=`, `${property.}` → `${exchangeProperty.}`
+  (regla `CAMEL2_SIMPLE_PROPERTY`, ediciones localizadas). Real con Maven: `examples/camel2-api` 2/2 → Camel 4.14 3/3.
+- **Agente local** (`mf/api/agent.py`, `migrate.py agent push`): analiza en la máquina del usuario y envía solo hechos; la
+  plataforma reaplica su catálogo (severidad, bloqueo, recomendación), redacta y rechaza ejecutar (la migración corre allí).
+  Probado contra el stack local con Postgres: 6 KB, 10 hallazgos.
+- **Kubernetes** (`MF_EXECUTION_MODE=k8s`, `mf/worker/k8s_runner.py`, `deploy/k8s`): pod efímero por job con gVisor, sin root,
+  raíz de solo lectura, sin token, emptyDir, límites; NetworkPolicy + proxy de salida; Maven por proxy (`MF_MAVEN_PROXY`).
+  Probado con la API simulada; **falta correrlo en un clúster real** (kind requiere espacio en disco de Docker).
+- **E2E de UI**: flujo Java completo con Maven real (3.9 min) + workflow `UI e2e` diario sobre el stack de Compose.
+
+Repositorio real del usuario (solo lectura, salida fuera del repositorio): análisis de los 33 proyectos ANALYSIS_PARTIAL_SUCCESS
+(32 WARN, 1 PARTIAL por el repositorio privado de Red Hat Fuse). `member-phygital`: baseline compila; la migración se detiene
+correctamente en el gate de componentes (`camel-swagger` sin reemplazo 1:1: decisión del equipo) y en el runtime OSGi. No se
+corrieron pipelines que instancien beans contra ese código (tiene configuración de bases de datos reales).
+
+Sigue pendiente: reconciliación DataStage contra el DataStage del cliente (requiere su entorno; la reconciliación con Oracle y
+Airflow reales ya corre en CI con datos sintéticos) y login corporativo (excluido a pedido).
