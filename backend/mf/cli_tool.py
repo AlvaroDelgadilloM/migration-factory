@@ -20,9 +20,10 @@ import uuid
 from pathlib import Path
 
 EXIT_OK, EXIT_ERROR, EXIT_BUILD, EXIT_CRITICAL, EXIT_INPUT = 0, 1, 2, 3, 4
-TARGETS = {'springboot': 'spring', 'spring': 'spring', 'springboot4': 'spring', 'quarkus': 'quarkus', 'tomcat': 'spring', 'tomcat-war': 'tomcat-war'}
-PROFILE_KEYS = {'springboot4': 'spring-boot-4.1-camel-4.22'}  # targets that select a profile other than the runtime's first one
-WAR_TARGETS = {'tomcat'}  # one project -> WAR for an external Tomcat 10.1 (Spring Boot engine); tomcat-war is the Fuse workspace pipeline
+TARGETS = {'springboot': 'spring', 'spring': 'spring', 'springboot4': 'spring', 'quarkus': 'quarkus', 'tomcat': 'spring', 'tomcat11': 'spring',
+           'tomcat-war': 'tomcat-war'}
+PROFILE_KEYS = {'springboot4': 'spring-boot-4.1-camel-4.22', 'tomcat11': 'tomcat-11-war-spring-boot-4.1-camel-4.22'}  # targets that select a profile other than the runtime's first one
+WAR_TARGETS = {'tomcat', 'tomcat11'}  # one project -> WAR for an external Tomcat 10.1 / 11 (Spring Boot engine); tomcat-war is the Fuse workspace pipeline
 ACTION = {'AUTO': 'AUTOMATIC', 'AUTO_TEST': 'AUTOMATIC_WITH_REVIEW', 'REVIEW': 'AUTOMATIC_WITH_REVIEW', 'MANUAL': 'MANUAL'}
 JAKARTA_FIX = {  # compile error "package javax.X does not exist" -> verified Jakarta recipe
     'javax.jms': 'org.openrewrite.java.migrate.jakarta.JavaxJmsToJakartaJms',

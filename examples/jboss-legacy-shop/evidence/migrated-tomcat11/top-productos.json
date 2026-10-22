@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/stats/top-products",
+    "body": null
+  },
+  "status": 200,
+  "contentType": "application/json",
+  "response": [
+    {
+      "id": 252,
+      "name": "Tour 252",
+      "units": 853
+    },
+    {
+      "id": 262,
+      "name": "Upgrade 262",
+      "units": 848
+    },
+    {
+      "id": 190,
+      "name": "Upgrade 190",
+      "units": 837
+    },
+    {
+      "id": 144,
+      "name": "Noche 144",
+      "units": 832
+    },
+    {
+      "id": 109,
+      "name": "Cena 109",
+      "units": 829
+    }
+  ]
+}

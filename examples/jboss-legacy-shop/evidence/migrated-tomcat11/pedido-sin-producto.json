@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/orders",
+    "body": {
+      "customerId": 42,
+      "quantity": 1
+    }
+  },
+  "status": 400,
+  "contentType": "application/json",
+  "response": {
+    "error": "Campo obligatorio numérico: productId"
+  }
+}

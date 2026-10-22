@@ -61,7 +61,7 @@ def _package_of(java_file: str) -> tuple[str, str] | None:
     return None
 
 
-def _spring_app(pkg, war=False):
+def _spring_app(pkg, war=False, container='Tomcat 10.1'):
     if not war:
         return (f'package {pkg};\n\nimport org.springframework.boot.SpringApplication;\n'
                 'import org.springframework.boot.autoconfigure.SpringBootApplication;\n\n'
@@ -72,7 +72,7 @@ def _spring_app(pkg, war=False):
             'import org.springframework.boot.autoconfigure.SpringBootApplication;\n'
             'import org.springframework.boot.builder.SpringApplicationBuilder;\n'
             'import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;\n\n'
-            '/** Generado por Migration Factory: WAR para Tomcat 10.1 (SpringBootServletInitializer); también arranca con java -jar. Revisar. */\n'
+            f'/** Generado por Migration Factory: WAR para {container} (SpringBootServletInitializer); también arranca con java -jar. Revisar. */\n'
             '@SpringBootApplication\npublic class Application extends SpringBootServletInitializer {\n'
             '    @Override\n    protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {\n'
             '        return builder.sources(Application.class);\n    }\n\n'
@@ -294,7 +294,7 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
         mod = deployables[0]
         mod_dir = str(PurePosixPath(mod.path).parent)
         prefix = '' if mod_dir == '.' else mod_dir + '/'
-        war = profile.dependency_mapping.get('deployment') == 'war'  # external Tomcat 10.1 instead of an executable jar
+        war = profile.dependency_mapping.get('deployment') == 'war'  # external Tomcat (10.1 or 11) instead of an executable jar
         if mod.packaging != ('war' if war else 'jar'):
             items.append(('org.openrewrite.maven.ChangePackaging',
                           {'groupId': mod.group_id, 'artifactId': mod.artifact_id, 'packaging': 'war' if war else 'jar'}))
@@ -364,7 +364,8 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
             if pkg:
                 items.append(('org.openrewrite.text.CreateTextFile',
                               {'relativeFileName': f"{prefix}src/main/java/{pkg.replace('.', '/')}/Application.java",
-                               'fileContents': _spring_app(pkg, war), 'overwriteExisting': False}))
+                               'fileContents': _spring_app(pkg, war, profile.dependency_mapping.get('servletContainer', 'Apache Tomcat 10.1').replace('Apache ', '')),
+                               'overwriteExisting': False}))
             if pkg and usable:
                 items.append(('org.openrewrite.text.CreateTextFile',
                               {'relativeFileName': f"{prefix}src/main/java/{pkg.replace('.', '/')}/MigratedRoutesConfig.java",

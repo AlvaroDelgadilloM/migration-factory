@@ -38,6 +38,19 @@ def test_java25_plan_upgrades_java_and_uses_boot4_starters():
         cli_tool.build_plan(report, 'spring', '25', ACCEPT)
 
 
+
+def test_tomcat11_war_plan_on_spring_boot4():
+    """Tomcat 11 WAR (Spring Boot 4.1 + Camel 4.22): verified end to end in tomcat:11.0.27-jdk25-temurin, 9/9 cases equal to the
+    legacy JBoss (evidence/migrated-tomcat11). The plan keeps the war packaging, the container as provided and the initializer."""
+    report = cli_tool.analyze(SHOP, 'spring', None, False, lambda m: None)
+    plan = cli_tool.build_plan(report, 'spring', '25', ACCEPT, True, cli_tool.PROFILE_KEYS['tomcat11'])
+    y = ' '.join(s['recipe'].get('yaml', '') + ' '.join(s['recipe'].get('activeRecipes', [])) for s in plan['steps'] if s.get('recipe'))
+    assert 'UpgradeToJava25' in y and 'spring-boot-starter-tomcat' in y and '"provided"' in y and '"4.1.1"' in y
+    assert 'WAR para Tomcat 11 (SpringBootServletInitializer)' in y and 'SpringBootServletInitializer' in y
+    assert 'ChangePackaging' not in y                                                          # the JBoss WAR stays a WAR
+    assert pick('spring', war=True)['key'] == 'tomcat-10.1-war-spring-boot-3.5-camel-4.14'     # default WAR target unchanged
+
+
 def test_maven_uses_the_jdk_of_the_pom_release(tmp_path, monkeypatch):
     jdk = tmp_path / 'jdk-25'
     (jdk / 'bin').mkdir(parents=True)

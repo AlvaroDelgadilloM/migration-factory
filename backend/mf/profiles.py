@@ -128,6 +128,33 @@ PROFILES = [
                     'https://github.com/spring-projects/spring-boot/issues/47245'],
         'status': 'validated',
     },
+    {   # Tomcat 11 (Servlet 6.1, the container line of Spring Boot 4) WAR on the Spring Boot 4.1 + Camel 4.22 LTS engine: Java 21 or 25
+        'key': 'tomcat-11-war-spring-boot-4.1-camel-4.22', 'version': 1, 'runtime': 'spring',
+        'name': 'Tomcat 11 WAR · Spring Boot 4.1.1 + Camel 4.22.1 (LTS) · Java 21 o 25',
+        'java_version': '21', 'camel_version': SPRING4_CAMEL, 'runtime_version': '4.1.1',
+        'bom_coordinates': ['org.apache.camel.springboot:camel-spring-boot-bom:4.22.1',
+                            'org.springframework.boot:spring-boot-dependencies:4.1.1'],
+        'tooling': {
+            'pluginVersion': '6.46.1',
+            'artifacts': ['org.apache.camel.upgrade:camel-upgrade-recipes:4.22.0',
+                          'org.openrewrite.recipe:rewrite-migrate-java:3.42.1'],
+            'camelRecipe': 'org.apache.camel.upgrade.CamelMigrationRecipe',
+            'camelRecipeTarget': '4.22.0',
+        },
+        'dependency_mapping': {
+            'groupId': 'org.apache.camel.springboot', 'version': SPRING4_CAMEL,
+            'artifacts': {f'org.apache.camel:{k}': ('camel-spring-boot-starter' if v is None else f'camel-{v}-starter')
+                          for k, v in _COMPONENTS.items()},
+            'xmlDsl': 'camel-xml-io-dsl-starter',
+            'coreComponent': 'camel-{}-starter',
+            'routesProperty': 'camel.springboot.routes-include-pattern',
+            'javaVersions': ['21', '25'],
+            'deployment': 'war', 'servletContainer': 'Apache Tomcat 11',
+        },
+        'sources': ['https://docs.spring.io/spring-boot/4.1/how-to/deployment/traditional-deployment.html',
+                    'https://tomcat.apache.org/whichversion.html'],
+        'status': 'validated',
+    },
     {
         'key': 'quarkus-3.40-camel-quarkus', 'version': 3, 'runtime': 'quarkus',
         'name': 'Quarkus 3.40.1 + Camel Quarkus 3.40.0 (Camel 4.22.1)',
