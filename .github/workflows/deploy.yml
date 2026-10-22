@@ -6,6 +6,7 @@ name: Deploy VPS
 # Secrets of the environment "vps cpontabo":
 #   SSH (already configured): VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_SSH_PASSPHRASE, VPS_KNOWN_HOSTS, VPS_PATH (deploy folder)
 #   App: POSTGRES_PASSWORD, REDIS_PASSWORD, MF_DEV_JWT_SECRET (required), MF_CRED_GITHUB (optional, draft PRs),
+#        MF_CRED_VAULT_TOKEN + variable MF_VAULT_ADDR (optional, credentials as vault:mount/path[#field]),
 #        MF_CRED_AI (optional, Anthropic API key for DataStage AI proposals; also set the variable MF_AI_ENABLED=true)
 # Optional variables: MF_ENV, MF_AUTH_MODE, MF_OIDC_ISSUER, MF_OIDC_AUDIENCE, MF_OIDC_JWKS_URL, MF_HOST_SOURCES_DIR, MF_UI_BIND,
 # MF_MAVEN_EXTRA_REPOS (e.g. shibboleth|https://build.shibboleth.net/maven/releases for opensaml, used by CXF WS-Security).
@@ -86,6 +87,8 @@ jobs:
           MF_DEV_JWT_SECRET: ${{ secrets.MF_DEV_JWT_SECRET }}
           MF_CRED_GITHUB: ${{ secrets.MF_CRED_GITHUB }}
           MF_CRED_AI: ${{ secrets.MF_CRED_AI }}
+          MF_CRED_VAULT_TOKEN: ${{ secrets.MF_CRED_VAULT_TOKEN }}
+          MF_VAULT_ADDR: ${{ vars.MF_VAULT_ADDR }}
           MF_AI_ENABLED: ${{ vars.MF_AI_ENABLED || 'false' }}
           MF_ENV: ${{ vars.MF_ENV || 'development' }}
           MF_AUTH_MODE: ${{ vars.MF_AUTH_MODE || 'dev' }}
@@ -101,7 +104,7 @@ jobs:
             [ -n "${!v}" ] || { echo "Falta el secret obligatorio $v en el environment"; exit 1; }
           done
           umask 077
-          for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_CRED_AI MF_AI_ENABLED MF_ENV MF_AUTH_MODE MF_OIDC_ISSUER \
+          for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_CRED_AI MF_AI_ENABLED MF_CRED_VAULT_TOKEN MF_VAULT_ADDR MF_ENV MF_AUTH_MODE MF_OIDC_ISSUER \
                    MF_OIDC_AUDIENCE MF_OIDC_JWKS_URL MF_HOST_SOURCES_DIR MF_UI_BIND MF_MAVEN_EXTRA_REPOS MF_TEST_ALLOWED_HOSTS; do
             printf '%s=%s\n' "$v" "${!v}"
           done > stack.env

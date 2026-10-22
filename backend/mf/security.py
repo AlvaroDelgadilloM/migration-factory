@@ -79,22 +79,50 @@ def validate_test_url(url: str) -> str:
     return url.rstrip('/')
 
 
-CREDENTIAL_REF = re.compile(r'^(env:MF_CRED_[A-Z0-9_]{1,100}|vault:[\w./-]{1,200})$')
+CREDENTIAL_REF = re.compile(r'^(env:MF_CRED_[A-Z0-9_]{1,100}|vault:[\w-]{1,100}(/[\w.-]{1,100}){1,10}(#[\w-]{1,100})?)$')
 
 
 def validate_credential_ref(ref: str | None):
     if ref and not CREDENTIAL_REF.match(ref):
-        raise UnsafeInput('CREDENTIAL_REF_INVALID', 'Use env:MF_CRED_NOMBRE o vault:ruta; nunca el secreto')
+        raise UnsafeInput('CREDENTIAL_REF_INVALID', 'Use env:MF_CRED_NOMBRE o vault:montaje/ruta[#campo]; nunca el secreto')
+    if ref and ref.startswith('vault:') and '..' in ref.split('#')[0].split('/'):
+        raise UnsafeInput('CREDENTIAL_REF_INVALID', 'La ruta de Vault no puede contener «..»')
     return ref
 
 
 def resolve_credential(ref: str | None, env=None) -> str | None:
-    """Only env: references are implemented; vault: requires the pending secret-manager adapter."""
+    """env:MF_CRED_X -> the captured variable; vault:mount/path[#field] -> HashiCorp Vault KV v2 (field default `value`)."""
     if not ref:
         return None
+    validate_credential_ref(ref)
     if ref.startswith('env:'):
         return (env or os.environ).get(ref[4:])
-    raise UnsafeInput('VAULT_NOT_CONFIGURED', 'Adaptador de gestor de secretos pendiente de configuración')
+    return vault_read(ref[6:], env or os.environ)
+
+
+def vault_read(spec: str, env) -> str:
+    """KV v2 read with a token. MF_VAULT_ADDR (not secret) and the token as the credential MF_CRED_VAULT_TOKEN (captured and
+    removed from the worker environment like every MF_CRED_*). The value is never logged; errors say what to fix."""
+    import httpx
+    addr, token = os.environ.get('MF_VAULT_ADDR', '').rstrip('/'), env.get('MF_CRED_VAULT_TOKEN')
+    if not addr or not token:
+        raise UnsafeInput('VAULT_NOT_CONFIGURED', 'Vault no está configurado en el worker (MF_VAULT_ADDR y MF_CRED_VAULT_TOKEN)')
+    path, _, field = spec.partition('#')
+    mount, _, rest = path.partition('/')
+    try:
+        r = httpx.get(f'{addr}/v1/{mount}/data/{rest}', headers={'X-Vault-Token': token}, timeout=10)
+    except httpx.HTTPError as e:
+        raise UnsafeInput('VAULT_UNREACHABLE', f'No se pudo contactar Vault: {type(e).__name__}') from None
+    if r.status_code == 404:
+        raise UnsafeInput('VAULT_SECRET_NOT_FOUND', f'No existe el secreto vault:{path}')
+    if r.status_code == 403:
+        raise UnsafeInput('VAULT_FORBIDDEN', f'El token del worker no puede leer vault:{path}')
+    if r.status_code != 200:
+        raise UnsafeInput('VAULT_ERROR', f'Vault respondió {r.status_code} para vault:{path}')
+    value = ((r.json().get('data') or {}).get('data') or {}).get(field or 'value')
+    if not isinstance(value, str) or not value:
+        raise UnsafeInput('VAULT_FIELD_NOT_FOUND', f"El secreto vault:{path} no tiene el campo «{field or 'value'}»")
+    return value
 
 
 # --- Redaction ----------------------------------------------------------------------------------

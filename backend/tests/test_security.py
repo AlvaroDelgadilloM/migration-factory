@@ -2,6 +2,8 @@ import os
 import socket
 from pathlib import Path
 
+import os
+
 import pytest
 
 from mf.security import (UnsafeInput, find_secrets, redact, resolve_credential, safe_join, symlink_escapes,
@@ -51,6 +53,47 @@ def test_credential_refs():
     assert resolve_credential('env:MF_CRED_X', {'MF_CRED_X': 's3cr3t'}) == 's3cr3t'
     with pytest.raises(UnsafeInput):
         resolve_credential('vault:kv/git', {})
+
+
+def test_vault_kv2_references(monkeypatch):
+    """vault:mount/path[#field] reads KV v2 with the worker's token; every failure is a clear, value-free error."""
+    import httpx
+    calls = []
+
+    def fake_get(url, headers, timeout):
+        calls.append((url, headers['X-Vault-Token']))
+        if url.endswith('/missing'):
+            return httpx.Response(404, json={'errors': []})
+        if url.endswith('/denied'):
+            return httpx.Response(403, json={'errors': ['permission denied']})
+        return httpx.Response(200, json={'data': {'data': {'value': 'ghp_one', 'token': 'ghp_two'}}})
+    monkeypatch.setattr(httpx, 'get', fake_get)
+    env = {'MF_CRED_VAULT_TOKEN': 'hvs.worker'}
+    with pytest.raises(UnsafeInput, match='MF_VAULT_ADDR'):
+        resolve_credential('vault:kv/git', env)
+    monkeypatch.setenv('MF_VAULT_ADDR', 'https://vault.internal:8200/')
+    assert resolve_credential('vault:kv/team/git', env) == 'ghp_one'
+    assert resolve_credential('vault:kv/team/git#token', env) == 'ghp_two'
+    assert calls[0] == ('https://vault.internal:8200/v1/kv/data/team/git', 'hvs.worker')
+    for ref, code in (('vault:kv/missing', 'VAULT_SECRET_NOT_FOUND'), ('vault:kv/denied', 'VAULT_FORBIDDEN'),
+                      ('vault:kv/git#nope', 'VAULT_FIELD_NOT_FOUND'), ('vault:kv/../sys', 'CREDENTIAL_REF_INVALID')):
+        with pytest.raises(UnsafeInput) as e:
+            resolve_credential(ref, env)
+        assert e.value.code == code
+    with pytest.raises(UnsafeInput, match='MF_CRED_VAULT_TOKEN'):
+        resolve_credential('vault:kv/git', {})
+
+
+@pytest.mark.skipif(not os.environ.get('MF_VAULT_TEST_ADDR'), reason='real Vault: MF_VAULT_TEST_ADDR + MF_VAULT_TEST_TOKEN (dev server)')
+def test_vault_real_server(monkeypatch):
+    import httpx
+    addr, token = os.environ['MF_VAULT_TEST_ADDR'], os.environ['MF_VAULT_TEST_TOKEN']
+    httpx.post(f'{addr}/v1/secret/data/mf/git', headers={'X-Vault-Token': token}, json={'data': {'value': 'from-vault'}}).raise_for_status()
+    monkeypatch.setenv('MF_VAULT_ADDR', addr)
+    assert resolve_credential('vault:secret/mf/git', {'MF_CRED_VAULT_TOKEN': token}) == 'from-vault'
+    with pytest.raises(UnsafeInput) as e:
+        resolve_credential('vault:secret/mf/git', {'MF_CRED_VAULT_TOKEN': 'wrong-token'})
+    assert e.value.code == 'VAULT_FORBIDDEN'
 
 
 def test_redaction():

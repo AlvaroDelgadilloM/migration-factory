@@ -86,6 +86,9 @@ services:
       # DataStage: AI proposals for expressions without deterministic translation (doc 58). Off by default; the key only in .env
       MF_AI_MODEL: ${MF_AI_MODEL:-claude-sonnet-5-5}
       MF_CRED_AI: ${MF_CRED_AI:-}
+      # credentials as vault:mount/path[#field] (HashiCorp Vault KV v2); the token is a credential, removed from the worker env
+      MF_VAULT_ADDR: ${MF_VAULT_ADDR:-}
+      MF_CRED_VAULT_TOKEN: ${MF_CRED_VAULT_TOKEN:-}
       # heavy re-creatable files (candidates, patches, old snapshots) older than N days are deleted; 0 = keep forever
       MF_ARTIFACT_RETENTION_DAYS: ${MF_ARTIFACT_RETENTION_DAYS:-30}
     volumes: [artifacts:/artifacts, "${MF_HOST_SOURCES_DIR:-./examples}:/sources:ro", work:/work, m2:/m2]
