@@ -1080,6 +1080,43 @@ def resolve_project(source: Path, name: str) -> Path:
     return d['dir'] if hit['dir'] == '.' else d['dir'] / hit['dir']
 
 
+def agent_payload(report: dict, target: str) -> dict:
+    """Only the facts the platform needs (no file contents): modules, routes, rule hits with file/line, summary."""
+    from . import ENGINE_VERSION
+    keep = ('modules', 'routes', 'components', 'routeBuilders', 'summary', 'errors')
+    return {'target': target, 'snapshotHash': report['snapshotHash'], 'projectRoot': report.get('projectRoot', '.'),
+            'mavenResolution': report.get('mavenResolution') if report.get('mavenResolution') in ('maven-effective', 'failed') else 'skipped',
+            'agentVersion': ENGINE_VERSION,
+            'report': {k: report.get(k, [] if k != 'summary' else {}) for k in keep} | {
+                'findings': [{'ruleId': f['ruleId'], 'file': f['file'], 'line': f['line'], 'evidence': f.get('evidence', '')}
+                             for f in report['findings']]}}
+
+
+def agent_push(args, log) -> int:
+    """Local agent: analyze here, send the result to the platform. The token comes from MF_AGENT_TOKEN (never an argument)."""
+    import httpx
+    token = os.environ.get('MF_AGENT_TOKEN')
+    if not token:
+        raise InvalidInput('Defina MF_AGENT_TOKEN con su token de la plataforma (no se acepta como argumento)')
+    url = args.platform.rstrip('/')
+    if not url.startswith('https://') and not re.match(r'^http://(localhost|127\.0\.0\.1)(:\d+)?$', url):
+        raise InvalidInput('La plataforma debe ser https:// (http solo para localhost)')
+    target = TARGETS[args.target]
+    report = analyze(Path(args.project), target, None, not args.no_maven, log)
+    body = json.dumps(agent_payload(report, target), ensure_ascii=False, default=str)
+    log(f"enviando {len(report['findings'])} hallazgo(s) y {len(report['modules'])} módulo(s) ({len(body) // 1024} KB, sin código)")
+    r = httpx.post(f'{url}/api/v1/projects/{args.project_id}/agent-scans', content=body.encode(), timeout=120,
+                   headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
+    if r.status_code != 201:
+        try:
+            err = r.json()
+            msg = f"{err.get('code')}: {err.get('message')}"
+        except ValueError:
+            msg = r.text[:300]
+        raise InvalidInput(f'La plataforma respondió {r.status_code}: {msg}')
+    log(f"análisis publicado: scan {r.json()['scanId']} ({r.json()['findings']} hallazgo(s), catálogo {r.json()['catalog']})")
+    return EXIT_OK
+
 def analyze_workspace(source: Path, out: Path | None, effective: bool, log, discover_only=False) -> dict:
     """Doc 18/20: every project analysed by analysis waves (parallel inside a wave, MF_WORKSPACE_PARALLELISM), context
     propagated to dependents, failures isolated per project."""
@@ -1410,6 +1447,14 @@ def main(argv=None):
         dp.add_argument('--name')
         dp.add_argument('--airflow-python', help='intérprete con Apache Airflow para el DAG_PARSE_GATE (o MF_AIRFLOW_PYTHON)')
         dp.add_argument('--timezone', default='America/Mexico_City')
+    ag = sub.add_parser('agent', help='agente local: analiza aquí y publica el análisis en la plataforma (el código no se sube)')
+    agsub = ag.add_subparsers(dest='action', required=True)
+    agp = agsub.add_parser('push', parents=[common], help='analizar la carpeta y enviar el resultado a un proyecto «agente local»')
+    agp.add_argument('project', help='carpeta del proyecto Maven (solo se lee)')
+    agp.add_argument('--platform', required=True, help='URL de la plataforma, p. ej. https://mf.example.com')
+    agp.add_argument('--project-id', required=True, help='id del proyecto creado con origen «agente local»')
+    agp.add_argument('--target', choices=['springboot', 'quarkus'], default='springboot')
+    agp.add_argument('--no-maven', action='store_true', help='solo análisis estático (sin mvn help:effective-pom)')
     mo = sub.add_parser('modernize', parents=[common], help='modernizar código ya migrado (SAFE / REFACTOR / ARCHITECTURE)')
     mo.add_argument('project'); mo.add_argument('--output'); mo.add_argument('--target', choices=sorted(TARGETS))
     mo.add_argument('--approve', action='append', default=[], metavar='REGLA', help='aprobar un refactor que cambia contratos, p. ej. MOD_FIELD_INJECTION')
@@ -1449,6 +1494,8 @@ def main(argv=None):
             return verify_cmd(args, log)
         if args.cmd == 'datastage':
             return datastage_cmd(args, log)
+        if args.cmd == 'agent':
+            return agent_push(args, log)
         if args.cmd == 'plugins':
             from .plugins import PLUGINS
             print(json.dumps(PLUGINS, ensure_ascii=False, indent=2))

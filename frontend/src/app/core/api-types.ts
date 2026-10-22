@@ -1260,6 +1260,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/agent-scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Agent Scan */
+        post: operations["agent_scan_api_v1_projects__project_id__agent_scans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2468,7 +2485,7 @@ export interface components {
              * Sourcetype
              * @enum {string}
              */
-            sourceType: "local" | "zip" | "git";
+            sourceType: "local" | "zip" | "git" | "agent";
             /**
              * Migrationtype
              * @default JAVA_CAMEL
@@ -5610,6 +5627,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DataStageMigrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_scan_api_v1_projects__project_id__agent_scans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

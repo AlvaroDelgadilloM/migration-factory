@@ -53,6 +53,11 @@ import { WorkspaceMigrationPanel } from './ws-migration';
         @if (ctx.destination().runtime === 'quarkus') { Java 25 está validado con Tomcat WAR y con Spring Boot 4.1 + Camel 4.22. }</small>
     </section>
     @if (startError(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (isAgent()) {
+      <p-message severity="info"><span><strong>Agente local:</strong> el código no está en la plataforma. En el equipo donde está la carpeta, con la CLI
+        de Migration Factory: <code class="cmd">{{ agentCommand() }}</code>. Solo se envían hallazgos, módulos y rutas; la migración también se ejecuta allí
+        (<code>migrate.py migrate</code>).</span></p-message>
+    }
 
     <mf-state [loading]="scans.loading()" [error]="scans.error()" [hasData]="!!scans.data()" [empty]="scans.data()?.items?.length === 0"
               emptyText="Este proyecto aún no tiene análisis. Use «Analizar» para fijar un commit e inventariarlo." (retry)="scans.reload()">
@@ -240,7 +245,10 @@ export class Inventory {
   });
   dsls = [{ label: 'Todas', value: null }, { label: 'Java (aprox.)', value: 'java' }, { label: 'XML', value: 'xml' }];
   lastGood = computed(() => this.scans.data()?.items.find(s => s.status === 'succeeded') ?? null);
-  scanBlockReason = computed(() => !this.ctx.perms() ? 'Cargando permisos…' : this.ctx.can('scan') ? null : `Su rol (${this.ctx.role()}) no permite analizar`);
+  isAgent = computed(() => this.ctx.project()?.sourceType === 'agent');
+  scanBlockReason = computed(() => !this.ctx.perms() ? 'Cargando permisos…' : this.isAgent() ? 'El código está en el equipo del agente: analice allí con «migrate.py agent push»'
+    : this.ctx.can('scan') ? null : `Su rol (${this.ctx.role()}) no permite analizar`);
+  agentCommand = computed(() => `MF_AGENT_TOKEN=<su token> python migrate.py agent push <carpeta-del-proyecto> --platform ${location.origin} --project-id ${this.projectId()}`);
 
   constructor() {
     effect(() => { const id = this.projectId(); this.ctx.select(id); this.loadScans(true); });

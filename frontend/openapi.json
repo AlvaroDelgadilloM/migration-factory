@@ -4503,6 +4503,47 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{project_id}/agent-scans": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Agent Scan",
+        "operationId": "agent_scan_api_v1_projects__project_id__agent_scans_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7601,7 +7642,8 @@
             "enum": [
               "local",
               "zip",
-              "git"
+              "git",
+              "agent"
             ],
             "title": "Sourcetype"
           },

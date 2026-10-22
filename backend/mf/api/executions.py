@@ -87,6 +87,9 @@ def start_execution(plan_id: uuid.UUID, body: ExecutionCreate, request: Request,
         raise ApiError(409, 'PLAN_NOT_APPROVED', 'La ejecución requiere un plan aprobado')
     if db.get(TargetProfile, plan.profile_id).status != 'validated':
         raise ApiError(409, 'PROFILE_NOT_VALIDATED', 'El preview requiere un perfil validado')
+    if db.get(Scan, plan.scan_id).ref == 'agent':  # the code stays on the user's machine: the migration runs there with the CLI
+        raise ApiError(409, 'AGENT_SOURCE', 'El código de este proyecto está en la máquina del agente: ejecute la migración allí con '
+                                            '«migrate.py migrate <carpeta> --output <salida>»; la plataforma conserva el análisis y el plan')
     steps = evaluate(db, plan)
     runnable = runnable_recipe_steps(steps)
     if not runnable:

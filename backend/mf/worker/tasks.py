@@ -226,6 +226,28 @@ def _materialize(db, repo, ref, dest, ctx, select=None, require_maven=True):
 
 
 # --- scan ---------------------------------------------------------------------------------------
+def persist_rows(db, scan, report):
+    """Modules, routes with their endpoints and findings of a scan report (worker scan and local-agent scan)."""
+    for m in report['modules']:
+        db.add(Module(scan_id=scan.id, path=m['file'], group_id=m['groupId'], artifact_id=m['artifactId'], version=m['version'],
+                      packaging=m['packaging'], java_observed=m['javaObserved'], java_resolved=m['javaResolved'],
+                      java_source=m['javaSource'], camel_versions=m['camelVersions'], resolution=m['resolution'],
+                      unresolved=m['unresolved'] + [f'(estático) {u}' for u in m.get('staticUnresolved', [])],
+                      dependencies=m['dependencies'], profiles=m['profiles']))
+    for r in report['routes']:
+        route = Route(scan_id=scan.id, route_key=r['key'], route_id=r['routeId'], dsl=r['dsl'], file=r['file'], line=r['line'],
+                      detection=r['detection'], from_uri=r['fromUri'], dynamic_from=r['dynamicFrom'])
+        db.add(route)
+        db.flush()
+        for e in r['endpoints']:
+            db.add(Endpoint(route_id=route.id, component=e['component'], redacted_uri=e['uri'], dynamic=e['dynamic'], kind=e['kind'], line=e['line']))
+    for f in report['findings']:
+        db.add(Finding(scan_id=scan.id, project_id=scan.project_id, fingerprint=f['fingerprint'], rule_id=f['ruleId'],
+                       rule_version=f['ruleVersion'], file=f['file'], line=f['line'], severity=f['severity'],
+                       classification=f['classification'], blocking=f['blocking'], recommendation=f['recommendation'],
+                       evidence=redact(f['evidence'])))
+
+
 def do_scan(job: Job, ctx: Context):
     with session() as db:
         scan = db.get(Scan, job.subject_id)
@@ -294,24 +316,7 @@ def do_scan(job: Job, ctx: Context):
             ArtifactStore().delete(a)
             db.delete(a)
         db.flush()
-        for m in report['modules']:
-            db.add(Module(scan_id=scan.id, path=m['file'], group_id=m['groupId'], artifact_id=m['artifactId'], version=m['version'],
-                          packaging=m['packaging'], java_observed=m['javaObserved'], java_resolved=m['javaResolved'],
-                          java_source=m['javaSource'], camel_versions=m['camelVersions'], resolution=m['resolution'],
-                          unresolved=m['unresolved'] + [f'(estático) {u}' for u in m.get('staticUnresolved', [])],
-                          dependencies=m['dependencies'], profiles=m['profiles']))
-        for r in report['routes']:
-            route = Route(scan_id=scan.id, route_key=r['key'], route_id=r['routeId'], dsl=r['dsl'], file=r['file'], line=r['line'],
-                          detection=r['detection'], from_uri=r['fromUri'], dynamic_from=r['dynamicFrom'])
-            db.add(route)
-            db.flush()
-            for e in r['endpoints']:
-                db.add(Endpoint(route_id=route.id, component=e['component'], redacted_uri=e['uri'], dynamic=e['dynamic'], kind=e['kind'], line=e['line']))
-        for f in report['findings']:
-            db.add(Finding(scan_id=scan.id, project_id=scan.project_id, fingerprint=f['fingerprint'], rule_id=f['ruleId'],
-                           rule_version=f['ruleVersion'], file=f['file'], line=f['line'], severity=f['severity'],
-                           classification=f['classification'], blocking=f['blocking'], recommendation=f['recommendation'],
-                           evidence=redact(f['evidence'])))
+        persist_rows(db, scan, report)
         report['commitSha'], report['snapshotHash'], report['sourceType'], report['mavenResolution'] = sha, snapshot_hash, repo.source_type, scan.maven_resolution
         snap = _store(db, scan.project_id, 'snapshot', 'snapshot.tar.gz', snap_file.read_bytes(), 'application/gzip', commit=False, scan_id=scan.id)
         scan.snapshot_artifact_id = snap.id

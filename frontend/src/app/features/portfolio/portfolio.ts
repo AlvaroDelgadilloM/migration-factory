@@ -146,6 +146,11 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
               </span>
               <small class="muted">Hosts permitidos: {{ caps()?.gitAllowedHosts?.join(', ') }}. Nunca el token: una referencia env:MF_CRED_*.</small>
             }
+            @case ('agent') {
+              <p-message severity="info"><span>El código <strong>no se sube</strong>. Después de registrar el proyecto, en su equipo (con la CLI de
+                Migration Factory) ejecute <code>migrate.py agent push &lt;carpeta&gt; --platform &lt;url&gt; --project-id &lt;id&gt;</code> con su token en
+                <code>MF_AGENT_TOKEN</code>: el análisis se hace allí y solo se envían hallazgos, módulos y rutas. La migración también corre en su equipo.</span></p-message>
+            }
           }
         }
         @if (step() === 2) {
@@ -238,6 +243,8 @@ export class Portfolio {
                     : 'No disponible: la plataforma no se ejecuta en su equipo. Use «Archivo ZIP» (acepta también una carpeta de su equipo); una ruta de su computadora requiere un agente local.' },
       { value: 'zip', label: 'Archivo ZIP', disabled: false, hint: 'Suba un ZIP o elija una carpeta de su equipo (se comprime en el navegador). No requiere Git.' },
       { value: 'git', label: 'Repositorio Git', disabled: false, hint: 'Repositorio HTTPS en un host permitido; habilita ramas y PR borrador.' },
+      { value: 'agent', label: 'Agente local (sin subir código)', disabled: this.form.migrationType !== 'JAVA_CAMEL',
+        hint: 'Analiza en su equipo y publica solo el resultado; el código nunca sale de su máquina. Java/Camel.' },
     ];
   });
   runtimes = [{ label: 'Spring Boot', value: 'spring' }, { label: 'Quarkus', value: 'quarkus' }];
@@ -246,11 +253,11 @@ export class Portfolio {
     { value: 'DATASTAGE_AIRFLOW', label: 'DataStage → Airflow', hint: 'Exportaciones DSX de IBM DataStage → DAGs de Apache Airflow.' },
   ];
   short = short;
-  sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git' };
+  sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git', agent: 'Agente local' };
   analyzed = computed(() => (this.list.data()?.items ?? []).filter(p => p.lastScan?.['status'] === 'succeeded'
     || ['succeeded', 'partial_success'].includes(String(p.lastDataStage?.['state'] ?? ''))).length);
   countType(t: string) { return (this.list.data()?.items ?? []).filter(p => (p.migrationType ?? 'JAVA_CAMEL') === t).length; }
-  sourceIcon: Record<string, string> = { local: 'pi-folder', zip: 'pi-file-arrow-up', git: 'pi-github' };
+  sourceIcon: Record<string, string> = { local: 'pi-folder', zip: 'pi-file-arrow-up', git: 'pi-github', agent: 'pi-desktop' };
   sourceText(p: Project) {
     const v = p.repositoryUrl ?? p.localPath ?? (p.upload?.['filename'] as string | undefined) ?? '';
     return v.replace(/^https:\/\/(www\.)?/, '').replace(/\.git$/, '');
@@ -297,6 +304,7 @@ export class Portfolio {
   }
   sourceReady() {
     switch (this.form.sourceType) {
+      case 'agent': return true;
       case 'local': return this.pathOk();
       case 'zip': return !!this.uploaded() && !this.uploading();
       case 'git': return this.urlOk();
@@ -366,6 +374,7 @@ export class Portfolio {
       // only the fields of the selected source are sent; the API rejects the others
       const body = f.sourceType === 'local' ? { ...common, localPath: f.localPath.trim() }
         : f.sourceType === 'zip' ? { ...common, uploadId: this.uploaded()!.id }
+        : f.sourceType === 'agent' ? common
         : { ...common, repositoryUrl: f.repositoryUrl.trim(), defaultBranch: f.defaultBranch || 'main', credentialRef: f.credentialRef || null };
       const p = await this.api.createProject(body);
       this.dialog = false;

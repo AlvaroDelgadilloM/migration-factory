@@ -42,14 +42,14 @@ class PrConfig(Dto):
         return v
 
 
-SOURCE_FIELDS = {'git': {'repository_url', 'default_branch', 'credential_ref'}, 'local': {'local_path'}, 'zip': {'upload_id'}}
-REQUIRED_SOURCE_FIELDS = {'git': {'repository_url'}, 'local': {'local_path'}, 'zip': {'upload_id'}}
+SOURCE_FIELDS = {'git': {'repository_url', 'default_branch', 'credential_ref'}, 'local': {'local_path'}, 'zip': {'upload_id'}, 'agent': set()}
+REQUIRED_SOURCE_FIELDS = {'git': {'repository_url'}, 'local': {'local_path'}, 'zip': {'upload_id'}, 'agent': set()}
 
 
 class ProjectCreate(Dto):
     name: str = Field(min_length=2, max_length=200, pattern=r'^[\w .\-()]+$')
     description: str = Field(default='', max_length=2000)
-    source_type: Literal['local', 'zip', 'git']
+    source_type: Literal['local', 'zip', 'git', 'agent']  # agent: the code stays on the user's machine (mf.api.agent)
     migration_type: Literal['JAVA_CAMEL', 'DATASTAGE_AIRFLOW'] = 'JAVA_CAMEL'
     target_runtime: Literal['spring', 'quarkus', 'airflow']
     # git

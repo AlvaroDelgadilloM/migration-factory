@@ -72,6 +72,10 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
                 files = [str(f.relative_to(path)) for f in path.rglob('pom.xml') if 'target' not in f.relative_to(path).parts][:5000]
                 classify_source(files)  # several projects without aggregator = workspace (doc 17), not an error
             repo = Repository(source_type='local', provider='local', local_path=str(path))
+        elif body.source_type == 'agent':
+            if body.migration_type != 'JAVA_CAMEL':
+                raise UnsafeInput('AGENT_JAVA_ONLY', 'El agente local analiza proyectos Java/Camel; DataStage se sube como ZIP')
+            repo = Repository(source_type='agent', provider='agent')
         else:
             upload = db.get(Upload, body.upload_id)
             if upload is None or upload.owner != me.subject:
@@ -247,6 +251,9 @@ def create_scan(project_id: uuid.UUID, body: ScanCreate, request: Request, idemp
     if running:
         raise ApiError(409, 'SCAN_IN_PROGRESS', 'Ya hay un análisis en curso para este proyecto', {'scanId': str(running.id)})
     repo = db.get(Repository, p.repository_id)
+    if repo.source_type == 'agent':
+        raise ApiError(409, 'AGENT_SOURCE', 'El código de este proyecto no está en la plataforma: analícelo con el agente local '
+                                            f'(migrate.py agent push <carpeta> --platform <url> --project {p.id})')
     if repo.source_type != 'git' and body.ref:
         raise ApiError(422, 'VALIDATION_ERROR', 'La referencia (rama/commit) solo aplica a orígenes Git')
     scan = Scan(project_id=p.id, ref=(body.ref or p.default_branch) if repo.source_type == 'git' else repo.source_type, catalog_id=catalog.id, target=body.target,

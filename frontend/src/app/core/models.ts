@@ -42,7 +42,7 @@ export interface ChangeEntry { step: string; kind: string | null; rules: string[
   rollback: { available: boolean; command: string; note?: string }; changes: ChangeLine[] }
 export interface ModernizationRule { id: string; tier: 'SAFE' | 'REFACTOR' | 'ARCHITECTURE'; level: string; publicContract: boolean; mechanism: string; title: string; rationale: string }
 export interface EffortEstimate { rows: EffortRow[]; knownHours: number; uncalibrated: string[]; complete: boolean; note: string; diffBasis: string; configVersion: string }
-export type SourceType = 'local' | 'zip' | 'git';
+export type SourceType = 'local' | 'zip' | 'git' | 'agent';
 
 export interface Page<T> { items: T[]; total: number; nextCursor?: string | null }
 
