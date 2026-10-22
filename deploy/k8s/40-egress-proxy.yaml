@@ -15,6 +15,9 @@ data:
     http_access allow approved
     http_access deny all
     cache deny all
+    pid_filename /run/squid.pid
+    access_log stdio:/dev/stdout
+    cache_log /dev/stderr
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -30,13 +33,28 @@ spec:
       labels: {app.kubernetes.io/name: migration-factory, app.kubernetes.io/component: egress-proxy}
     spec:
       automountServiceAccountToken: false
+      securityContext:   # Pod Security "restricted" (namespace): squid as its own non-root user
+        runAsNonRoot: true
+        runAsUser: 13     # proxy
+        runAsGroup: 13
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: squid
           image: ubuntu/squid:6.10-24.10_beta
+          command: ["squid", "-N", "-f", "/etc/squid/squid.conf"]
           ports: [{containerPort: 3128}]
-          volumeMounts: [{name: conf, mountPath: /etc/squid/squid.conf, subPath: squid.conf}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts:
+            - {name: conf, mountPath: /etc/squid/squid.conf, subPath: squid.conf}
+            - {name: logs, mountPath: /var/log/squid}
+            - {name: spool, mountPath: /var/spool/squid}
+            - {name: run, mountPath: /run}
           resources: {limits: {cpu: "500m", memory: 256Mi}}
-      volumes: [{name: conf, configMap: {name: mf-egress-allowlist}}]
+      volumes:
+        - {name: conf, configMap: {name: mf-egress-allowlist}}
+        - {name: logs, emptyDir: {}}
+        - {name: spool, emptyDir: {}}
+        - {name: run, emptyDir: {}}
 ---
 apiVersion: v1
 kind: Service

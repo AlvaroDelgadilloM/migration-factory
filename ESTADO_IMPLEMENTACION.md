@@ -91,7 +91,7 @@ Documento 16 (estado real del job y POM del candidato), verificado con el proyec
 2. (Resuelto 2026-10-12) `docker-compose.oidc.yml` + `scripts/oidc_e2e.py`.
 3. Re-ejecución manual de suites/fases (botones deshabilitados con explicación en la UI).
 4. (Resuelto 2026-10-12) `POST /executions/{id}/evidence-files`.
-5. (Implementado 2026-10-22, falta probar en clúster) `MF_EXECUTION_MODE=k8s`: pod efímero gVisor por job + NetworkPolicy + proxy de salida (`deploy/k8s`).
+5. (Resuelto 2026-10-22, probado en kind + gVisor; NetworkPolicy sin verificar) `MF_EXECUTION_MODE=k8s`: pod efímero gVisor por job + NetworkPolicy + proxy de salida (`deploy/k8s`).
 6. (Resuelto 2026-10-22) repositorio Maven local por proyecto (`MF_MAVEN_REPO_PER_PROJECT`).
 7. Paginación por offset opaco (keyset si los volúmenes crecen).
 
@@ -614,7 +614,12 @@ Cada punto con su prueba. Backend `pytest` completo en verde; frontend Vitest 19
   Probado contra el stack local con Postgres: 6 KB, 10 hallazgos.
 - **Kubernetes** (`MF_EXECUTION_MODE=k8s`, `mf/worker/k8s_runner.py`, `deploy/k8s`): pod efímero por job con gVisor, sin root,
   raíz de solo lectura, sin token, emptyDir, límites; NetworkPolicy + proxy de salida; Maven por proxy (`MF_MAVEN_PROXY`).
-  Probado con la API simulada; **falta correrlo en un clúster real** (kind requiere espacio en disco de Docker).
+  Probado en un clúster real (kind 1.29.2 + gVisor release-20261019.0): el despachador con el token de `mf-dispatcher` creó el
+  Job con la imagen del worker, esperó y lo borró; dentro del pod: kernel `4.19.0-gvisor`, uid 10001, raíz de solo lectura,
+  `/work` escribible, sin token de la API; el proxy permite repo1.maven.org (200) y bloquea example.com. RBAC: solo
+  crear/leer/borrar Jobs en su namespace (no secretos, no pods, no otros namespaces). La prueba encontró y corrigió que el proxy
+  violaba Pod Security `restricted` (ahora sin root). **No verificado:** que la NetworkPolicy se aplique (el CNI de kind no la
+  aplica; requiere Calico/Cilium en el clúster de destino).
 - **E2E de UI**: flujo Java completo con Maven real (3.9 min) + workflow `UI e2e` diario sobre el stack de Compose.
 
 Repositorio real del usuario (solo lectura, salida fuera del repositorio): análisis de los 33 proyectos ANALYSIS_PARTIAL_SUCCESS
