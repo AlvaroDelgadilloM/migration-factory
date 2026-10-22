@@ -8,6 +8,8 @@ from typing import Annotated, Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
+from .security import CREDENTIAL_REF
+
 T = TypeVar('T')
 
 
@@ -26,10 +28,18 @@ GATE_IDS = ('G0', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6')
 
 
 class PrConfig(Dto):
-    provider: Literal['github']
-    repository: str = Field(pattern=r'^[\w.-]{1,100}/[\w.-]{1,100}$')
+    provider: Literal['github', 'gitlab', 'bitbucket']
+    # owner/name (GitHub), group[/subgroup...]/project (GitLab), workspace/repo-slug (Bitbucket Cloud)
+    repository: str = Field(max_length=400, pattern=r'^[\w.-]+(/[\w.-]+){1,5}$')
     base_branch: str = Field(default='main', pattern=r'^[\w./-]{1,200}$')
-    credential_ref: str = Field(pattern=r'^(env:MF_CRED_[A-Z0-9_]{1,100}|vault:[\w./-]{1,200})$')
+    credential_ref: str = Field(max_length=400)
+
+    @field_validator('credential_ref')
+    @classmethod
+    def _ref(cls, v):  # same rule as every credential reference (env:MF_CRED_* or vault:mount/path[#field])
+        if not CREDENTIAL_REF.match(v) or (v.startswith('vault:') and '..' in v.split('#')[0].split('/')):
+            raise ValueError('Use env:MF_CRED_NOMBRE o vault:montaje/ruta[#campo]; nunca el secreto')
+        return v
 
 
 SOURCE_FIELDS = {'git': {'repository_url', 'default_branch', 'credential_ref'}, 'local': {'local_path'}, 'zip': {'upload_id'}}

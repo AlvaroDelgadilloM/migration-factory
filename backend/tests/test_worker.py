@@ -231,6 +231,44 @@ def test_github_adapter_creates_draft_pr():
                                   transport=httpx.MockTransport(lambda r: httpx.Response(422)))
 
 
+
+def test_gitlab_and_bitbucket_adapters_create_draft_requests():
+    import json as _json
+    seen = []
+
+    def gitlab(request):
+        seen.append(request)
+        return httpx.Response(201, json={'web_url': 'https://git.acme.mx/team/backend/orders/-/merge_requests/3'})
+    url = providers.create_draft_pr({'provider': 'gitlab', 'repository': 'team/backend/orders', 'baseBranch': 'develop'}, 'mf/abc',
+                                    title='Candidato', body='b', token='glpat', repo_url='https://git.acme.mx/team/backend/orders.git',
+                                    transport=httpx.MockTransport(gitlab))
+    r = seen[-1]
+    assert url.endswith('/merge_requests/3') and r.headers['private-token'] == 'glpat'
+    assert str(r.url) == 'https://git.acme.mx/api/v4/projects/team%2Fbackend%2Forders/merge_requests'   # self-managed: repo host
+    assert _json.loads(r.read()) == {'source_branch': 'mf/abc', 'target_branch': 'develop', 'title': 'Draft: Candidato', 'description': 'b'}
+
+    def bitbucket(request):
+        seen.append(request)
+        return httpx.Response(201, json={'links': {'html': {'href': 'https://bitbucket.org/acme/orders/pull-requests/9'}}})
+    url = providers.create_draft_pr({'provider': 'bitbucket', 'repository': 'acme/orders'}, 'mf/abc', title='t', body='b',
+                                    token='bbtok', transport=httpx.MockTransport(bitbucket))
+    r = seen[-1]
+    body = _json.loads(r.read())
+    assert url.endswith('/pull-requests/9') and r.headers['authorization'] == 'Bearer bbtok'
+    assert str(r.url) == 'https://api.bitbucket.org/2.0/repositories/acme/orders/pullrequests'
+    assert body['draft'] is True and body['source'] == {'branch': {'name': 'mf/abc'}} and body['destination'] == {'branch': {'name': 'main'}}
+    with pytest.raises(providers.ProviderError):  # a link to another host is never trusted
+        providers.create_draft_pr({'provider': 'bitbucket', 'repository': 'a/b'}, 'mf/x', title='t', body='b', token='t',
+                                  transport=httpx.MockTransport(lambda r: httpx.Response(201, json={'links': {'html': {'href': 'https://evil.example/x'}}})))
+
+
+def test_git_askpass_user_per_provider(tmp_path):
+    from mf.worker import gitops
+    ctx = runner.Context('j', tmp_path, deadline=1e12)
+    assert gitops._askpass(ctx, 'tok', 'https://bitbucket.org/acme/orders.git')['MF_GIT_USER'] == 'x-token-auth'
+    assert gitops._askpass(ctx, 'tok', 'https://gitlab.com/acme/orders.git')['MF_GIT_USER'] == 'x-access-token'
+
+
 def test_worker_scrubs_secrets_from_environment(monkeypatch):
     monkeypatch.setenv('MF_CRED_GIT', 'tok-value')
     for k in ('MF_DEV_JWT_SECRET', 'MF_DATABASE_URL', 'MF_REDIS_URL'):

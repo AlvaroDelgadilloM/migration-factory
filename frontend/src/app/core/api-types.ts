@@ -2363,9 +2363,9 @@ export interface components {
         PrConfig: {
             /**
              * Provider
-             * @constant
+             * @enum {string}
              */
-            provider: "github";
+            provider: "github" | "gitlab" | "bitbucket";
             /** Repository */
             repository: string;
             /**

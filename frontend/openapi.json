@@ -7379,12 +7379,17 @@
         "properties": {
           "provider": {
             "type": "string",
-            "const": "github",
+            "enum": [
+              "github",
+              "gitlab",
+              "bitbucket"
+            ],
             "title": "Provider"
           },
           "repository": {
             "type": "string",
-            "pattern": "^[\\w.-]{1,100}/[\\w.-]{1,100}$",
+            "maxLength": 400,
+            "pattern": "^[\\w.-]+(/[\\w.-]+){1,5}$",
             "title": "Repository"
           },
           "baseBranch": {
@@ -7395,7 +7400,7 @@
           },
           "credentialRef": {
             "type": "string",
-            "pattern": "^(env:MF_CRED_[A-Z0-9_]{1,100}|vault:[\\w./-]{1,200})$",
+            "maxLength": 400,
             "title": "Credentialref"
           }
         },

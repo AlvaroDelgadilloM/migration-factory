@@ -1,6 +1,7 @@
 """Project sources: local folder and ZIP work end to end without any Git URL, branch or credential;
 Git keeps its restrictions. ZIP validation covers traversal, symlinks, bombs, size and structure."""
 import io
+import os
 import shutil
 import uuid
 import zipfile
@@ -268,3 +269,23 @@ def test_new_zip_version_for_an_existing_project(client, token, monkeypatch):
     assert client.get(f"{API}/scans/{old_scan['id']}", headers=token('diego.dev')).json()['snapshotHash'] == old_scan['snapshotHash']
     events = client.get(f'{API}/audit', headers=token('aldo.auditor'), params={'projectId': pid}).json()['items']
     assert any(e['action'] == 'project.upload.replace' for e in events)
+
+
+@pytest.mark.skipif(os.environ.get('MF_NETWORK_TESTS') != '1', reason='real Git host: MF_NETWORK_TESTS=1 (clones github.com)')
+def test_git_source_against_a_real_host(client, token, tmp_path):
+    """Pilot over the real path: URL policy with real DNS, `git clone` from github.com, materialize, migrate. This repository
+    is public and carries a DataStage fixture, so the run needs no credential and touches no client system."""
+    from helpers import run_job
+    r = client.post('/api/v1/projects', headers=token('ana.arquitecta'), json={
+        'name': f'Git real {tmp_path.name[-6:]}', 'sourceType': 'git', 'repositoryUrl': 'https://github.com/AlvaroDelgadilloM/migration-factory.git',
+        'defaultBranch': 'main', 'migrationType': 'DATASTAGE_AIRFLOW', 'targetRuntime': 'airflow'})
+    assert r.status_code == 201, r.text
+    start = client.post(f"/api/v1/projects/{r.json()['id']}/datastage-migrations", headers=token('ana.arquitecta'), json={}).json()
+    run_job(start['jobId'])
+    dm = client.get(f"/api/v1/datastage-migrations/{start['dataStageMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert dm['state'] == 'partial_success' and dm['summary']['parse']['jobs'] == 4, dm.get('job')
+    events = client.get(f"/api/v1/jobs/{start['jobId']}/logs", headers=token('ana.arquitecta'))
+    assert 'commit' in events.text                                                     # the cloned commit is recorded
+    bad = client.post('/api/v1/projects', headers=token('ana.arquitecta'), json={
+        'name': 'Git privado', 'sourceType': 'git', 'repositoryUrl': 'https://github.com.evil.example/x.git', 'targetRuntime': 'spring'})
+    assert bad.status_code == 422                                                      # host allowlist

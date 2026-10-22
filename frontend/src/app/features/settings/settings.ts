@@ -42,12 +42,15 @@ import { ActionButton, PageHeader, StateView } from '../../shared/ui';
         <p-multiselect inputId="gates" name="gates" [options]="allGates" [(ngModel)]="gates" [disabled]="!ctx.can('manage')" />
         <span class="inline"><p-checkbox inputId="ind" name="ind" [binary]="true" [(ngModel)]="independent" [disabled]="!ctx.can('manage')" />
           <label for="ind">Revisión independiente (quien ejecuta no aprueba su diff ni registra su evidencia)</label></span>
-        <h3>PR borrador (GitHub)</h3>
+        <h3>PR borrador</h3>
         @if (ctx.project()?.sourceType !== 'git') { <p class="muted">Ramas y PR solo están disponibles cuando el origen es Git. El candidato se descarga como ZIP.</p> }
-        <label for="repo">Repositorio destino (owner/nombre)</label><input pInputText id="repo" name="repo" [(ngModel)]="pr.repository" [disabled]="!ctx.can('manage')" />
+        <label for="prov">Proveedor</label>
+        <p-select inputId="prov" name="prov" [options]="providers" optionLabel="label" optionValue="value" [(ngModel)]="pr.provider" [disabled]="!ctx.can('manage')" />
+        <label for="repo">Repositorio destino ({{ repoHint() }})</label><input pInputText id="repo" name="repo" [(ngModel)]="pr.repository" [disabled]="!ctx.can('manage')" />
         <label for="base">Rama base</label><input pInputText id="base" name="base" [(ngModel)]="pr.baseBranch" [disabled]="!ctx.can('manage')" />
-        <label for="cr">Referencia de credencial</label><input pInputText id="cr" name="cr" [(ngModel)]="pr.credentialRef" placeholder="env:MF_CRED_GITHUB" [disabled]="!ctx.can('manage')" />
-        <small class="muted">Solo GitHub está implementado. La integración real requiere un token con permisos de PR configurado en el worker.</small>
+        <label for="cr">Referencia de credencial</label><input pInputText id="cr" name="cr" [(ngModel)]="pr.credentialRef" placeholder="env:MF_CRED_GITHUB o vault:secret/git#token" [disabled]="!ctx.can('manage')" />
+        <small class="muted">El token (con permiso para crear ramas y PR/MR) vive en el worker o en Vault, nunca aquí. GitLab propio usa el mismo
+          host que la URL del repositorio. Bitbucket: token de acceso del repositorio.</small>
         <mf-action label="Guardar" icon="pi pi-save" [disabledReason]="ctx.can('manage') ? null : 'Solo el owner configura el proyecto'" (run)="save()" />
       </form>
     }
@@ -90,7 +93,9 @@ export class Settings {
   roles = ['owner', 'architect', 'developer', 'reviewer', 'auditor'];
   gates: string[] = [];
   independent = true;
-  pr = { repository: '', baseBranch: 'main', credentialRef: '' };
+  pr = { provider: 'github', repository: '', baseBranch: 'main', credentialRef: '' };
+  providers = [{ label: 'GitHub', value: 'github' }, { label: 'GitLab (gitlab.com o propio)', value: 'gitlab' }, { label: 'Bitbucket Cloud', value: 'bitbucket' }];
+  repoHint() { return ({ gitlab: 'grupo/subgrupo/proyecto', bitbucket: 'workspace/repositorio' } as Record<string, string>)[this.pr.provider] ?? 'owner/nombre'; }
   newSubject = '';
   newRole = 'developer';
 
@@ -102,7 +107,7 @@ export class Settings {
       this.gates = [...p.requiredGates];
       this.independent = p.independentReview;
       const c = (p.prConfig ?? {}) as Record<string, string>;
-      this.pr = { repository: c['repository'] ?? '', baseBranch: c['baseBranch'] ?? 'main', credentialRef: c['credentialRef'] ?? '' };
+      this.pr = { provider: c['provider'] ?? 'github', repository: c['repository'] ?? '', baseBranch: c['baseBranch'] ?? 'main', credentialRef: c['credentialRef'] ?? '' };
     });
   }
 
@@ -130,7 +135,7 @@ export class Settings {
     this.error.set(null);
     this.saved.set(false);
     const body: Record<string, unknown> = { requiredGates: this.gates, independentReview: this.independent };
-    if (this.pr.repository) body['prConfig'] = { provider: 'github', ...this.pr };
+    if (this.pr.repository) body['prConfig'] = { ...this.pr };
     try { await this.api.updateProject(p.id, p.version, body); await this.ctx.refresh(); this.saved.set(true); }
     catch (e) { this.error.set(UiError.from(e)); }
   }

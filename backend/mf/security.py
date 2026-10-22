@@ -51,7 +51,7 @@ def validate_git_url(url: str, resolve=socket.getaddrinfo) -> dict:
             raise UnsafeInput('GIT_HOST_UNRESOLVED', f'No se pudo resolver {host}') from None
         if not ips or not all(_ip_is_public(ip) for ip in ips):
             raise UnsafeInput('GIT_HOST_PRIVATE', f'{host} resuelve a una dirección no pública')
-    provider = {'github.com': 'github', 'gitlab.com': 'gitlab'}.get(host, 'generic')
+    provider = {'github.com': 'github', 'gitlab.com': 'gitlab', 'bitbucket.org': 'bitbucket'}.get(host, 'generic')
     return {'provider': provider, 'url': f'https://{host}{parts.path}', 'host': host}
 
 

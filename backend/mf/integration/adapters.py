@@ -2,7 +2,7 @@
 ZIP download is always available; a pull request only when PR_CAPABILITY_GATE passes. Never inferred from a `.git` folder."""
 from __future__ import annotations
 
-PR_PROVIDERS = {'github'}  # providers with a working draft-PR adapter (mf/worker/providers.py)
+PR_PROVIDERS = {'github', 'gitlab', 'bitbucket'}  # providers with a working draft-PR adapter (mf/worker/providers.py)
 
 
 def pr_capability(source_type: str, provider: str | None, pr_config: dict | None, blockers: list[str]) -> dict:

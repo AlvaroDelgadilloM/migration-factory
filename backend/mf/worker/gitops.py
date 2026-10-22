@@ -3,6 +3,7 @@ import os
 import re
 import stat
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from ..config import get_settings
 from ..security import UnsafeInput, symlink_escapes, validate_git_url
@@ -26,15 +27,17 @@ def _git(ctx, args, cwd, name, timeout=600, env=None):
     return out
 
 
-def _askpass(ctx, token):
+def _askpass(ctx, token, url=''):
     """GIT_ASKPASS helper: the token is passed by environment to git only, never in the URL or logs."""
     if not token:
         return {}
     ctx.secrets.append(token)
+    user = 'x-token-auth' if urlsplit(url).hostname == 'bitbucket.org' else 'x-access-token'
     script = ctx.workdir / 'askpass.sh'
-    script.write_text('#!/bin/sh\ncase "$1" in Username*) echo x-access-token ;; *) echo "$MF_GIT_TOKEN" ;; esac\n')
+    # Bitbucket Cloud access tokens authenticate as x-token-auth; GitHub and GitLab accept any user name with a token
+    script.write_text('#!/bin/sh\ncase "$1" in Username*) echo "$MF_GIT_USER" ;; *) echo "$MF_GIT_TOKEN" ;; esac\n')
     script.chmod(stat.S_IRWXU)
-    return {'GIT_ASKPASS': str(script), 'MF_GIT_TOKEN': token}
+    return {'GIT_ASKPASS': str(script), 'MF_GIT_TOKEN': token, 'MF_GIT_USER': user}
 
 
 def checkout(ctx, url, ref, dest: Path, token=None) -> str:
@@ -43,7 +46,7 @@ def checkout(ctx, url, ref, dest: Path, token=None) -> str:
         validate_git_url(url)  # re-validated at use time (host allowlist + DNS)
     except UnsafeInput as e:
         raise GitError(f'URL rechazada: {e}') from None
-    env = _askpass(ctx, token)
+    env = _askpass(ctx, token, url)
     dest.parent.mkdir(parents=True, exist_ok=True)
     _git(ctx, ['clone', '--no-checkout', '--quiet', '--', url, str(dest)], ctx.workdir, 'git-clone', env=env)
     if SHA.match(ref):
@@ -132,7 +135,7 @@ def worktree(ctx, repo, sha, dest: Path):
 def push_branch(ctx, repo, url, branch, token):
     if not re.fullmatch(r'mf/[\w.-]{1,100}', branch):
         raise GitError('Nombre de rama no permitido')
-    env = _askpass(ctx, token)
+    env = _askpass(ctx, token, url)
     # Explicit refspec to a new branch; never force, never the default branch.
     _git(ctx, ['push', '--quiet', url, f'HEAD:refs/heads/{branch}'], repo, 'git-push', env=env)
 

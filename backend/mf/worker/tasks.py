@@ -1480,7 +1480,7 @@ def do_pull_request(job: Job, ctx: Context):
         url = create_draft_pr(cfg, branch, title=f'[Migration Factory] Candidato {str(ex.id)[:8]} (borrador)',
                               body=f'Candidato generado por Migration Factory.\n\nCommit base: {ex.base_sha}\nSnapshot: {ex.base_snapshot}\n\n'
                                    'Borrador: requiere revisión humana. Compilación/pruebas no demuestran equivalencia funcional.',
-                              token=token)
+                              token=token, repo_url=repo.url)
         ex.pr_url = url
         db.commit()
         ctx.emit('info', 'pull-request', f'PR borrador creado: {url}')
