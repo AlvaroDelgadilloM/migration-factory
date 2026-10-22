@@ -1,0 +1,47 @@
+name: UI e2e
+
+# The whole stack (Compose: PostgreSQL, Redis, API, workers with Maven, frontend) and Playwright against it: login, progress
+# bar, DataStage diagram, mobile layout, and the full Java flow (analyze -> plan -> preview -> approve -> apply -> every
+# screen) on the synthetic pilot. Synthetic sources only; passwords are generated per run.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 6 * * *'   # daily: the full flow takes ~15 min, too long for every push
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Variables del stack (generadas)
+        run: |
+          umask 077
+          { echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"; echo "REDIS_PASSWORD=$(openssl rand -hex 16)";
+            echo "MF_DEV_JWT_SECRET=$(openssl rand -hex 32)"; echo "MF_ENV=development"; echo "MF_AUTH_MODE=dev"; } > .env
+      - name: Levantar el stack
+        run: |
+          docker compose up -d --build --wait --wait-timeout 900
+          docker compose ps
+      - uses: actions/setup-node@v5
+        with: {node-version: '22.12', cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - name: Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: DSX sintético para el proyecto DataStage
+        run: cd backend/tests/fixtures/datastage && zip -q /tmp/dsx.zip shop_flow.dsx
+      - name: Pruebas de punta a punta
+        working-directory: frontend
+        env: {E2E_BASE_URL: 'http://127.0.0.1:3240', E2E_FULL: '1', E2E_DSX_ZIP: /tmp/dsx.zip}
+        run: npm run e2e -- --reporter=line
+      - name: Logs del stack si falla
+        if: failure()
+        run: docker compose logs --tail 200 api worker worker-long
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: {name: playwright-traces, path: frontend/test-results, retention-days: 7}

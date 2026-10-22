@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
  *  E2E_BASE_URL defaults to the local Compose UI. */
 export default defineConfig({
   testDir: 'e2e',
+  globalSetup: './e2e/seed.ts',
   timeout: 30_000,
   retries: 0,
   use: { baseURL: process.env['E2E_BASE_URL'] ?? 'http://127.0.0.1:3240', trace: 'retain-on-failure' },
