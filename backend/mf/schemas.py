@@ -647,6 +647,12 @@ class HttpCase(Dto):
         return v
 
 
+class PerformanceIn(Dto):
+    """Comparative load test: the same concurrency and duration against the original, then against the migrated system."""
+    users: int = Field(default=10, ge=1, le=100)
+    seconds: int = Field(default=60, ge=10, le=900)
+
+
 class HttpTestRunIn(Dto):
     """source 'migration' (default): the worker starts the original code and the migration's WAR and reads the cases from
     the code; only workspace_migration_id is required (name, container and data package are optional). source 'urls': two
@@ -660,6 +666,7 @@ class HttpTestRunIn(Dto):
     migrated: HttpTarget | None = None
     cases: list[HttpCase] = Field(default_factory=list, max_length=500)  # source migration: extra cases besides the generated ones
     screenshots: bool = True
+    performance: PerformanceIn | None = None  # source migration: also the comparative load test (mf.tomcat_war.perf)
 
     @model_validator(mode='after')
     def by_source(self):
@@ -667,6 +674,8 @@ class HttpTestRunIn(Dto):
             raise ValueError('workspaceMigrationId es obligatorio para probar una migración')
         if self.source == 'urls' and not (self.original and self.migrated and self.cases and self.name):
             raise ValueError('Con sistemas ya levantados indique name, original, migrated y al menos un caso')
+        if self.source == 'urls' and self.performance:
+            raise ValueError('La prueba de rendimiento levanta los dos sistemas: solo está disponible al probar una migración')
         return self
 
 
@@ -684,6 +693,7 @@ class HttpTestRunOut(Dto):
     migrated: dict | None = None
     cases: list[dict]
     screenshots: bool
+    performance: dict | None = None
     summary: dict
     created_by: str
     created_at: datetime

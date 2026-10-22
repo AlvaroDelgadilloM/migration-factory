@@ -436,6 +436,7 @@ class HttpTestRun(Entity, Base):
     migrated: Mapped[dict | None] = mapped_column(Json, nullable=True)
     cases: Mapped[list] = mapped_column(Json)      # same format as `migrate.py verify responses --cases`; generated for source migration
     screenshots: Mapped[bool] = mapped_column(Boolean, default=True)
+    performance: Mapped[dict | None] = mapped_column(Json, nullable=True)  # {users, seconds}: also the comparative load test
     summary: Mapped[dict] = mapped_column(Json, default=dict)
     created_by: Mapped[str] = mapped_column(String(255))
 

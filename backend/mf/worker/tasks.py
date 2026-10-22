@@ -1105,7 +1105,7 @@ def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
             raise StepFailure('JDK_MISSING', str(e)) from None
         return autotest.run(src, war_file, out, run.container or '', data, run.screenshots,
                             timeout=min(900, get_settings().workspace_timeout_seconds), log=lambda m: ctx.emit('info', 'compare', m),
-                            migrated_java_home=jdk)
+                            migrated_java_home=jdk, performance=run.performance)
     except autotest.AutoTestError as e:
         raise StepFailure('AUTOTEST_FAILED', str(e)[:2000]) from None
     finally:

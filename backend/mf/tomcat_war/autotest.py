@@ -29,7 +29,7 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import blueprint, config_keys, http_run, pipeline, verify
+from . import blueprint, config_keys, http_run, perf, pipeline, verify
 
 DATA_PACKAGE = """paquete de datos de prueba (carpeta o .zip), todo opcional:
   etc/<ruta>.properties   configuración de prueba; reemplaza al archivo generado con la misma ruta
@@ -649,7 +649,9 @@ def _data_dir(data: Path | None, work: Path) -> Path | None:
 
 
 def run(source: Path, war: Path, out: Path, container: str = '', data: Path | None = None, screenshots: bool = True,
-        timeout: int = 900, log=lambda m: None, migrated_java_home: Path | None = None) -> dict:
+        timeout: int = 900, log=lambda m: None, migrated_java_home: Path | None = None, performance: dict | None = None) -> dict:
+    """performance: {'users', 'seconds', 'warmup', 'tolerance'} (mf.tomcat_war.perf.DEFAULTS) to also run the comparative
+    load test on the cases both sides answered, while both are up."""
     source, out = Path(source).resolve(), Path(out).resolve()
     work = out / '.verify' / 'auto'
     work.mkdir(parents=True, exist_ok=True)
@@ -715,6 +717,15 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
         labels = ({'label': 'ORIGINAL (Camel 2)', 'url': f"http://127.0.0.1:{o['port']}"},
                   {'label': 'MIGRADO (Tomcat, Camel 4)', 'url': f"http://127.0.0.1:{mg['port']}"})
         summary = http_run.run(*labels, cases, out, screenshots, 60, log)
+        if performance is not None:
+            answered = {c['name'] for c in summary['cases'] if c['original']['status'] and c['migrated']['status']}
+            cfg = perf.DEFAULTS | {k: v for k, v in performance.items() if v is not None}
+            res = perf.run({'url': labels[0]['url'], 'pid': p_orig.pid}, {'url': labels[1]['url'], 'pid': p_tc.pid},
+                           [c for c in cases if c['name'] in answered], out, int(cfg['users']), int(cfg['seconds']), int(cfg['warmup']),
+                           float(cfg['tolerance']), mode, log)
+            summary['performance'] = {k: res[k] for k in ('users', 'seconds', 'cases', 'comparison')} | {
+                side: {k: res[side][k] for k in ('requests', 'throughput', 'p50', 'p95', 'p99', 'errors', 'errorRate', 'memoryMb')}
+                for side in ('original', 'migrated')}
     finally:
         for p in procs:
             _stop(p)

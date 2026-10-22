@@ -1294,7 +1294,8 @@ def verify_cmd(args, log) -> int:
         if args.check == 'auto':
             from .tomcat_war import autotest
             res = autotest.run(Path(args.project), Path(args.war), out, args.container or '', Path(args.data) if args.data else None,
-                               not args.no_screenshots, args.timeout, log, Path(args.migrated_java_home) if args.migrated_java_home else None)
+                               not args.no_screenshots, args.timeout, log, Path(args.migrated_java_home) if args.migrated_java_home else None,
+                               {'users': args.perf_users, 'seconds': args.perf_seconds} if args.perf else None)
             t = res['totals']
             mode = 'con paquete de datos' if res['mode'] == 'DATOS' else 'prueba de humo (sin datos del cliente)'
             o, m = res['startup']['original'], res['startup']['migrado']
@@ -1302,6 +1303,12 @@ def verify_cmd(args, log) -> int:
                   f"Arranque: original {o['started']} de {o['total']} módulos, migrado {m['started']} de {m['total']}\n"
                   f"{t['cases']} casos generados: {t['same']} idénticos, {t['different']} distintos, {t['notExecutable']} sin ejecutar · {res['status']}\n"
                   f"Evidencia: {out / 'reports' / 'evidence' / 'index.html'}")
+            if res.get('performance'):
+                pf = res['performance']
+                print(f"Rendimiento ({pf['users']} usuarios, {pf['seconds']} s): {pf['comparison']['status']} · "
+                      f"p95 {pf['original']['p95']} -> {pf['migrated']['p95']} ms · "
+                      f"{pf['original']['throughput']} -> {pf['migrated']['throughput']} peticiones/s"
+                      + ''.join(f"\n  - {r}" for r in pf['comparison']['reasons']) + f"\nDetalle: {out / 'reports' / 'performance.md'}")
         elif args.check == 'report':
             from .tomcat_war import evidence
             res = evidence.report(out, args.browser, not args.no_screenshots, (args.old_label, args.new_label), log)
@@ -1482,6 +1489,9 @@ def main(argv=None):
     va.add_argument('--output', required=True); va.add_argument('--timeout', type=int, default=900, help='segundos para que arranque cada lado')
     va.add_argument('--no-screenshots', action='store_true')
     va.add_argument('--migrated-java-home', help='JDK con el que corre el WAR migrado (p. ej. Java 25); el original usa JAVA_HOME')
+    va.add_argument('--perf', action='store_true', help='además, prueba de rendimiento comparativa (misma carga a cada lado)')
+    va.add_argument('--perf-users', type=int, default=10, help='usuarios concurrentes de la prueba de rendimiento')
+    va.add_argument('--perf-seconds', type=int, default=60, help='segundos medidos por lado (más 10 de calentamiento)')
     vv = vsub.add_parser('report', help='reporte HTML con el original junto al migrado, caso por caso, y capturas de pantalla')
     vv.add_argument('--output', required=True, help='la misma carpeta de salida de verify routes / verify responses')
     vv.add_argument('--browser', help='ejecutable de Edge o Chrome para las capturas (por defecto se busca uno instalado)')

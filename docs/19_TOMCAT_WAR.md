@@ -254,6 +254,21 @@ Los headers `Authorization`, `Cookie` y `Proxy-Authorization` de los casos nunca
 `@PropertyInject`) y no están en los `.properties`/`.cfg` del repositorio ni en los valores por defecto de Blueprint: deben estar
 en la carpeta `etc` del Tomcat destino (`-Dmf.etc`). Es una lista de revisión, no un error.
 
+## Prueba de rendimiento comparativa
+
+`migrate.py verify auto ... --perf [--perf-users 10] [--perf-seconds 60]`, o en la plataforma «Pruebas → Automáticas» con
+«Prueba de rendimiento comparativa». Después de comparar las respuestas, y con los dos sistemas arriba, envía la misma carga
+(N usuarios concurrentes, 10 s de calentamiento y los segundos indicados) primero al original y después al migrado, nunca a los
+dos a la vez. Usa los casos que los dos respondieron. Mide peticiones por segundo, mediana, p95, p99, errores (5xx o sin
+respuesta) y la memoria del proceso (`ps` o `tasklist`). Resultado en `reports/performance.{json,md}`:
+
+- `FAIL`: el migrado da más errores, o su p95 supera al del original en más del doble de la tolerancia (20 %).
+- `REVIEW`: es más lento que la tolerancia, pero sin llegar a lo anterior.
+- `PASS`: sin regresiones. Las diferencias de menos de 5 ms se consideran ruido.
+
+Detecta regresiones del migrado frente al original en la misma máquina y con los mismos datos. No mide la capacidad de
+producción: para eso hacen falta el ambiente, los datos y los volúmenes del cliente.
+
 ## Pendiente
 
 - **Plataforma**: corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war",

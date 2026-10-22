@@ -77,7 +77,13 @@ export interface HttpRunSummary { status?: string; totals?: { cases: number; sam
   // automatic test from a migration (mf.tomcat_war.autotest)
   mode?: 'HUMO' | 'DATOS'; container?: string; modules?: string[]; generatedCases?: number; externalCalls?: string[];
   startup?: Record<'original' | 'migrado', { started: number | null; total: number | null; failed: string[] }>;
-  configuration?: { files: number; replaced: number; generated: number; fromDataPackage: string[] } }
+  configuration?: { files: number; replaced: number; generated: number; fromDataPackage: string[] };
+  // comparative load test (mf.tomcat_war.perf), when requested
+  performance?: { users: number; seconds: number; cases: number;
+    comparison: { status: string; tolerance: number; reasons: string[] };
+    original: PerfSide; migrated: PerfSide } }
+export interface PerfSide { requests: number; throughput: number | null; p50: number | null; p95: number | null; p99: number | null;
+  errors: number; errorRate: number | null; memoryMb: { max: number; avg: number } | null }
 export interface ManualResult { results: (HttpAnswer & { label: string; url: string })[]; state?: string; issues?: string[]; kind?: string | null }
 
 // Java / Spring versions each migration target accepts (GET /target-versions)

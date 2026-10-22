@@ -6216,6 +6216,16 @@
             "type": "boolean",
             "title": "Screenshots",
             "default": true
+          },
+          "performance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PerformanceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6329,6 +6339,18 @@
           "screenshots": {
             "type": "boolean",
             "title": "Screenshots"
+          },
+          "performance": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Performance"
           },
           "summary": {
             "additionalProperties": true,
@@ -7227,6 +7249,27 @@
           "total"
         ],
         "title": "Page[ScanOut]"
+      },
+      "PerformanceIn": {
+        "properties": {
+          "users": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Users",
+            "default": 10
+          },
+          "seconds": {
+            "type": "integer",
+            "maximum": 900.0,
+            "minimum": 10.0,
+            "title": "Seconds",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "title": "PerformanceIn",
+        "description": "Comparative load test: the same concurrency and duration against the original, then against the migrated system."
       },
       "Permissions": {
         "properties": {

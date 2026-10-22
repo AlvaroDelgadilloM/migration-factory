@@ -1943,6 +1943,7 @@ export interface components {
              * @default true
              */
             screenshots: boolean;
+            performance?: components["schemas"]["PerformanceIn"] | null;
         };
         /** HttpTestRunOut */
         HttpTestRunOut: {
@@ -1987,6 +1988,10 @@ export interface components {
             }[];
             /** Screenshots */
             screenshots: boolean;
+            /** Performance */
+            performance?: {
+                [key: string]: unknown;
+            } | null;
             /** Summary */
             summary: {
                 [key: string]: unknown;
@@ -2295,6 +2300,22 @@ export interface components {
             total: number;
             /** Nextcursor */
             nextCursor?: string | null;
+        };
+        /**
+         * PerformanceIn
+         * @description Comparative load test: the same concurrency and duration against the original, then against the migrated system.
+         */
+        PerformanceIn: {
+            /**
+             * Users
+             * @default 10
+             */
+            users: number;
+            /**
+             * Seconds
+             * @default 60
+             */
+            seconds: number;
         };
         /** Permissions */
         Permissions: {

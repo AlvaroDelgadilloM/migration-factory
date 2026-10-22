@@ -30,6 +30,10 @@ const EXAMPLE = `{
   imports: [DatePipe, FormsModule, ButtonModule, CheckboxModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TextareaModule,
             PageHeader, StateView, StatusTag, ActionButton, JobLog, CompareView],
   styles: [`
+    .perf-opts{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;margin:8px 0 0 28px}.perf-opts span{display:flex;flex-direction:column;gap:4px}
+    .perf-opts label{font-size:12px;color:var(--mf-muted)}.perf-opts input{width:8rem}.perf-opts small{flex-basis:100%}
+    .perf{border:1px solid var(--mf-line);border-radius:10px;padding:10px 14px;margin:12px 0}.perf h4{margin:2px 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .perf-t{border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}.perf-t th,.perf-t td{padding:4px 14px 4px 0;text-align:left;border-bottom:1px solid var(--mf-line)}
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 12px 18px; }
     .field { display: flex; flex-direction: column; gap: 4px; } .field label { font-size: 12px; color: var(--mf-muted); }
     fieldset { border: 1px solid var(--mf-line); border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; background: #fff; }
@@ -87,6 +91,15 @@ casos.json              casos extra con el formato de la batería</pre>
             @if (pkgError(); as e) { <p class="err small">{{ e.message }}</p> }
           </div>
           <label class="inline" style="margin-top:10px"><p-checkbox [(ngModel)]="screenshots" [binary]="true" inputId="sc1" /> Capturas de pantalla en la evidencia</label>
+          <label class="inline" style="margin-top:6px"><p-checkbox [(ngModel)]="perf" [binary]="true" inputId="pf1" /> Prueba de rendimiento comparativa</label>
+          @if (perf) {
+            <div class="perf-opts">
+              <span><label for="pfu">Usuarios concurrentes</label><input pInputText id="pfu" type="number" min="1" max="100" [(ngModel)]="perfUsers" /></span>
+              <span><label for="pfs">Segundos por lado</label><input pInputText id="pfs" type="number" min="10" max="900" [(ngModel)]="perfSeconds" /></span>
+              <small class="muted">La misma carga contra el original y luego contra el migrado, en la misma máquina. Detecta si el migrado es más lento,
+                falla con concurrencia o usa más memoria; no mide la capacidad de producción.</small>
+            </div>
+          }
           <div style="margin-top:12px"><mf-action label="Probar" icon="pi pi-play" [busy]="busy()" [disabledReason]="migrationReason()" (run)="startMigration()" /></div>
         }
       } @else if (sources.error(); as e) { <p class="err">{{ e.message }}</p> }
@@ -174,6 +187,26 @@ casos.json              casos extra con el formato de la batería</pre>
             <p>De los distintos: {{ s.differencesByKind?.['ERROR_TEXT'] ?? 0 }} devuelven el mismo código de error y cambia solo el texto;
               {{ s.differencesByKind?.['DATA'] ?? 0 }} cambian el código, el tipo o los datos.</p>
           }
+          @if (s.performance; as pf) {
+            <section class="perf">
+              <h4>Rendimiento <mf-status [value]="pf.comparison.status" /> <span class="muted small">{{ pf.users }} usuarios · {{ pf.seconds }} s por lado · {{ pf.cases }} casos</span></h4>
+              <table class="perf-t">
+                <thead><tr><th scope="col">Medida</th><th scope="col">Original</th><th scope="col">Migrado</th></tr></thead>
+                <tbody>
+                  <tr><td>Peticiones por segundo</td><td>{{ pf.original.throughput }}</td><td>{{ pf.migrated.throughput }}</td></tr>
+                  <tr><td>Mediana (p50)</td><td>{{ pf.original.p50 }} ms</td><td>{{ pf.migrated.p50 }} ms</td></tr>
+                  <tr><td>p95</td><td>{{ pf.original.p95 }} ms</td><td>{{ pf.migrated.p95 }} ms</td></tr>
+                  <tr><td>p99</td><td>{{ pf.original.p99 }} ms</td><td>{{ pf.migrated.p99 }} ms</td></tr>
+                  <tr><td>Errores (5xx o sin respuesta)</td><td>{{ pf.original.errors }}</td><td>{{ pf.migrated.errors }}</td></tr>
+                  @if (pf.original.memoryMb && pf.migrated.memoryMb) {
+                    <tr><td>Memoria máxima</td><td>{{ pf.original.memoryMb.max }} MB</td><td>{{ pf.migrated.memoryMb.max }} MB</td></tr>
+                  }
+                </tbody>
+              </table>
+              @for (r of pf.comparison.reasons; track r) { <p class="small">· {{ r }}</p> }
+              @if (!pf.comparison.reasons.length) { <p class="small muted">Sin regresiones dentro de la tolerancia ({{ pf.comparison.tolerance * 100 }} %).</p> }
+            </section>
+          }
           @if (s.screenshotProblem) { <p class="muted small"><i class="pi pi-info-circle" aria-hidden="true"></i> Capturas: {{ s.screenshotProblem }}</p> }
           <p-selectbutton [options]="filters" [(ngModel)]="filter" optionLabel="label" optionValue="value" aria-label="Filtrar casos" />
           <p-table [value]="visible()" styleClass="mt-2" [paginator]="visible().length > 50" [rows]="50">
@@ -212,6 +245,9 @@ export class PruebasAutomaticas {
   targets: [Target, Target] = [{ label: '', url: '' }, { label: '', url: '' }];
   name = '';
   screenshots = true;
+  perf = false;
+  perfUsers = 10;
+  perfSeconds = 60;
   example = EXAMPLE;
   busy = signal(false);
   error = signal<UiError | null>(null);
@@ -340,7 +376,8 @@ export class PruebasAutomaticas {
   startMigration() {
     if (this.migrationReason()) return;
     return this.launch({ source: 'migration', workspaceMigrationId: this.migrationId, container: this.container || null,
-                         dataPackageId: this.pkg()?.id ?? null, screenshots: this.screenshots });
+                         dataPackageId: this.pkg()?.id ?? null, screenshots: this.screenshots,
+                         performance: this.perf ? { users: Number(this.perfUsers) || 10, seconds: Number(this.perfSeconds) || 60 } : null });
   }
 
   start() {

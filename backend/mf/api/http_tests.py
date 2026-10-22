@@ -139,7 +139,7 @@ def start_run(project_id: uuid.UUID, body: HttpTestRunIn, request: Request, idem
     run = HttpTestRun(project_id=project_id, name=name, source=body.source, workspace_migration_id=body.workspace_migration_id,
                       container=body.container, data_artifact_id=body.data_package_id, original=original, migrated=migrated,
                       screenshots=body.screenshots, cases=[c.model_dump(mode='json', exclude_none=True) for c in body.cases],
-                      created_by=me.subject, summary={})
+                      performance=body.performance.model_dump() if body.performance else None, created_by=me.subject, summary={})
     db.add(run)
     db.flush()
     job = jobs.create_job(db, kind='http_compare', project_id=project_id, subject_id=run.id, actor=me.subject)
