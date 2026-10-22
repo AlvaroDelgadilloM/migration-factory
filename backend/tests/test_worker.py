@@ -375,3 +375,26 @@ def test_long_jobs_use_their_own_queue():
     from mf import jobs
     assert jobs.queue_for('workspace_migrate') == jobs.queue_for('modernize') == 'mf-long'
     assert {jobs.queue_for(k) for k in ('scan', 'preview', 'apply', 'pull_request')} == {'mf-jobs'}
+
+
+def test_maven_local_repository_is_per_project(tmp_path, monkeypatch):
+    """A build only reads and writes its own project's Maven cache (a malicious plugin cannot poison other projects)."""
+    from mf.config import get_settings
+    from mf.worker import mavenops, runner
+    monkeypatch.setattr(get_settings(), 'maven_repo_local', tmp_path / 'm2')
+    (tmp_path / 'p').mkdir()
+    (tmp_path / 'p' / 'pom.xml').write_text('<project/>')
+    seen = []
+    monkeypatch.setattr(runner, 'run', lambda args, cwd, ctx, **kw: seen.append(args))
+    ctx = runner.Context('j', tmp_path / 'w', deadline=1e12)
+    try:
+        for pid in ('a', 'b'):
+            mavenops.use_project(pid)
+            mavenops.mvn(ctx, tmp_path / 'p', ['validate'], 'x')
+        mavenops.use_project(None)
+        mavenops.mvn(ctx, tmp_path / 'p', ['validate'], 'x')
+    finally:
+        mavenops.use_project(None)
+    repos = [next(a for a in args if a.startswith('-Dmaven.repo.local=')) for args in seen]
+    assert repos == [f'-Dmaven.repo.local={tmp_path / "m2" / "projects" / "a"}', f'-Dmaven.repo.local={tmp_path / "m2" / "projects" / "b"}',
+                     f'-Dmaven.repo.local={tmp_path / "m2"}']

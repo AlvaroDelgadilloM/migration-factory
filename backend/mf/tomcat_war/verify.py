@@ -32,6 +32,12 @@ class ToolError(pipeline.InvalidInput):
 
 
 # --- tools ------------------------------------------------------------------------------------------------------------
+def _repo_local() -> Path:
+    """The job's Maven local repository (per project in the platform; MF_MAVEN_REPO_LOCAL or ~/.m2 from the CLI)."""
+    from ..worker import mavenops
+    return mavenops.repo_local() if mavenops._project['id'] else Path(os.environ.get('MF_MAVEN_REPO_LOCAL') or Path.home() / '.m2' / 'repository')
+
+
 def _java(tool: str, home: Path | str | None = None) -> str:
     """A JDK tool: from `home` when given (the migrated side may need its own JDK, e.g. Java 25), else from JAVA_HOME."""
     home = home or os.environ.get('JAVA_HOME')
@@ -275,7 +281,7 @@ def dump_migrated(source: Path, module_dirs: dict, war_dir: Path, work: Path, lo
     lib = war_dir / 'WEB-INF' / 'lib'
     module_jar = re.compile('^(' + '|'.join(re.escape(m) for m in module_dirs) + r')-\d')
     lib4 = [j for j in sorted(lib.glob('*.jar')) if not module_jar.match(j.name)]
-    servlet = sorted((Path(os.environ.get('MF_MAVEN_REPO_LOCAL') or Path.home() / '.m2' / 'repository') / 'jakarta/servlet/jakarta.servlet-api').rglob('*.jar'))
+    servlet = sorted((_repo_local() / 'jakarta/servlet/jakarta.servlet-api').rglob('*.jar'))
     lib4 += servlet[-1:]
     projects = {pipeline._head(pipeline.read(p / 'pom.xml'), 'artifactId'): p for p in pipeline.discover(Path(source))}
     deps = module_dependencies({m: p / 'src' / 'main' / 'java' for m, p in projects.items()})
@@ -321,7 +327,7 @@ def routes(source: Path, migrated: Path, out: Path, config: Path | None = None, 
     # Camel 4 classpath: WAR libraries WITHOUT the migrated modules (some share class names; each is dumped on its own)
     module_jar = re.compile('^(' + '|'.join(re.escape(m) for m in names) + r'|migrated-war)-\d')
     lib4 = [j for j in sorted(war_lib.glob('*.jar')) if not module_jar.match(j.name)]
-    servlet = sorted((Path(os.environ.get('MF_MAVEN_REPO_LOCAL') or Path.home() / '.m2' / 'repository') / 'jakarta/servlet/jakarta.servlet-api').rglob('*.jar'))
+    servlet = sorted((_repo_local() / 'jakarta/servlet/jakarta.servlet-api').rglob('*.jar'))
     if not servlet:
         raise ToolError('No se encontró jakarta.servlet-api en el repositorio Maven local (compile primero el workspace migrado)')
     lib4.append(servlet[-1])

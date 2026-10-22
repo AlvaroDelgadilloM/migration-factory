@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     maven_network: Literal['offline', 'central', 'allowlist'] = 'allowlist'
     maven_repo_local: Path = Path('/tmp/mf-m2')
     maven_file_locks: bool = False  # true when several workers share maven_repo_local
+    # one local repository per project under maven_repo_local/projects/<id>: a build (untrusted plugins) can only poison its own
+    # project's cache, at the cost of downloading each project's dependencies once
+    maven_repo_per_project: bool = True
     # doc 32: which baseline blocks still allow a DEGRADED migration (code failures need --allow-baseline-failure)
     baseline_allow_external_dependency_failure: bool = True
     baseline_allow_repository_failure: bool = False

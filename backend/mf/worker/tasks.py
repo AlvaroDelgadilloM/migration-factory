@@ -140,6 +140,7 @@ def run_job(job_id: str):
     workdir.mkdir(parents=True, exist_ok=True)
     limit = s.workspace_timeout_seconds if job.kind in ('workspace_migrate', 'http_compare') else s.job_timeout_seconds
     ctx = Context(job_id, workdir, deadline=time.monotonic() + limit, emit=lambda l, p, m: emit(job_id, l, p, m))
+    mavenops.use_project(job.project_id)
     hb = Heartbeat(ctx)
     hb.start()
     if job.attempts > 1:
@@ -165,6 +166,7 @@ def run_job(job_id: str):
         finish(job_id, 'failed', 'INTERNAL', redact(f'{type(e).__name__}: {e}', ctx.secrets)[:2000])
     finally:
         mavenops.use_local_overlay(None)  # thread-local Maven overlay (degraded mode / workspaces) never leaks into the next job
+        mavenops.use_project(None)
         hb.stopped.set()
         gitops.os_safe_rmtree(s.work_dir / job_id)  # checkout removed after artifacts are stored
 
@@ -708,7 +710,7 @@ def do_execution(job: Job, ctx: Context):
             from ..dependency import stub_leak_guard
             remove_stubs(ctx.workdir / '.m2-degraded', stubbed)
             mavenops.use_local_overlay(None)
-            leak = stub_leak_guard.check(src, stubbed, [ctx.workdir / '.m2-degraded', get_settings().maven_repo_local],
+            leak = stub_leak_guard.check(src, stubbed, [ctx.workdir / '.m2-degraded', mavenops.repo_local()],
                                          overlay_enabled=mavenops.current_overlay() is not None)
             _validation(db, ex, ctx, 'stub-leak-guard', 'candidate', 'G1', None, status=leak['status'],
                         detail=json.dumps(leak['evidence'] | {'leaks': leak['leaks'][:10]})[:4000])

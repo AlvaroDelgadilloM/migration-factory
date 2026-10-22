@@ -103,6 +103,11 @@ services:
     environment:
       <<: *worker-env
       MF_WORKER_QUEUES: mf-long
+      # projects of the same migration wave migrate N at a time (one Maven JVM each, -Xmx1g): memory limit sized for 2
+      MF_WORKSPACE_MIGRATION_PARALLELISM: ${MF_WORKSPACE_MIGRATION_PARALLELISM:-2}
+    deploy:
+      resources:
+        limits: {cpus: "2.0", memory: 4g, pids: 1024}
 
   frontend:
     build: {context: ., dockerfile: docker/frontend.Dockerfile}

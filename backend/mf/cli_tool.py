@@ -659,7 +659,7 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
             mavenops.use_local_overlay(None)
             result['_ownOverlay'] = False
         from .config import get_settings
-        leak = stub_leak_guard.check(work, result.get('degradedStubs', []), [stub_head, get_settings().maven_repo_local],
+        leak = stub_leak_guard.check(work, result.get('degradedStubs', []), [stub_head, mavenops.repo_local()],
                                      overlay_enabled=mavenops.current_overlay() == out / '.m2-degraded')
         result['stubLeakGuard'] = leak
         result['validations'].append({'target': 'candidate', 'stage': 'CANDIDATE', 'name': 'stub-leak-guard', 'status': leak['status'],

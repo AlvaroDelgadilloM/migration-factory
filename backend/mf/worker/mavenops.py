@@ -36,6 +36,7 @@ def settings_file(ctx) -> Path:
 # of the shared cache (Maven >= 3.9 maven.repo.local.tail), so nothing is installed into the shared repository.
 # Per thread (doc 20): projects of the same wave can migrate in parallel, each with its own baseline/candidate overlay.
 _overlay = threading.local()
+_project = {'id': None}  # project of the running job (one job per worker process; shared by its wave threads)
 _parallel = {'on': False}  # parallel workspace migration: Maven's file locks protect the shared overlays and cache
 
 
@@ -45,6 +46,18 @@ def use_local_overlay(head: Path | None):
 
 def current_overlay() -> Path | None:
     return getattr(_overlay, 'head', None)
+
+
+def use_project(project_id):
+    _project['id'] = project_id
+
+
+def repo_local() -> Path:
+    """The Maven local repository of the running job: its project's own one when maven_repo_per_project (no cache shared
+    between projects), else the shared maven_repo_local (CLI, tests, a job without project)."""
+    s = get_settings()
+    pid = _project['id']
+    return Path(s.maven_repo_local) / 'projects' / str(pid) if pid and s.maven_repo_per_project else Path(s.maven_repo_local)
 
 
 def set_parallel(on: bool):
@@ -112,8 +125,8 @@ def mvn(ctx, cwd, goals, name, timeout=None, java_home: str | None = None):
                                                     else '[ERROR] CANDIDATE_BUILD_CONFIGURATION_ERROR reason=MAVEN_PROJECT_NOT_FOUND\n'))
         return runner.Result(1, 0, log)
     head = current_overlay()
-    repo = [f'-Dmaven.repo.local={head}', f'-Dmaven.repo.local.tail={s.maven_repo_local}',
-            '-Dmaven.repo.local.tail.ignoreAvailability=true'] if head else [f'-Dmaven.repo.local={s.maven_repo_local}']
+    repo = [f'-Dmaven.repo.local={head}', f'-Dmaven.repo.local.tail={repo_local()}',
+            '-Dmaven.repo.local.tail.ignoreAvailability=true'] if head else [f'-Dmaven.repo.local={repo_local()}']
     if _parallel['on'] or s.maven_file_locks:  # concurrent Maven processes (parallel wave, or two workers) share repositories
         repo += ['-Daether.syncContext.named.factory=file-lock', '-Daether.syncContext.named.nameMapper=file-gav']
     args = ['mvn', '-B', '-ntp', '-e', '-Dstyle.color=never', '-s', str(settings_file(ctx)), '-f', str(Path(cwd) / 'pom.xml')] + repo \
@@ -133,7 +146,7 @@ def external_env(ctx) -> dict:
     s = get_settings()
     home = ctx.workdir / 'home'
     home.mkdir(parents=True, exist_ok=True)
-    return {'MAVEN_ARGS': f'-ntp -s {settings_file(ctx)} -Dmaven.repo.local={s.maven_repo_local}' + (' -o' if s.maven_network == 'offline' else ''),
+    return {'MAVEN_ARGS': f'-ntp -s {settings_file(ctx)} -Dmaven.repo.local={repo_local()}' + (' -o' if s.maven_network == 'offline' else ''),
             'MAVEN_OPTS': f'-Djansi.tmpdir={jansi_tmp(ctx.workdir)} -Djansi.force=false -Duser.home={home} {s.maven_opts}'}
 
 
