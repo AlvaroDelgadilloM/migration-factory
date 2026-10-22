@@ -65,6 +65,23 @@ const FACTORS: Record<string, string> = {
         <p><mf-status [value]="j.state" /> <mf-status [value]="j.jobType" /> <mf-status [value]="j.complexity" />
           <span class="muted small"> · {{ j.stages }} etapas · {{ j.sourceFile }}</span></p>
         @if (j.dag) { <p class="small">DAG: <code>{{ j.dag }}</code></p> }
+        @if (j.ownDag) {
+          <div class="sched small">
+            <label [for]="'cron-' + j.name"><strong>Programación del DAG</strong> (cron, zona horaria del Resumen)</label>
+            <div class="row">
+              <input pInputText [id]="'cron-' + j.name" placeholder="0 2 * * *  (todos los días a las 2:00)" [ngModel]="draft[j.name] ?? ds.schedules()[j.name] ?? ''"
+                     (ngModelChange)="draft[j.name] = $event" [disabled]="!ds.ctx.can('execute')" />
+              <button type="button" class="p-button p-button-sm" [disabled]="!ds.ctx.can('execute') || (draft[j.name] ?? null) === null"
+                      (click)="saveCron(j.name)">Guardar</button>
+            </div>
+            @if (ds.error(); as e) { <span class="err">No se guardó: {{ e.status === 422 ? 'revise el formato (5 campos: minuto hora día mes día-semana)' : e.message }}</span> }
+            <span class="muted">
+              @if (ds.appliedSchedules()[j.name]; as c) { En el DAG generado: <code>{{ c }}</code>. } @else { El DAG generado no tiene horario (solo se ejecuta a mano). }
+              @if ((ds.schedules()[j.name] ?? '') !== (ds.appliedSchedules()[j.name] ?? '')) { <strong>Cambio guardado: se aplica al volver a migrar.</strong> }
+              DataStage no exporta la programación (la hacía un planificador externo); minuto hora día mes día-semana, p. ej. <code>30 2 * * MON-FRI</code> o <code>&#64;daily</code>.
+            </span>
+          </div>
+        }
         @if (j.flow; as f) {
           <h3>Secuencia de DataStage → DAG de Airflow</h3>
           <mf-flow-diagram [flow]="f" />
@@ -94,7 +111,8 @@ const FACTORS: Record<string, string> = {
       }
     </p-drawer>`,
   styles: [`.clickable{cursor:pointer}.pts{display:block;margin-top:3px}.st{font-size:12px;padding:1px 8px;border-radius:10px}.st-OK{background:#e7f6ec;color:#067647}
-    .st-REVIEW{background:#e6f2f3;color:#0a5f73}.st-MANUAL{background:#fdecea;color:#b42318}.issue{padding-left:16px}h3{margin:16px 0 6px;font-size:15px}`],
+    .st-REVIEW{background:#e6f2f3;color:#0a5f73}.st-MANUAL{background:#fdecea;color:#b42318}.issue{padding-left:16px}
+    .sched{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;max-width:46rem}.sched .row{display:flex;gap:8px}.sched .err{color:#b42318}.sched input{flex:1;font-family:ui-monospace,Menlo,monospace}h3{margin:16px 0 6px;font-size:15px}`],
 })
 export class DsJobs {
   ds = inject(DataStageStore);
@@ -118,6 +136,10 @@ export class DsJobs {
       .filter(j => !q || j.name.toLowerCase().includes(q))
       .map(j => ({ ...j, pending: this.ds.actions().filter(a => a.job === j.name && a.severity === 'manual' && !st[a.key]?.done).length }));
   });
+  draft: Record<string, string> = {};
+  async saveCron(job: string) {
+    if (await this.ds.setSchedule(job, this.draft[job] ?? '')) delete this.draft[job];
+  }
   conf(c: string) { return ({ HIGH: 'Alta', MEDIUM: 'Media', LOW: 'Baja' } as Record<string, string>)[c] ?? c; }
   /** "branch ×3 (+9)" from the analysis → plain Spanish; an unknown factor is shown as it came */
   reason(r: string) {

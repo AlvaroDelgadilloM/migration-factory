@@ -121,6 +121,9 @@ export class Api {
   setDataStageAction(id: string, key: string, done: boolean) {
     return this.send<DataStageMigration>('PATCH', `/datastage-migrations/${id}/actions`, { key, done });
   }
+  setDataStageSchedules(id: string, schedules: Record<string, string>) {
+    return this.send<DataStageMigration>('PUT', `/datastage-migrations/${id}/schedules`, { schedules });
+  }
   uploadDataStageReconciliation(id: string, result: unknown) {
     return this.send<DataStageMigration>('POST', `/datastage-migrations/${id}/reconciliations`, result);
   }

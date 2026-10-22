@@ -12,7 +12,7 @@ from ..datastage import reconcile
 from ..db import get_db
 from ..errors import ApiError
 from ..models import DataStageMigration, Job, now
-from ..schemas import DataStageActionIn, DataStageMigrationIn, DataStageMigrationOut, JobOut
+from ..schemas import DataStageActionIn, DataStageMigrationIn, DataStageMigrationOut, DataStageSchedulesIn, JobOut
 
 router = APIRouter(tags=['datastage'])
 
@@ -41,6 +41,8 @@ def start(project_id: uuid.UUID, body: DataStageMigrationIn, request: Request, i
     prev = db.scalar(select(DataStageMigration).where(DataStageMigration.project_id == p.id)
                      .order_by(DataStageMigration.created_at.desc()).limit(1))
     # the worklist progress follows the project: same job|stage|text = same key, so a re-run keeps what was done
+    if payload.get('schedules') is None:  # the schedules saved on the project's last run carry over, like the worklist
+        payload['schedules'] = dict((prev.options or {}).get('schedules') or {}) if prev else {}
     dm = DataStageMigration(project_id=p.id, options=payload, created_by=me.subject, action_state=dict(prev.action_state) if prev else {})
     db.add(dm)
     db.flush()
@@ -86,6 +88,24 @@ def set_action(dm_id: uuid.UUID, body: DataStageActionIn, request: Request, db: 
     dm.action_state = state
     audit.record(db, actor=me.subject, action='datastage_action.' + ('done' if body.done else 'reopen'), entity_type='datastage_migration',
                  entity_id=dm.id, project_id=dm.project_id, details={'key': body.key, 'note': body.note}, request=request)
+    db.commit()
+    return _out(db, dm)
+
+
+@router.put('/datastage-migrations/{dm_id}/schedules', response_model=DataStageMigrationOut)
+def set_schedules(dm_id: uuid.UUID, body: DataStageSchedulesIn, request: Request, db: Session = Depends(get_db),
+                  me: Principal = Depends(current_principal)):
+    """Cron of each DAG (the DSX has no schedule): saved on this run and applied by the next migration (audited)."""
+    dm = db.get(DataStageMigration, dm_id)
+    if dm is None:
+        raise ApiError(404, 'NOT_FOUND', 'Recurso no encontrado')
+    authorize(db, me, dm.project_id, 'execute')
+    unknown = {n for n in body.schedules if not (dm.results or {}).get(n, {}).get('ownDag')}
+    if unknown:
+        raise ApiError(422, 'VALIDATION', 'Sin DAG propio en esta migración (no se pueden programar): ' + ', '.join(sorted(unknown)[:5]))
+    dm.options = dict(dm.options or {}) | {'schedules': body.schedules}
+    audit.record(db, actor=me.subject, action='datastage_migration.schedules', entity_type='datastage_migration', entity_id=dm.id,
+                 project_id=dm.project_id, details={'schedules': body.schedules}, request=request)
     db.commit()
     return _out(db, dm)
 

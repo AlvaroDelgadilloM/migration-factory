@@ -246,3 +246,41 @@ def test_cancelling_a_queued_datastage_run_frees_the_project(client, token, tmp_
     dm = client.get(f"/api/v1/datastage-migrations/{first['dataStageMigrationId']}", headers=token('ana.arquitecta')).json()
     assert dm['state'] == 'cancelled'
     assert client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={}).status_code == 202
+
+
+def test_dag_schedule_is_saved_validated_and_applied_by_the_next_run(client, token, tmp_path):
+    """The DSX has no schedule: a cron per DAG is saved on the run (validated, audited) and the next migration writes it."""
+    import io
+    from helpers import run_job
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as zf:
+        zf.write(FIX / 'shop_flow.dsx', 'x/shop_flow.dsx')
+    hdr = token('ana.arquitecta') | {'Content-Type': 'application/zip', 'X-Filename': 'dsx.zip', 'X-Migration-Type': 'AUTO'}
+    up = client.post('/api/v1/uploads', content=buf.getvalue(), headers=hdr).json()
+    pid = client.post('/api/v1/projects', headers=token('ana.arquitecta'), json={
+        'name': f'DS cron {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': up['id'], 'targetRuntime': 'airflow',
+        'migrationType': 'DATASTAGE_AIRFLOW'}).json()['id']
+    first = client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={}).json()
+    run_job(first['jobId'])
+    url = f"/api/v1/datastage-migrations/{first['dataStageMigrationId']}"
+    dm = client.get(url, headers=token('ana.arquitecta')).json()
+    own = sorted(n for n, r in dm['results'].items() if r['ownDag'])
+    called = next(n for n, r in dm['results'].items() if not r['ownDag'])
+    assert own and dm['summary']['schedules'] == {}
+    put = lambda s: client.put(url + '/schedules', headers=token('ana.arquitecta'), json={'schedules': s})
+    assert put({own[0]: 'rm -rf /'}).status_code == 422 and put({own[0]: '0 2 * *'}).status_code == 422
+    assert put({called: '0 2 * * *'}).status_code == 422                        # runs inside its sequence's DAG
+    assert put({own[0]: '30 2 * * MON-FRI'}).status_code == 200
+    again = client.post(f'/api/v1/projects/{pid}/datastage-migrations', headers=token('ana.arquitecta'), json={}).json()
+    run_job(again['jobId'])
+    dm2 = client.get(f"/api/v1/datastage-migrations/{again['dataStageMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert dm2['summary']['schedules'] == {own[0]: '30 2 * * MON-FRI'}             # carried over and applied
+
+
+def test_generated_dag_carries_its_schedule(tmp_path):
+    rep = adapter.migrate(FIX, tmp_path / 'out', 'shop', schedules={'JS_MASTER': '0 2 * * *'})
+    proj = Path(rep['output']['project'])
+    dags = {p.stem: p.read_text(encoding='utf-8') for p in (proj / 'dags').glob('*.py')}
+    sched = [n for n, t in dags.items() if "schedule='0 2 * * *'" in t]
+    assert len(sched) == 1 and all('schedule=None' in t for n, t in dags.items() if n not in sched)
+    assert f'{sched[0]}: "0 2 * * *"' in (proj / 'config/schedules.yaml').read_text(encoding='utf-8')

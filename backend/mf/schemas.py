@@ -684,8 +684,17 @@ class ManualTestIn(Dto):
     targets: list[HttpTarget] = Field(min_length=1, max_length=2)
 
 
+CRON = r'^(@(hourly|daily|weekly|monthly|yearly)|[0-9*,/-]+( [0-9*,/-]+){3} [0-9A-Za-z*,/-]+)$'
+
+
 class DataStageMigrationIn(Dto):
     timezone: str = Field(default='America/Mexico_City', pattern=r'^[A-Za-z_]+(/[A-Za-z_+-]+){0,2}$')
+    # DataStage job/sequence name -> cron of its DAG; None = keep the project's saved schedules (the DSX has none)
+    schedules: dict[Annotated[str, Field(min_length=1, max_length=255)], Annotated[str, Field(pattern=CRON)]] | None = Field(default=None, max_length=500)
+
+
+class DataStageSchedulesIn(Dto):
+    schedules: dict[Annotated[str, Field(min_length=1, max_length=255)], Annotated[str, Field(pattern=CRON)]] = Field(max_length=500)
 
 
 class DataStageMigrationOut(Dto):

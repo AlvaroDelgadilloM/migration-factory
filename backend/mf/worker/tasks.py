@@ -1273,6 +1273,7 @@ def do_datastage_migrate(job: Job, ctx: Context):
     The DSX is untrusted: parsed only, nothing in it runs. The DagBag gate imports the GENERATED DAGs in a separate
     interpreter (MF_AIRFLOW_PYTHON) with a minimal environment."""
     from ..datastage import adapter
+    from ..datastage.generation import ident
     from ..models import DataStageMigration
     with session() as db:
         dm = db.get(DataStageMigration, job.subject_id)
@@ -1288,7 +1289,7 @@ def do_datastage_migrate(job: Job, ctx: Context):
         out = ctx.workdir / 'out'
         try:
             rep = adapter.migrate(src, out, project.name, os.environ.get('MF_AIRFLOW_PYTHON'), dm.options.get('timezone', 'America/Mexico_City'),
-                                  log=lambda m: ctx.emit('info', 'datastage', m))
+                                  log=lambda m: ctx.emit('info', 'datastage', m), schedules=dm.options.get('schedules'))
         except adapter.InvalidInput as e:
             raise StepFailure('DSX_INVALID', str(e)) from None
         set_phase(ctx, 'artifacts', 90)
@@ -1308,10 +1309,12 @@ def do_datastage_migrate(job: Job, ctx: Context):
         dm.results = {n: {k: j.get(k) for k in ('jobType', 'complexity', 'score', 'migratability', 'confidence', 'reasons',
                                                     'dependsOn', 'calls', 'stages', 'sourceFile')}
                       | {'state': j['migration']['state'], 'dag': j['migration'].get('dag'), 'manualActions': j['manualActions'],
-                         'steps': j['migration'].get('steps', []), 'flow': j['migration'].get('flow')}
+                         'steps': j['migration'].get('steps', []), 'flow': j['migration'].get('flow'),
+                         'ownDag': j['migration'].get('dag') == f'dags/{ident(n)}.py'}  # its own DAG: the one that can be scheduled
                       for n, j in rep['jobs'].items()}
         dm.summary = {k: rep[k] for k in ('status', 'functionalValidation', 'technicalValidation', 'parse', 'counts', 'gates', 'pilot',
                                           'manualActions', 'actions', 'airflow')} | {
+            'schedules': dict(dm.options.get('schedules') or {}),  # the ones this run applied (options may be edited later)
             'waves': rep['graph']['waves'], 'droppedEdges': rep['graph']['droppedEdges'], 'masterSequences': rep['graph']['masterSequences'],
             'dags': rep['dags'], 'artifacts': arts}
         db.commit()

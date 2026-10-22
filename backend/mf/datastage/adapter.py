@@ -45,7 +45,7 @@ def analyze_only(source: Path, name: str):
 
 
 def migrate(source: Path, out: Path, name: str | None = None, airflow_python: str | None = None, timezone_name='America/Mexico_City',
-            log=lambda m: None) -> dict:
+            log=lambda m: None, schedules: dict | None = None) -> dict:
     source, out = Path(source).resolve(), Path(out).resolve()
     if out == source or source in out.parents:
         raise InvalidInput('La salida no puede estar dentro del origen (el origen nunca se modifica)')
@@ -60,7 +60,7 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
     report_dir.mkdir(parents=True)
     (report_dir / 'datastage-ir.json').write_text(json.dumps(project.to_dict(), ensure_ascii=False, indent=1), encoding='utf-8')
     log('generando DAGs, SQL y configuración')
-    gen = Project(project, analysis, proj_dir, name, timezone_name)
+    gen = Project(project, analysis, proj_dir, name, timezone_name, schedules)
     results = gen.generate()
     conns = connections(project)
     literal = [x for c in conns for x in c['literalCredentials']]

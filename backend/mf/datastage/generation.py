@@ -53,8 +53,9 @@ def connections(project) -> list[dict]:
 
 
 class Project:
-    def __init__(self, project, analysis, out: Path, name: str, timezone='America/Mexico_City'):
+    def __init__(self, project, analysis, out: Path, name: str, timezone='America/Mexico_City', schedules: dict | None = None):
         self.p, self.a, self.out, self.name, self.tz = project, analysis, out, name, timezone
+        self.schedules = {ident(k): v for k, v in (schedules or {}).items()}  # dag_id -> cron (validated by the API)
         self.pkg = ident(name) + '_migrated'
         self.dec = analysis['decisions']
         self.jobs_steps, self.variables, self.params, self.staging, self.results, self.dags = {}, set(), {}, {}, {}, []
@@ -126,7 +127,9 @@ class Project:
                    for s in self.results[j]['steps'] if s['status'] == 'MANUAL']
         doc = (f'# {name}\n\nGenerado por Migration Factory desde IBM DataStage.\n\n- Origen: `{source}`\n- {kind} original: `{name}`\n'
                f"- Complejidad: {a['complexity']} · migrabilidad: {a['migratability']} · confianza: {a['confidence']}\n"
-               f'- Programación: no viene en el DSX (la ejecutaba un planificador externo): `schedule=None`, definir en config/schedules.yaml\n')
+               + (f'- Programación: `{self.schedules[ident(name)]}` ({self.tz}), definida en Migration Factory (no viene en el DSX)\n'
+                  if ident(name) in self.schedules else
+                  '- Programación: no viene en el DSX (la ejecutaba un planificador externo): `schedule=None`, definir en config/schedules.yaml\n'))
         if manual:
             doc += '\n## Acciones manuales\n\n' + ''.join(f'- {m}\n' for m in sorted(set(manual))[:60])
         return doc
@@ -153,7 +156,7 @@ from {self.pkg} import runtime  # noqa: E402
 
 with DAG(
     dag_id={dag_id!r},
-    schedule=None,
+    schedule={self.schedules.get(dag_id)!r},
     start_date=pendulum.datetime(2026, 1, 1, tz={self.tz!r}),
     catchup=False,
     max_active_runs=1,
@@ -309,7 +312,8 @@ with DAG(
         write(o / 'config/files.yaml', '# Formato de cada archivo plano (DataStage PxSequentialFile). Sin esta entrada la tarea falla.\n'
               '# <job>/<etapa>:\n#   delimiter: "|"\n#   quotechar: null\n#   header: false\n#   encoding: "utf-8"\n')
         write(o / 'config/schedules.yaml', '# El DSX no incluye la programación (la ejecutaba un planificador externo).\n'
-              '# <dag_id>: "0 2 * * *"   # zona horaria: ' + self.tz + '\n')
+              '# <dag_id>: "0 2 * * *"   # zona horaria: ' + self.tz + '\n'
+              + ''.join(f'{d}: "{c}"\n' for d, c in sorted(self.schedules.items()) if any(x['dagId'] == d for x in self.dags)))
         write(o / 'requirements.txt', f"apache-airflow=={AIRFLOW['airflow']}\napache-airflow-providers-oracle=={AIRFLOW['oracle']}\n"
               f"apache-airflow-providers-common-sql=={AIRFLOW['common-sql']}\noracledb=={AIRFLOW['oracledb']}\n")
         write(o / 'pyproject.toml', f'[project]\nname = "{ident(self.name)}-airflow"\nversion = "0.1.0"\nrequires-python = "=={AIRFLOW["python"]}.*"\n'

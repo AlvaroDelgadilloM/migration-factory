@@ -10,7 +10,7 @@ export interface DsJob {
   name: string; jobType: string; complexity: string; score: number; migratability: string; confidence: string; state: string;
   dependsOn: string[]; calls: string[]; manualActions: string[]; dag: string | null; reasons: string[]; stages: number; sourceFile: string;
   steps: { task: string; kind: string; stage: string; status: string; issues: string[]; sqlFile: string | null }[];
-  flow: SeqFlow | null;
+  flow: SeqFlow | null; ownDag: boolean;
 }
 export interface DsAction { key: string; job: string; stage: string; category: string; severity: 'manual' | 'review'; source: string; text: string }
 
@@ -30,7 +30,7 @@ export class DataStageStore {
   readonly jobs = computed<DsJob[]>(() => Object.entries((this.current()?.results ?? {}) as Record<string, any>).map(([name, r]) => ({
     name, jobType: r.jobType, complexity: r.complexity, score: r.score, migratability: r.migratability, confidence: r.confidence,
     state: r.state, dependsOn: r.dependsOn ?? [], calls: r.calls ?? [], manualActions: r.manualActions ?? [], dag: r.dag ?? null,
-    reasons: r.reasons ?? [], stages: r.stages ?? 0, sourceFile: r.sourceFile ?? '', steps: r.steps ?? [], flow: r.flow ?? null })));
+    reasons: r.reasons ?? [], stages: r.stages ?? 0, sourceFile: r.sourceFile ?? '', steps: r.steps ?? [], flow: r.flow ?? null, ownDag: !!r.ownDag })));
   readonly actions = computed<DsAction[]>(() => this.summary()?.actions ?? []);
   readonly actionState = computed(() => (this.current()?.actionState ?? {}) as Record<string, { done: boolean; by: string; at: string; note?: string }>);
   readonly pilot = computed(() => Object.fromEntries(Object.entries((this.summary()?.pilot ?? {}) as Record<string, string>).map(([k, v]) => [v, k])));
@@ -38,6 +38,9 @@ export class DataStageStore {
     .map(([k, v]) => ({ name: k.replace(/^ds-[0-9a-f]+\./, ''), id: v })));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly reconciliation = computed<any>(() => (this.current()?.reconciliation as any)?.latest ?? null);
+  /** cron per DAG: saved (applied by the next migration) and applied by this run */
+  readonly schedules = computed(() => ((this.current()?.options as Record<string, unknown> | undefined)?.['schedules'] ?? {}) as Record<string, string>);
+  readonly appliedSchedules = computed(() => (this.summary()?.schedules ?? {}) as Record<string, string>);
   readonly airflowZip = computed(() => this.artifacts().find(a => a.name.endsWith('.zip')) ?? null);
   readonly startReason = computed(() => {
     if (!this.ctx.can('execute')) return `Su rol (${this.ctx.role()}) no permite migrar`;
@@ -81,6 +84,20 @@ export class DataStageStore {
       return true;
     } catch (e) { this.error.set(UiError.from(e)); return false; }
     finally { this.busy.set(false); }
+  }
+
+  /** Saves (or clears, with '') the cron of one DAG; applied by the next migration. */
+  async setSchedule(job: string, cron: string): Promise<boolean> {
+    const m = this.current();
+    if (!m) return false;
+    const next = { ...this.schedules() };
+    if (cron.trim()) next[job] = cron.trim().replace(/\s+/g, ' '); else delete next[job];
+    this.error.set(null);
+    try {
+      const updated = await this.api.setDataStageSchedules(m.id, next);
+      this.list.data.update(l => l ? [updated, ...l.slice(1)] : l);
+      return true;
+    } catch (e) { this.error.set(UiError.from(e)); return false; }
   }
 
   async setAction(key: string, done: boolean) {
