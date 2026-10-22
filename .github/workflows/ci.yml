@@ -75,3 +75,30 @@ jobs:
           evidence.shoot([exe, '--no-sandbox', '--disable-dev-shm-usage', '--headless=new', '--disable-gpu', '--user-data-dir=' + str(d / 'prof'),
                           '--window-size=800,600', '--screenshot=' + str(png), (d / 'p.html').as_uri()], png)
           assert png.exists() and png.stat().st_size > 1000, 'no generó la captura'; print('captura OK', exe, png.stat().st_size)"
+
+  jmeter-plan:
+    # the performance plan the platform hands over (mf.tomcat_war.perf.jmeter_plan) runs in a real Apache JMeter
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.12'}
+      - run: pip install -q -r backend/requirements.lock
+      - name: Plan de JMeter generado por la plataforma
+        run: |
+          mkdir -p /tmp/jm/www && echo ok > /tmp/jm/www/index.html
+          PYTHONPATH=backend python -c "
+          from mf.tomcat_war import perf
+          cases = [{'name': 'consulta', 'path': '/index.html', 'headers': {'Accept': 'text/html'}},
+                   {'name': 'consulta con parámetros', 'path': '/index.html?a=1&b=2'}]
+          open('/tmp/jm/plan.jmx', 'w', encoding='utf-8').write(perf.jmeter_plan(cases, 2, 5))"
+          (cd /tmp/jm/www && python -m http.server 8099 > /dev/null 2>&1 &)
+      - name: Ejecutar con Apache JMeter 5.6.3
+        run: |
+          curl -fsSL -o /tmp/jm/jmeter.tgz https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
+          tar -xzf /tmp/jm/jmeter.tgz -C /tmp/jm
+          /tmp/jm/apache-jmeter-5.6.3/bin/jmeter -n -t /tmp/jm/plan.jmx -JHOST=localhost -JPORT=8099 -JUSERS=2 -JSECONDS=5 -l /tmp/jm/r.jtl
+          total=$(($(wc -l < /tmp/jm/r.jtl) - 1)); ok=$(grep -c ',true,' /tmp/jm/r.jtl || true)
+          echo "peticiones: $total, correctas: $ok"
+          [ "$total" -gt 10 ] && [ "$ok" -eq "$total" ]

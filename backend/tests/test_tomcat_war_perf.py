@@ -71,3 +71,47 @@ def test_the_performance_option_only_applies_to_a_migration_and_is_bounded():
     with pytest.raises(ValidationError, match='solo está disponible al probar una migración'):
         HttpTestRunIn(source='urls', name='x', original={'label': 'a', 'url': 'http://127.0.0.1:1'},
                       migrated={'label': 'b', 'url': 'http://127.0.0.1:2'}, cases=[{'name': 'c', 'path': '/a'}], performance={})
+
+
+def test_cases_that_wait_on_an_external_system_are_left_out_and_listed(tmp_path):
+    """Posadas smoke test: services that wait on a simulated external system took 26-30 s and swamped the measurement."""
+    import xml.dom.minidom
+    fast, slow = server(0.005), server(0.6)
+    try:
+        cases = [{'name': 'rapido', 'path': '/a'}]
+        keep, out = perf.probe(fast[1], fast[1], cases + [{'name': 'externo', 'path': '/b'}], slow_ms=10_000)
+        assert [c['name'] for c in keep] == ['rapido', 'externo'] and out == []
+        keep, out = perf.probe(fast[1], slow[1], cases, slow_ms=300)
+        assert keep == [] and 'sistema externo' in out[0]['reason']
+        res = perf.run({'url': fast[1]}, {'url': slow[1]}, cases, tmp_path, 2, 1, 0, 0.2, 'HUMO', slow_ms=300)
+    finally:
+        fast[0].shutdown(), slow[0].shutdown()
+    assert res['comparison']['status'] == 'NOT_EXECUTABLE' and res['cases'] == 0 and res['casesTotal'] == 1
+    plan = (tmp_path / 'reports/performance-plan.jmx').read_text(encoding='utf-8')   # written even when nothing is measurable here
+    assert len(xml.dom.minidom.parseString(plan.encode()).getElementsByTagName('HTTPSamplerProxy')) == 1
+
+
+def test_the_jmeter_plan_carries_every_case_with_its_method_headers_and_body():
+    import xml.dom.minidom
+    plan = perf.jmeter_plan([{'name': 'puntos <socio>', 'path': '/member/points/1?x=1&y=2', 'headers': {'Accept': 'application/json'}},
+                             {'name': 'soap', 'method': 'POST', 'path': '/cxf/x', 'body': '<a>&amp;</a>', 'contentType': 'text/xml'}], 15, 120)
+    doc = xml.dom.minidom.parseString(plan.encode())
+    samplers = doc.getElementsByTagName('HTTPSamplerProxy')
+    assert [s.getAttribute('testname') for s in samplers] == ['puntos <socio>', 'soap']
+    text = {p.getAttribute('name'): p.firstChild.data if p.firstChild else '' for p in doc.getElementsByTagName('stringProp')}
+    assert '${__P(USERS,15)}' in plan and '${__P(SECONDS,120)}' in plan and '${__P(HOST,localhost)}' in plan
+    assert '/member/points/1?x=1&y=2' in [p.firstChild.data for p in doc.getElementsByTagName('stringProp') if p.getAttribute('name') == 'HTTPSampler.path']
+    assert any(p.firstChild and p.firstChild.data == '<a>&amp;</a>' for p in doc.getElementsByTagName('stringProp') if p.getAttribute('name') == 'Argument.value')
+    assert text['HTTPSampler.method'] in ('GET', 'POST')
+
+
+def test_the_performance_result_is_recorded_with_the_migration():
+    import types
+    import uuid as _uuid
+    from mf.worker.tasks import _register_responses
+    wm = types.SimpleNamespace(summary={'target': 'tomcat-war', 'equivalence': {'routeStructure': {'status': 'PASS'}}})
+    run = types.SimpleNamespace(id=_uuid.uuid4(), workspace_migration_id=_uuid.uuid4())
+    perf_summary = {'users': 10, 'seconds': 60, 'cases': 150, 'casesTotal': 201, 'comparison': {'status': 'PASS', 'tolerance': 0.2, 'reasons': []}}
+    _register_responses(types.SimpleNamespace(get=lambda m, k: wm), run, {
+        'status': 'PASS', 'mode': 'HUMO', 'totals': {'cases': 1, 'same': 1}, 'performance': perf_summary}, 'ev')
+    assert wm.summary['performance']['comparison']['status'] == 'PASS' and wm.summary['performance']['httpTestRunId'] == str(run.id)

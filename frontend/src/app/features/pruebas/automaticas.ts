@@ -159,7 +159,9 @@ casos.json              casos extra con el formato de la batería</pre>
             <td>{{ sum(r).totals?.notExecutable ?? '—' }}</td>
             <td>@if (sum(r).artifacts; as a) {
               <button class="link" (click)="api.download(a.evidence, 'evidencia-' + r.name + '.zip')"><i class="pi pi-download" aria-hidden="true"></i> HTML + capturas</button>
-              <button class="link" (click)="api.download(a.responses, 'respuestas-' + r.name + '.json')">JSON</button> } @else { — }</td>
+              <button class="link" (click)="api.download(a.responses, 'respuestas-' + r.name + '.json')">JSON</button>
+              @if (a.performance) { <button class="link" (click)="api.download(a.performance, 'rendimiento-' + r.name + '.md')">Rendimiento</button> }
+              @if (a.jmeterPlan) { <button class="link" (click)="api.download(a.jmeterPlan, 'plan-jmeter-' + r.name + '.jmx')">Plan JMeter</button> } } @else { — }</td>
           </tr>
         </ng-template>
       </p-table>
@@ -189,7 +191,9 @@ casos.json              casos extra con el formato de la batería</pre>
           }
           @if (s.performance; as pf) {
             <section class="perf">
-              <h4>Rendimiento <mf-status [value]="pf.comparison.status" /> <span class="muted small">{{ pf.users }} usuarios · {{ pf.seconds }} s por lado · {{ pf.cases }} casos</span></h4>
+              <h4>Rendimiento <mf-status [value]="pf.comparison.status" /> <span class="muted small">{{ pf.users }} usuarios · {{ pf.seconds }} s por lado · {{ pf.cases }} de {{ pf.casesTotal ?? pf.cases }} casos</span></h4>
+              @if (pf.excluded) { <p class="small muted">{{ pf.excluded }} casos quedaron fuera de la medición: tardan más de {{ pf.slowMs }} ms porque esperan a un sistema externo que en esta prueba no responde (detalle en el reporte de rendimiento).</p> }
+              @if (pf.original && pf.migrated) {
               <table class="perf-t">
                 <thead><tr><th scope="col">Medida</th><th scope="col">Original</th><th scope="col">Migrado</th></tr></thead>
                 <tbody>
@@ -203,6 +207,7 @@ casos.json              casos extra con el formato de la batería</pre>
                   }
                 </tbody>
               </table>
+              }
               @for (r of pf.comparison.reasons; track r) { <p class="small">· {{ r }}</p> }
               @if (!pf.comparison.reasons.length) { <p class="small muted">Sin regresiones dentro de la tolerancia ({{ pf.comparison.tolerance * 100 }} %).</p> }
             </section>

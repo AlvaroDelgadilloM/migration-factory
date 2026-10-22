@@ -269,6 +269,15 @@ respuesta) y la memoria del proceso (`ps` o `tasklist`). Resultado en `reports/p
 Detecta regresiones del migrado frente al original en la misma máquina y con los mismos datos. No mide la capacidad de
 producción: para eso hacen falta el ambiente, los datos y los volúmenes del cliente.
 
+Antes de medir, cada caso se envía una vez a los dos lados: los que tardan más de 3000 ms o no responden en alguno
+(esperan a un sistema externo que en la prueba de humo no responde a tiempo) quedan fuera y se listan en el reporte; sin
+casos medibles el resultado es `NOT_EXECUTABLE`. En Posadas, sin este filtro, esas esperas daban p95 de 26 a 30 s.
+
+La prueba también deja `reports/performance-plan.jmx`: los mismos casos como plan de **Apache JMeter 5.x** para las pruebas
+formales en el ambiente del cliente (`jmeter -n -t performance-plan.jmx -JHOST=... -JPORT=... -JPROTOCOL=https -JUSERS=50
+-JSECONDS=600`), donde se agregan la matriz y los volúmenes reales. La CI lo ejecuta con JMeter 5.6.3. En la plataforma el
+resultado queda en la migración (`summary.performance`) y el plan y el reporte se descargan desde la corrida.
+
 ## Pendiente
 
 - **Plataforma**: corre como migración de workspace (`POST /scans/{id}/workspace-migrations` con `{"target": "tomcat-war",

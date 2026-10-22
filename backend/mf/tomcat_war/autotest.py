@@ -722,10 +722,11 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
             cfg = perf.DEFAULTS | {k: v for k, v in performance.items() if v is not None}
             res = perf.run({'url': labels[0]['url'], 'pid': p_orig.pid}, {'url': labels[1]['url'], 'pid': p_tc.pid},
                            [c for c in cases if c['name'] in answered], out, int(cfg['users']), int(cfg['seconds']), int(cfg['warmup']),
-                           float(cfg['tolerance']), mode, log)
-            summary['performance'] = {k: res[k] for k in ('users', 'seconds', 'cases', 'comparison')} | {
-                side: {k: res[side][k] for k in ('requests', 'throughput', 'p50', 'p95', 'p99', 'errors', 'errorRate', 'memoryMb')}
-                for side in ('original', 'migrated')}
+                           float(cfg['tolerance']), mode, log, int(cfg['slowMs']))
+            summary['performance'] = {k: res[k] for k in ('users', 'seconds', 'cases', 'casesTotal', 'slowMs', 'comparison')} | {
+                'excluded': len(res['excluded'])} | {
+                side: ({k: res[side][k] for k in ('requests', 'throughput', 'p50', 'p95', 'p99', 'errors', 'errorRate', 'memoryMb')}
+                       if res[side] else None) for side in ('original', 'migrated')}
     finally:
         for p in procs:
             _stop(p)

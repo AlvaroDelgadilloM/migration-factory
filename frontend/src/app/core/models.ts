@@ -73,15 +73,15 @@ export interface HttpCaseResult { name: string; method: string; path: string; st
   accept: string | null; request: { headers: Record<string, string>; body: string | null }; original: HttpAnswer; migrated: HttpAnswer }
 export interface HttpRunSummary { status?: string; totals?: { cases: number; same: number; different: number; accepted: number; notExecutable: number };
   differencesByKind?: Record<string, number>; screenshots?: number; screenshotProblem?: string | null; cases?: HttpCaseResult[];
-  artifacts?: { evidence: string; responses: string };
+  artifacts?: { evidence: string; responses: string; performance?: string; jmeterPlan?: string };
   // automatic test from a migration (mf.tomcat_war.autotest)
   mode?: 'HUMO' | 'DATOS'; container?: string; modules?: string[]; generatedCases?: number; externalCalls?: string[];
   startup?: Record<'original' | 'migrado', { started: number | null; total: number | null; failed: string[] }>;
   configuration?: { files: number; replaced: number; generated: number; fromDataPackage: string[] };
   // comparative load test (mf.tomcat_war.perf), when requested
-  performance?: { users: number; seconds: number; cases: number;
+  performance?: { users: number; seconds: number; cases: number; casesTotal?: number; excluded?: number; slowMs?: number;
     comparison: { status: string; tolerance: number; reasons: string[] };
-    original: PerfSide; migrated: PerfSide } }
+    original: PerfSide | null; migrated: PerfSide | null } }
 export interface PerfSide { requests: number; throughput: number | null; p50: number | null; p95: number | null; p99: number | null;
   errors: number; errorRate: number | null; memoryMb: { max: number; avg: number } | null }
 export interface ManualResult { results: (HttpAnswer & { label: string; url: string })[]; state?: string; issues?: string[]; kind?: string | null }

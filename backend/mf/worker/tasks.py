@@ -1141,7 +1141,9 @@ def _register_responses(db, run, summary: dict, evidence_id: str):
                        'at': now().isoformat(timespec='seconds'),
                        'detail': None if summary.get('mode') == 'DATOS' else 'Prueba de humo (sin datos del cliente): G4 queda en revisión'}
     eq['g4'] = g4_status(eq)
-    wm.summary = {**wm.summary, 'equivalence': eq}  # new dict: JSON column change is tracked
+    perf = summary.get('performance')
+    extra = {'performance': perf | {'httpTestRunId': str(run.id), 'mode': summary.get('mode'), 'at': eq['responses']['at']}} if perf else {}
+    wm.summary = {**wm.summary, 'equivalence': eq, **extra}  # new dict: JSON column change is tracked
 
 
 def do_http_compare(job: Job, ctx: Context):
@@ -1168,7 +1170,14 @@ def do_http_compare(job: Job, ctx: Context):
         ev = _store(db, run.project_id, 'evidence', f'pruebas-{str(run.id)[:8]}-evidencia.zip', (out / 'evidence.zip').read_bytes(), 'application/zip', commit=False)
         rs = _store(db, run.project_id, 'report-json', f'pruebas-{str(run.id)[:8]}-responses.json', (out / 'responses.json').read_text(encoding='utf-8'),
                     'application/json', ctx, commit=False)
-        run.summary = summary | {'artifacts': {'evidence': str(ev.id), 'responses': str(rs.id)}}
+        arts = {'evidence': str(ev.id), 'responses': str(rs.id)}
+        for key, name, kind, ctype in (('performance', 'performance.md', 'report-md', 'text/markdown; charset=utf-8'),
+                                       ('jmeterPlan', 'performance-plan.jmx', 'test-plan', 'application/xml')):
+            f = out / 'reports' / name
+            if f.exists():  # comparative load test: its report and the same cases as a JMeter plan for the client's environment
+                arts[key] = str(_store(db, run.project_id, kind, f'pruebas-{str(run.id)[:8]}-{name}', f.read_text(encoding='utf-8'), ctype, ctx,
+                                       commit=False).id)
+        run.summary = summary | {'artifacts': arts}
         if run.source == 'migration':
             _register_responses(db, run, summary, str(ev.id))
         db.commit()

@@ -18,7 +18,28 @@ from pathlib import Path
 
 from . import verify
 
-DEFAULTS = {'users': 10, 'seconds': 60, 'warmup': 10, 'tolerance': 0.20}
+DEFAULTS = {'users': 10, 'seconds': 60, 'warmup': 10, 'tolerance': 0.20, 'slowMs': 3000}
+
+
+def probe(original: str, migrated: str, cases: list, slow_ms: int, timeout: int = 30) -> tuple[list, list]:
+    """Each case once on both sides. A case slower than slow_ms on either side is waiting on something this test does not
+    have (an external system that is simulated, unreachable or slow): it would measure that wait, not the migration. Those
+    are left out and listed. Returns (cases to load, excluded with the reason)."""
+    keep, out = [], []
+    for c in cases:
+        times = {}
+        for side, base in (('original', original), ('migrated', migrated)):
+            hosts = (base.split('//', 1)[-1].rstrip('/'),)
+            t0 = time.perf_counter()
+            r = verify._send(base, c, timeout, hosts)
+            times[side] = round((time.perf_counter() - t0) * 1000), r['status']
+        slow = [f"{side} {ms} ms" for side, (ms, st) in times.items() if ms > slow_ms or st == 0]
+        if slow:
+            out.append({'name': c['name'], 'reason': 'lento o sin respuesta (' + ', '.join(slow) + '): depende de un sistema externo '
+                                                     'que en esta prueba no responde a tiempo'})
+        else:
+            keep.append(c)
+    return keep, out
 
 
 def _percentile(values: list, p: float) -> float | None:
@@ -120,24 +141,93 @@ def markdown(result: dict) -> str:
     if o.get('memoryMb') and m.get('memoryMb'):
         out.append(f"| Memoria máxima del proceso | {o['memoryMb']['max']} MB | {m['memoryMb']['max']} MB |")
     out += [''] + ([f'- {r}' for r in result['comparison']['reasons']] or ['Sin regresiones dentro de la tolerancia.'])
+    if result.get('excluded'):
+        out += ['', f"## Casos fuera de la medición ({len(result['excluded'])} de {result['casesTotal']})", '',
+                f"Tardan más de {result['slowMs']} ms o no responden en algún lado: miden la espera a un sistema externo, no la migración.", '']
+        out += [f"- {x['name']}: {x['reason']}" for x in result['excluded']]
     out += ['', '## Alcance', '', result['scope'], '']
     return '\n'.join(out)
 
 
+def jmeter_plan(cases: list, users: int, seconds: int) -> str:
+    """The same cases as an Apache JMeter (5.x) test plan, for the client's environment: HOST, PORT and PROTOCOL are plan
+    variables (also -JHOST=... on the command line), users and duration come from this test; each case is one HTTP request
+    with its method, path, headers and body. Values of the client's matrix are added in JMeter (CSV Data Set)."""
+    from xml.sax.saxutils import escape, quoteattr
+
+    def prop(kind, name, value):
+        return f'<{kind}Prop name="{name}">{escape(str(value))}</{kind}Prop>'
+
+    samplers = []
+    for c in cases:
+        path, _, query = c['path'].partition('?')
+        headers = dict(c.get('headers') or {})
+        if c.get('body') is not None:
+            headers.setdefault('Content-Type', c.get('contentType', 'text/xml; charset=UTF-8'))
+        hdr = ''.join(f'<elementProp name={quoteattr(k)} elementType="Header">{prop("string", "Header.name", k)}{prop("string", "Header.value", v)}'
+                      f'</elementProp>' for k, v in headers.items())
+        body = ''
+        if c.get('body') is not None:
+            body = ('<boolProp name="HTTPSampler.postBodyRaw">true</boolProp><elementProp name="HTTPsampler.Arguments" elementType="Arguments">'
+                    '<collectionProp name="Arguments.arguments"><elementProp name="" elementType="HTTPArgument">'
+                    f'{prop("bool", "HTTPArgument.always_encode", "false")}{prop("string", "Argument.value", c["body"])}'
+                    f'{prop("string", "Argument.metadata", "=")}</elementProp></collectionProp></elementProp>')
+        samplers.append(
+            f'<HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname={quoteattr(c["name"])} enabled="true">'
+            f'{body}{prop("string", "HTTPSampler.domain", "${HOST}")}{prop("string", "HTTPSampler.port", "${PORT}")}'
+            f'{prop("string", "HTTPSampler.protocol", "${PROTOCOL}")}{prop("string", "HTTPSampler.path", path + ("?" + query if query else ""))}'
+            f'{prop("string", "HTTPSampler.method", c.get("method", "GET"))}{prop("bool", "HTTPSampler.follow_redirects", "true")}'
+            f'{prop("bool", "HTTPSampler.use_keepalive", "true")}</HTTPSamplerProxy><hashTree>'
+            + (f'<HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Encabezados" enabled="true">'
+               f'<collectionProp name="HeaderManager.headers">{hdr}</collectionProp></HeaderManager><hashTree/>' if hdr else '')
+            + '</hashTree>')
+    variables = ''.join(f'<elementProp name="{k}" elementType="Argument">{prop("string", "Argument.name", k)}'
+                        f'{prop("string", "Argument.value", "${__P(" + k + "," + v + ")}")}{prop("string", "Argument.metadata", "=")}</elementProp>'
+                        for k, v in (('HOST', 'localhost'), ('PORT', '8080'), ('PROTOCOL', 'http')))
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3"><hashTree>'
+            '<TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Migration Factory: prueba de rendimiento" enabled="true">'
+            '<elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" '
+            f'testname="Variables"><collectionProp name="Arguments.arguments">{variables}</collectionProp></elementProp></TestPlan><hashTree>'
+            '<ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Usuarios concurrentes" enabled="true">'
+            f'{prop("string", "ThreadGroup.num_threads", "${__P(USERS," + str(users) + ")}")}{prop("string", "ThreadGroup.ramp_time", "10")}'
+            f'{prop("bool", "ThreadGroup.scheduler", "true")}{prop("string", "ThreadGroup.duration", "${__P(SECONDS," + str(seconds) + ")}")}'
+            '<elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">'
+            f'{prop("bool", "LoopController.continue_forever", "false")}{prop("int", "LoopController.loops", "-1")}</elementProp>'
+            f'{prop("string", "ThreadGroup.on_sample_error", "continue")}</ThreadGroup><hashTree>' + ''.join(samplers)
+            + '<ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Resumen" enabled="true">'
+            '<boolProp name="ResultCollector.error_logging">false</boolProp><stringProp name="filename"></stringProp></ResultCollector><hashTree/>'
+            '</hashTree></hashTree></hashTree></jmeterTestPlan>\n')
+
+
 def run(original: dict, migrated: dict, cases: list, out: Path, users: int, seconds: int, warmup: int, tolerance: float,
-        mode: str, log=lambda m: None) -> dict:
-    """original/migrated: {'url', 'pid'}. Writes reports/performance.json and .md."""
+        mode: str, log=lambda m: None, slow_ms: int = DEFAULTS['slowMs']) -> dict:
+    """original/migrated: {'url', 'pid'}. Writes reports/performance.json and .md, and a JMeter plan with the same cases."""
+    reports = Path(out) / 'reports'
+    reports.mkdir(parents=True, exist_ok=True)
+    (reports / 'performance-plan.jmx').write_text(jmeter_plan(cases, users, seconds), encoding='utf-8')
+    all_cases = len(cases)
+    cases, excluded = probe(original['url'], migrated['url'], cases, slow_ms)
+    log(f'rendimiento: {len(cases)} de {all_cases} casos responden en menos de {slow_ms} ms en los dos lados; '
+        f'{len(excluded)} quedan fuera (esperan a un sistema externo)')
+    if not cases:
+        result = {'check': 'performance', 'users': users, 'seconds': seconds, 'warmup': warmup, 'cases': 0, 'casesTotal': all_cases,
+                  'excluded': excluded, 'slowMs': slow_ms, 'original': None, 'migrated': None,
+                  'comparison': {'status': 'NOT_EXECUTABLE', 'tolerance': tolerance,
+                                 'reasons': ['Ningún caso responde a tiempo sin sistemas externos: hace falta el paquete de datos (mocks) o el ambiente de pruebas']},
+                  'scope': 'Sin casos medibles.'}
+        (reports / 'performance.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+        (reports / 'performance.md').write_text(f"# Prueba de rendimiento comparativa\n\nNo ejecutable: {result['comparison']['reasons'][0]}\n",
+                                                encoding='utf-8')
+        return result
     log(f'rendimiento: original ({len(cases)} casos)')
     a = load(original['url'], cases, users, seconds, warmup, pid=original.get('pid'), log=log)
     log('rendimiento: migrado')
     b = load(migrated['url'], cases, users, seconds, warmup, pid=migrated.get('pid'), log=log)
-    result = {'check': 'performance', 'users': users, 'seconds': seconds, 'warmup': warmup, 'cases': len(cases),
-              'original': a, 'migrated': b, 'comparison': compare(a, b, tolerance),
+    result = {'check': 'performance', 'users': users, 'seconds': seconds, 'warmup': warmup, 'cases': len(cases), 'casesTotal': all_cases,
+              'excluded': excluded, 'slowMs': slow_ms, 'original': a, 'migrated': b, 'comparison': compare(a, b, tolerance),
               'scope': ('Comparación en la misma máquina, uno después del otro, con los mismos casos'
                         + (' y los datos de prueba del cliente.' if mode == 'DATOS' else ', bases vacías y sistemas externos simulados (prueba de humo).')
                         + ' Detecta regresiones del migrado frente al original; no mide la capacidad de producción.')}
-    reports = Path(out) / 'reports'
-    reports.mkdir(parents=True, exist_ok=True)
     (reports / 'performance.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     (reports / 'performance.md').write_text(markdown(result), encoding='utf-8')
     log(f"rendimiento: {result['comparison']['status']} · p95 original {a['p95']} ms, migrado {b['p95']} ms · "

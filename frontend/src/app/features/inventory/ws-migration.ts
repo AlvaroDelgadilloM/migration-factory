@@ -75,6 +75,12 @@ import { VersionPicker, profileFor } from '../../shared/version-picker';
                 @if (eq.responses.mode === 'HUMO') { · prueba de humo, sin datos del cliente } · {{ eq.responses.at?.slice(0, 10) }}) }
               @if (!eq.responses?.totals) { <small class="muted">— se llena solo al correr Pruebas → Automáticas sobre esta migración</small> }</p>
           }
+          @if (tw(m).performance; as pf) {
+            <p>Rendimiento: <mf-status [value]="pf.comparison.status" />
+              @if (pf.original && pf.migrated) { (p95 {{ pf.original.p95 }} → {{ pf.migrated.p95 }} ms · {{ pf.original.throughput }} → {{ pf.migrated.throughput }} peticiones/s ·
+                {{ pf.cases }} de {{ pf.casesTotal ?? pf.cases }} casos · {{ pf.users }} usuarios@if (pf.mode === 'HUMO') { · prueba de humo } · {{ pf.at?.slice(0, 10) }}) }
+              @for (r of pf.comparison.reasons; track r) { <br /><small>{{ r }}</small> }</p>
+          }
           @if (tw(m).configKeys; as ck) {
             <p>Claves de configuración: {{ ck.used }} usadas · {{ ck.definedInRepository }} definidas en el repositorio ·
               <strong>{{ ck.missing.length }}</strong> deben venir de <code>etc</code> del Tomcat destino</p>
