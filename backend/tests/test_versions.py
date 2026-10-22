@@ -14,8 +14,10 @@ def test_catalog_offers_java_21_and_25_with_the_spring_line_of_each_target(clien
     assert tomcat['spring'][0]['label'].startswith('Spring Framework 6.2') and tomcat['spring'][0]['java'] == ['21', '25']
     profiles = [t for t in cat if t['target'] == 'profile']
     boot4 = [t for t in profiles if t['label'].startswith('Spring Boot 4.1')]  # Camel 4.22 LTS: Java 25 validated (tests/test_java25.py)
+    tomcat11 = [t for t in profiles if t['label'].startswith('Tomcat 11 WAR')]   # same engine as a WAR: Java 25 validated too
+    assert len(tomcat11) == 1 and [(j['version'], j['validated']) for j in tomcat11[0]['java']] == [('21', True), ('25', True)]
     assert len(boot4) == 1 and [(j['version'], j['validated']) for j in boot4[0]['java']] == [('21', True), ('25', True)]
-    others = [t for t in profiles if t not in boot4]
+    others = [t for t in profiles if t not in boot4 + tomcat11]
     assert others and all([(j['version'], j['validated']) for j in t['java']] == [('21', True), ('25', False)] for t in others)
     assert all(t['java'][1]['reason'] for t in others)  # a combination not validated says why
 
