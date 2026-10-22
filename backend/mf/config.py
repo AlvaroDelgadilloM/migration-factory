@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     workspace_timeout_seconds: int = 4 * 3600  # a workspace migration runs every project of every wave
     step_timeout_seconds: int = 900
     lease_seconds: int = 60
+    # process: jobs run inside this worker (subprocess group, no privileges). k8s: one ephemeral pod per job (mf.worker.k8s_runner)
+    execution_mode: Literal['process', 'k8s'] = 'process'
+    k8s_namespace: str = 'migration-factory'
+    k8s_image: str = ''
+    k8s_runtime_class: str = 'gvisor'          # empty = the cluster's default runtime
+    k8s_env_secret: str = 'mf-runner-env'      # DB/Redis URLs, MF_CRED_*, S3 keys for the pods (envFrom)
+    k8s_cpu: str = '2'
+    k8s_memory: str = '3Gi'
+    k8s_work_size: str = '20Gi'
+    k8s_m2_size: str = '10Gi'
+    k8s_long_jobs: bool = False                # this dispatcher consumes mf-long (workspace migrations): longer deadline
     max_attempts: int = 2
     max_repo_mb: int = 500
     maven_mirror_url: str = 'https://repo1.maven.org/maven2'
@@ -72,6 +83,7 @@ class Settings(BaseSettings):
     # allowlist (mirror + MF_MAVEN_EXTRA_REPOS)
     maven_network: Literal['offline', 'central', 'allowlist'] = 'allowlist'
     maven_repo_local: Path = Path('/tmp/mf-m2')
+    maven_proxy: str = ''  # host:port of the egress proxy (k8s runner pods); empty = direct
     maven_file_locks: bool = False  # true when several workers share maven_repo_local
     # one local repository per project under maven_repo_local/projects/<id>: a build (untrusted plugins) can only poison its own
     # project's cache, at the cost of downloading each project's dependencies once

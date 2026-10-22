@@ -27,7 +27,11 @@ def settings_file(ctx) -> Path:
                     for i, u in extra)
     profile = (f'<profiles><profile><id>mf-extra</id><repositories>{repos}</repositories></profile></profiles>'
                f'<activeProfiles><activeProfile>mf-extra</activeProfile></activeProfiles>') if extra else ''
-    p.write_text(f'<settings><interactiveMode>false</interactiveMode><mirrors><mirror><id>mf-approved</id>'
+    proxies = ''
+    if m := re.fullmatch(r'([\w.\-]{1,200}):(\d{2,5})', s.maven_proxy or ''):  # k8s runner pods: the only way out is the egress proxy
+        proxies = '<proxies>' + ''.join(f'<proxy><id>mf-{pr}</id><active>true</active><protocol>{pr}</protocol><host>{escape(m[1])}</host>'
+                                        f'<port>{m[2]}</port></proxy>' for pr in ('https', 'http')) + '</proxies>'
+    p.write_text(f'<settings><interactiveMode>false</interactiveMode>{proxies}<mirrors><mirror><id>mf-approved</id>'
                  f'<mirrorOf>{escape(mirror_of)}</mirrorOf><url>{escape(s.maven_mirror_url)}</url></mirror></mirrors>{profile}</settings>')
     return p
 

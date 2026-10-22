@@ -1,0 +1,40 @@
+# Runner pods: no inbound traffic; outbound only DNS, PostgreSQL, Redis and the egress proxy (which allows only the approved
+# repositories). NetworkPolicy cannot filter by host name, hence the proxy. Needs a CNI that enforces NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mf-build-runner
+  namespace: migration-factory
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: build-runner
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgres
+      ports:
+        - {protocol: TCP, port: 5432}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: redis
+      ports:
+        - {protocol: TCP, port: 6379}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: egress-proxy
+      ports:
+        - {protocol: TCP, port: 3128}

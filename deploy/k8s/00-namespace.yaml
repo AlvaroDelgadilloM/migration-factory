@@ -1,0 +1,8 @@
+# Migration Factory on Kubernetes: build runners (one ephemeral pod per job). See README.md in this folder.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: migration-factory
+  labels:
+    pod-security.kubernetes.io/enforce: restricted   # the runner pods meet the "restricted" Pod Security Standard
+    pod-security.kubernetes.io/enforce-version: v1.30

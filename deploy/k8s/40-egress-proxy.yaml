@@ -1,0 +1,48 @@
+# Egress proxy for the runners: only the approved repositories (Maven mirror, extra approved repos, OSV database, Git hosts).
+# Runners use it through MF_MAVEN_PROXY (Maven settings.xml) and HTTPS_PROXY (git, osv-scanner, httpx).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mf-egress-allowlist
+  namespace: migration-factory
+data:
+  squid.conf: |
+    http_port 3128
+    acl approved dstdomain repo1.maven.org .maven.apache.org build.shibboleth.net osv-vulnerabilities.storage.googleapis.com github.com gitlab.com bitbucket.org
+    acl SSL_ports port 443
+    acl CONNECT method CONNECT
+    http_access deny CONNECT !SSL_ports
+    http_access allow approved
+    http_access deny all
+    cache deny all
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mf-egress-proxy
+  namespace: migration-factory
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/component: egress-proxy}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: migration-factory, app.kubernetes.io/component: egress-proxy}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: squid
+          image: ubuntu/squid:6.10-24.10_beta
+          ports: [{containerPort: 3128}]
+          volumeMounts: [{name: conf, mountPath: /etc/squid/squid.conf, subPath: squid.conf}]
+          resources: {limits: {cpu: "500m", memory: 256Mi}}
+      volumes: [{name: conf, configMap: {name: mf-egress-allowlist}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mf-egress-proxy
+  namespace: migration-factory
+spec:
+  selector: {app.kubernetes.io/component: egress-proxy}
+  ports: [{port: 3128, targetPort: 3128}]

@@ -130,7 +130,11 @@ def finish(job_id, state, code=None, message=None):
 
 
 def run_job(job_id: str):
-    """RQ entry point."""
+    """RQ entry point. With MF_EXECUTION_MODE=k8s this worker only dispatches the job to its own ephemeral pod."""
+    if get_settings().execution_mode == 'k8s':
+        from .k8s_runner import run_in_pod
+        log.info('job %s -> pod: %s', job_id, run_in_pod(job_id))
+        return
     job = claim(job_id)
     if job is None:
         log.info('job %s not claimable (done, cancelled or owned by another worker)', job_id)

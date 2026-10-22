@@ -1,0 +1,30 @@
+# The worker in MF_EXECUTION_MODE=k8s only creates, reads and deletes Jobs in its namespace. The runner pods get no token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mf-dispatcher
+  namespace: migration-factory
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mf-dispatcher
+  namespace: migration-factory
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mf-dispatcher
+  namespace: migration-factory
+subjects:
+  - kind: ServiceAccount
+    name: mf-dispatcher
+    namespace: migration-factory
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mf-dispatcher
