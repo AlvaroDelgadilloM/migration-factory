@@ -15,8 +15,7 @@ from sqlalchemy import func, select
 
 from .config import get_settings
 from .models import Artifact, Execution, Job, Project, Repository, Scan, Upload, now
-from .security import safe_join
-from .storage import ArtifactStore
+from .storage import ArtifactStore, blobs
 
 ACTIVE = ('queued', 'running')
 HEAVY_KINDS = ('candidate-zip', 'modernized-zip', 'patch')
@@ -48,9 +47,8 @@ def delete_project(db, p: Project) -> dict:
     if db.scalar(select(Job.id).where(Job.project_id == p.id, Job.state.in_(ACTIVE)).limit(1)):
         raise Busy('El proyecto tiene trabajos en curso: espere o cancélelos antes de eliminarlo')
     stats = _drop(db, db.scalars(select(Artifact).where(Artifact.project_id == p.id)))
-    base = Path(get_settings().artifact_dir)
     for up in db.scalars(select(Upload).where(Upload.project_id == p.id)):
-        safe_join(base, up.object_key).unlink(missing_ok=True)
+        blobs().delete(up.object_key)
         stats['bytes'] += up.size_bytes or 0
         stats['files'] += 1
         db.delete(up)

@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     dev_jwt_secret: str = ''
 
     artifact_dir: Path = Path('/tmp/mf-artifacts')
+    # local (artifact_dir, a volume shared by api and workers) | s3 (any S3-compatible store; no shared volume needed)
+    artifact_backend: Literal['local', 's3'] = 'local'
+    s3_bucket: str = ''
+    s3_prefix: str = 'migration-factory'
+    s3_endpoint_url: str = ''   # MinIO / Ceph / other S3-compatible; empty = AWS
+    s3_region: str = ''
+    s3_access_key: str = ''     # empty = default AWS credential chain (IAM role); removed from the worker env after start
+    s3_secret_key: str = ''
     work_dir: Path = Path('/tmp/mf-work')
     rules_catalog: Path = REPO_ROOT / 'rules' / 'catalog.json'
 

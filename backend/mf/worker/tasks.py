@@ -26,7 +26,7 @@ from ..models import (Artifact, DiffFile, Endpoint, Execution, Finding, Job, Job
                       RuleCatalog, Scan, TargetProfile, Validation, now)
 from ..planning import evaluate, runnable_recipe_steps
 from ..security import UnsafeInput, find_secrets, redact, resolve_credential, safe_join, secret_files, validate_test_url
-from ..storage import ArtifactStore
+from ..storage import ArtifactStore, blobs
 from .. import preflight, transform
 from . import gitops, mavenops, runner, source
 from .runner import Cancelled, Context, TimedOut
@@ -213,7 +213,7 @@ def _materialize(db, repo, ref, dest, ctx, select=None, require_maven=True):
         if up is None:
             raise StepFailure('UPLOAD_MISSING', 'El ZIP del proyecto no existe')
         upload_path = ctx.workdir / 'upload.zip'
-        data = (get_settings().artifact_dir / up.object_key).read_bytes()
+        data = blobs().read(up.object_key)
         import hashlib as _h
         if _h.sha256(data).hexdigest() != up.sha256:
             raise StepFailure('UPLOAD_CORRUPT', 'El ZIP almacenado no coincide con su hash')

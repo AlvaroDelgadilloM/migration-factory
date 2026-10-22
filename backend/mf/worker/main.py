@@ -21,7 +21,7 @@ from ..models import Execution, Job, JobEvent, Outbox, Scan, now
 from . import tasks
 
 log = logging.getLogger('mf.worker')
-SECRET_ENV = ('MF_DATABASE_URL', 'MF_REDIS_URL', 'MF_DEV_JWT_SECRET')
+SECRET_ENV = ('MF_DATABASE_URL', 'MF_REDIS_URL', 'MF_DEV_JWT_SECRET', 'MF_S3_ACCESS_KEY', 'MF_S3_SECRET_KEY')
 
 
 def harden_process():

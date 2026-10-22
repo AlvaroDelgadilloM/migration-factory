@@ -17,6 +17,7 @@ from ..errors import ApiError
 from ..models import Upload
 from ..schemas import BrowseOut, Capabilities, UploadOut
 from ..security import UnsafeInput, inspect_zip, local_roots, safe_join, validate_local_path
+from ..storage import blobs
 
 router = APIRouter(tags=['sources'])
 
@@ -81,10 +82,11 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
         raise ApiError(413, 'UPLOAD_TOO_LARGE', f'Máximo {s.max_upload_mb} MB')
     up_id = uuid.uuid4()
     key = f'uploads/{up_id.hex}.zip'
-    target = safe_join(Path(s.artifact_dir), key)
-    target.parent.mkdir(parents=True, exist_ok=True)
     digest, size = hashlib.sha256(), 0
-    fd, tmp = tempfile.mkstemp(dir=target.parent, suffix='.part')
+    spool = Path(s.artifact_dir) / 'uploads' if s.artifact_backend == 'local' else None  # same volume: no copy across devices
+    if spool:
+        spool.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=spool, suffix='.part')
     try:
         with os.fdopen(fd, 'wb') as f:
             async for chunk in request.stream():
@@ -119,7 +121,7 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             structure['migrationType'] = mode
         except UnsafeInput as e:
             raise ApiError(422, e.code, str(e)) from None
-        os.replace(tmp, target)
+        blobs().write_file(key, Path(tmp))
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)

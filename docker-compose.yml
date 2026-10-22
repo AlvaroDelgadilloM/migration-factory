@@ -2,6 +2,14 @@
 name: migration-factory
 
 x-backend-env: &backend-env
+  # artifacts and uploads: local volume (default) or any S3-compatible store (then no shared volume is needed)
+  MF_ARTIFACT_BACKEND: ${MF_ARTIFACT_BACKEND:-local}
+  MF_S3_BUCKET: ${MF_S3_BUCKET:-}
+  MF_S3_PREFIX: ${MF_S3_PREFIX:-migration-factory}
+  MF_S3_ENDPOINT_URL: ${MF_S3_ENDPOINT_URL:-}
+  MF_S3_REGION: ${MF_S3_REGION:-}
+  MF_S3_ACCESS_KEY: ${MF_S3_ACCESS_KEY:-}
+  MF_S3_SECRET_KEY: ${MF_S3_SECRET_KEY:-}
   MF_AI_ENABLED: ${MF_AI_ENABLED:-false}   # DataStage AI proposals (doc 58); the key MF_CRED_AI only reaches the workers
   MF_ENV: ${MF_ENV:-development}
   MF_DATABASE_URL: postgresql+psycopg://mf:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/mf
