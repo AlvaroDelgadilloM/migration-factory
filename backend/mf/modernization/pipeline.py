@@ -13,7 +13,7 @@ from ..security import redact
 from . import detect, refactor
 
 STATES = ('APPLIED', 'ROLLED_BACK', 'PROPOSED_ONLY', 'BLOCKED', 'NO_CHANGES')
-ORDER = ('MOD_SAFE_CLEANUP', 'MOD_HARDCODED_CONFIG', 'MOD_SECRETS', 'MOD_FIELD_INJECTION')
+ORDER = ('MOD_SAFE_CLEANUP', 'MOD_HARDCODED_CONFIG', 'MOD_SECRETS', 'MOD_FIELD_INJECTION', 'MOD_PROPERTIES_YAML')
 
 
 class InvalidInput(ValueError):
@@ -71,7 +71,7 @@ def run(project: Path, out: Path, *, target: str | None = None, approved=(), aut
     for rid in ORDER:
         r = rules['byId'][rid]
         items = by_rule.get(rid, [])
-        if rid == 'MOD_FIELD_INJECTION':
+        if rid in ('MOD_FIELD_INJECTION', 'MOD_PROPERTIES_YAML'):
             items = [i for i in items if 'no transformable' not in i['detail']]
         if rid != 'MOD_SAFE_CLEANUP' and not items:
             continue
@@ -97,6 +97,8 @@ def run(project: Path, out: Path, *, target: str | None = None, approved=(), aut
                 applied = refactor.apply_config(work, before['httpEndpoints'], runtime)
             elif rid == 'MOD_SECRETS':
                 applied = refactor.apply_secrets(work, [i for i in items], runtime)
+            elif rid == 'MOD_PROPERTIES_YAML':
+                applied = refactor.apply_properties_yaml(work, sorted({i['file'] for i in items}))
             else:
                 applied = refactor.apply_field_injection(work, sorted({i['file'] for i in items}))
         except (runner.Cancelled, runner.TimedOut):
@@ -126,10 +128,10 @@ def run(project: Path, out: Path, *, target: str | None = None, approved=(), aut
     for r in rules['rules']:
         if r['id'] not in ORDER and by_rule.get(r['id']):
             entry(r, 'PROPOSED_ONLY', 'arquitectura: nunca se aplica automáticamente' if r['tier'] == 'ARCHITECTURE' else 'propuesta con código sugerido')
-    blocked_inj = [i for i in by_rule.get('MOD_FIELD_INJECTION', []) if 'no transformable' in i['detail']]
-    if blocked_inj:
-        entry(rules['byId']['MOD_FIELD_INJECTION'] | {'id': 'MOD_FIELD_INJECTION'}, 'BLOCKED', 'casos que el transformador no cubre (ver detalle)',
-              items=blocked_inj)
+    for rid in ('MOD_FIELD_INJECTION', 'MOD_PROPERTIES_YAML'):
+        blocked = [i for i in by_rule.get(rid, []) if 'no transformable' in i['detail']]
+        if blocked:
+            entry(rules['byId'][rid] | {'id': rid}, 'BLOCKED', 'casos que el transformador no cubre (ver detalle)', items=blocked)
     # AFTER + REPORT
     after = detect.analyze(work, runtime)
     quality_after = after['metrics'] | {'build': last_gate['status'], 'tests': last_gate.get('tests')}

@@ -130,6 +130,12 @@ def analyze(root: Path, target: str = 'spring') -> dict:
             if calls:
                 it['detail'] += ' — no transformable: constructor sin argumentos usado en ' + ', '.join(calls[:5])
                 it['suggestion'] += ' y actualizar esas llamadas (o declarar las rutas como @Component)'
+    if target == 'spring':  # Quarkus reads YAML only with an extra extension: proposed for Spring Boot only
+        from .props_yaml import candidates, convert
+        for f in candidates(root):
+            _, problems = convert(f)
+            add('MOD_PROPERTIES_YAML', f.relative_to(root).as_posix(), 1, f'{f.name} → {f.with_suffix(".yml").name}'
+                + (f" — no transformable: {'; '.join(problems[:3])}" if problems else ''), f'{f.with_suffix(".yml").name} con los mismos valores')
     if builders_without_errors and metrics['routeBuilders'] > 1:
         for rel, line, name in builders_without_errors:
             add('MOD_ERROR_HANDLING', rel, line, f'{name} sin onException/errorHandler propio ni centralizado',

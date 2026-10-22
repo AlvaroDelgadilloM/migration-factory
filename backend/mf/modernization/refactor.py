@@ -51,6 +51,21 @@ def apply_field_injection(root: Path, files) -> list[dict]:
     return out
 
 
+def apply_properties_yaml(root: Path, files) -> list[dict]:
+    """Each convertible application*.properties replaced by its verified .yml (see props_yaml)."""
+    from .props_yaml import convert
+    done = []
+    for rel in files:
+        f = root / rel
+        text, problems = convert(f)
+        if text is None:
+            continue
+        f.with_suffix('.yml').write_text(text, encoding='utf-8')
+        f.unlink()
+        done.append({'file': rel, 'to': f.with_suffix('.yml').relative_to(root).as_posix()})
+    return done
+
+
 def apply_config(root: Path, endpoints, runtime: str) -> list[dict]:
     """Literal http/https endpoint URLs -> {{services.<key>.url}} with the current value as default (no behaviour change)."""
     edits = [{'op': 'scheme', 'file': e['file'], 'line': e['line'], 'old': e['component'], 'new': e['component'], 'externalize': True,

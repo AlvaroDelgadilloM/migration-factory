@@ -161,3 +161,26 @@ def test_red_baseline_blocks_every_refactor(project, tmp_path, monkeypatch):
     res = _results(out)
     assert ('MOD_SAFE_CLEANUP', 'BLOCKED') in res and ('MOD_HARDCODED_CONFIG', 'BLOCKED') in res
     assert 'http://erp.internal:8080' in (out / 'modernized-project/src/main/java/demo/app/OrdersRoute.java').read_text()
+
+
+def test_properties_to_yaml_is_approved_verified_and_blocked_when_ambiguous(project, tmp_path, monkeypatch):
+    """MOD_PROPERTIES_YAML: needs --approve; same key -> value map (values quoted: `on` stays a string); ambiguous files untouched."""
+    (project / 'src/main/resources/application-prod.properties').write_text(
+        'server.port=8443\nfeature.enabled: on\nspring.datasource.url = jdbc:oracle:thin:@db:1521/APP\nmsg=hola \\\n  mundo\n', encoding='iso-8859-1')
+    (project / 'src/main/resources/application-qa.properties').write_text('a=1\na.b=2\n')
+    install(monkeypatch, FakeMaven())
+    out = tmp_path / 'mod'
+    assert cli_tool.main(['modernize', str(project), '--output', str(out)]) == 0
+    assert ('MOD_PROPERTIES_YAML', 'PROPOSED_ONLY') in _results(out)
+    out2 = tmp_path / 'mod2'
+    assert cli_tool.main(['modernize', str(project), '--output', str(out2), '--approve', 'MOD_PROPERTIES_YAML']) == 0
+    res = _results(out2)
+    assert res[('MOD_PROPERTIES_YAML', 'APPLIED')]['edits'] == [{'file': 'src/main/resources/application-prod.properties',
+                                                                'to': 'src/main/resources/application-prod.yml'}]
+    blocked = res[('MOD_PROPERTIES_YAML', 'BLOCKED')]['items']
+    assert blocked[0]['file'].endswith('application-qa.properties') and 'prefijo' in blocked[0]['detail']
+    res_dir = out2 / 'modernized-project/src/main/resources'
+    yml = (res_dir / 'application-prod.yml').read_text(encoding='utf-8')
+    assert 'feature:\n  enabled: "on"' in yml and 'url: "jdbc:oracle:thin:@db:1521/APP"' in yml and 'msg: "hola mundo"' in yml
+    assert not (res_dir / 'application-prod.properties').exists() and (res_dir / 'application-qa.properties').exists()
+    assert (project / 'src/main/resources/application-prod.properties').exists()        # the given project is never modified
