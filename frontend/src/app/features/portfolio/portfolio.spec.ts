@@ -55,7 +55,7 @@ describe('Portfolio · registro de proyecto por origen', () => {
   });
 
   it('carpeta local deshabilitada en instalación remota, con explicación', () => {
-    c.caps.set({ localSourceEnabled: false, localSourceRoots: [], maxUploadMb: 200, gitAllowedHosts: [] });
+    c.caps.set({ localSourceEnabled: false, datastageAi: false, localSourceRoots: [], maxUploadMb: 200, gitAllowedHosts: [] });
     const local = c.sourceOptions().find(o => o.value === 'local')!;
     expect(local.disabled).toBe(true);
     expect(local.hint).toContain('agente local');

@@ -156,7 +156,7 @@ def test_plan_blocks_until_camel2_review(client, token, pilot_repo, monkeypatch)
     assert review(client, token, camel2['id'], 'ana.arquitecta', 'resolved',
                   reason='Rutas usan solo endpoints string y ProducerTemplate; revisado contra guía 2→3').status_code == 200
     steps = {s['key']: s for s in client.get(f"{API}/plans/{plan['id']}", headers=token('diego.dev')).json()['steps']}
-    assert steps['camel-2-to-3']['state'] == 'cleared'
+    assert steps['camel-2-to-3']['state'] == 'ready' and steps['camel-2-to-3']['kind'] == 'recipe'   # automatic once accepted
     assert steps['camel-3-to-4']['state'] == 'ready' and steps['jakarta-jms']['state'] == 'ready' and steps['runtime-spring']['state'] == 'ready'
     assert steps['manual-camel-vm']['state'] == 'blocked'  # still blocks the PR, not the recipes
     # apply requires an approved plan; approval needs If-Match

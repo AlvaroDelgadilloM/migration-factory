@@ -425,10 +425,22 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
         preconditions=base_pre[1:2], notes=['Las fallas de línea base se registran y se distinguen de regresiones; no se aceptan automáticamente.'])
     camel_dep = None
     if by_rule.get('CAMEL2_VERSION'):
-        add('camel-2-to-3', 'Revisión manual Camel 2→3 (sin receta verificada)', 'manual', 'REVIEW',
-            finding_ids=ids(['CAMEL2_VERSION']), notes=['Revisar https://camel.apache.org/manual/camel-3-migration-guide.html. '
-                                                        'El paso se libera cuando un arquitecto resuelve el hallazgo con motivo.'])
+        from . import camel2to3
+        moved = camel2to3.types()
+        add('camel-2-to-3', 'Camel 2→3: clases que cambiaron de paquete y atributos de anotaciones (receta generada desde los jars)', 'recipe',
+            'AUTO_TEST', recipe={'activeRecipes': [camel2to3.RECIPE], 'yaml': recipe_yaml(camel2to3.RECIPE, 'Camel 2 a Camel 3', camel2to3.recipe_items())},
+            preconditions=base_pre, finding_ids=ids(['CAMEL2_VERSION']), rollback=ROLLBACK_RECIPE,
+            notes=[f"{len(moved['moves'])} clases movidas de paquete ({moved['from']} → {moved['to']}); @EndpointInject/@Produce/@Consume "
+                   'uri= → value=. Lo que Camel 3 eliminó no se adivina: el compile del candidato lo reporta como acción manual.',
+                   'Guía: https://camel.apache.org/manual/camel-3-migration-guide.html. Requiere que un arquitecto acepte el hallazgo '
+                   'CAMEL2_VERSION y revise el diff.'])
         camel_dep = 'camel-2-to-3'
+        if by_rule.get('CAMEL2_SIMPLE_PROPERTY'):
+            add('camel2-simple-language', 'Lenguaje Simple: ${property.x} → ${exchangeProperty.x} (función eliminada en Camel 3)', 'transform',
+                'AUTO_TEST', recipe={'edits': camel2to3.simple_edits(by_rule['CAMEL2_SIMPLE_PROPERTY'])}, preconditions=base_pre,
+                depends_on=['camel-2-to-3'], finding_ids=ids(['CAMEL2_SIMPLE_PROPERTY']), rollback=ROLLBACK_RECIPE,
+                notes=['Ediciones localizadas (archivo y línea del hallazgo).'])
+            camel_dep = 'camel2-simple-language'
     camel_target = tooling['camelRecipeTarget']
     from . import camel_compat
     present = {d['artifactId'] for mod in modules for d in mod.dependencies if d['groupId'] == 'org.apache.camel'}

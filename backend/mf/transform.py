@@ -103,6 +103,13 @@ def apply_edits(root: Path, edits, runtime: str) -> list[dict]:
             secret_props[(_module_of(e['file']), prop)] = var
             lines[i] = line[:lit.start()] + lit[1] + lit[2] + 'RAW({{' + prop + '}})' + lit[5] + lit[1] + line[lit.end():]
             r |= {'applied': True, 'change': f'valor del parámetro {lit[3]} -> RAW({{{{{prop}}}}}) = ${{{var}}}', 'env': var, 'property': prop}
+        elif e['op'] == 'simple-property':  # Camel 3 removed the Simple `property` function: exchangeProperty is the same value
+            new = re.sub(r'(\$(?:simple)?\{)property([.\[])', r'\1exchangeProperty\2', line)
+            if new == line:
+                results.append(r | {'reason': 'no se encontró ${property. en la línea'})
+                continue
+            lines[i] = new
+            r |= {'applied': True, 'change': '${property.…} → ${exchangeProperty.…}'}
         elif e['op'] == 'secret':
             m = SECRET_LINE.match(line)
             if not m or m[4].startswith('${'):

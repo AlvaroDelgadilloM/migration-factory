@@ -1,15 +1,15 @@
 {
-  "catalogVersion": "2026.10.7",
+  "catalogVersion": "2026.10.8",
   "description": "Reglas de diagnóstico estático. Son indicios revisables, no una matriz completa de compatibilidad Camel.",
   "rules": [
     {
       "id": "CAMEL2_VERSION",
-      "version": 1,
+      "version": 2,
       "detector": "maven",
       "severity": "high",
       "classification": "REVIEW",
       "blocking": true,
-      "recommendation": "Camel 2.x detectado. No existe receta OpenRewrite verificada para 2→3: revisar la guía 2→3 manualmente antes de aplicar recetas 3→4.",
+      "recommendation": "Camel 2.x detectado. El paso camel-2-to-3 lo migra con una receta generada desde los jars (clases movidas de paquete, uri= → value=, ${property.} → ${exchangeProperty.}); acepte este hallazgo para liberarlo y revise el diff: lo que Camel 3 eliminó queda como acción manual.",
       "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
       "examples": {
         "positive": [],
@@ -342,6 +342,26 @@
         ],
         "negative": [
           "// texto activemq sin endpoint"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL2_SIMPLE_PROPERTY",
+      "version": 1,
+      "detector": "text",
+      "pattern": "\\$(?:simple)?\\{property[.\\[]",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recommendation": "La función property del lenguaje Simple se eliminó en Camel 3: el paso camel2-simple-language la cambia por exchangeProperty (mismo valor).",
+      "source": "https://camel.apache.org/manual/camel-3-migration-guide.html",
+      "examples": {
+        "positive": [
+          "log(\"${property.orderId}\")"
+        ],
+        "negative": [
+          "log(\"${exchangeProperty.orderId} {{app.name}} ${properties:a}\")"
         ]
       },
       "category": "MIGRATION"
