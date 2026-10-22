@@ -146,6 +146,10 @@ td .add { color: #067647; } td .del { color: #b42318; }
 .p-message { border-radius: 12px !important; }
 
 @media (max-width: 860px) {
+  /* selects with a fixed minimum width (profile, scan) shrink to the screen; toolbars wrap */
+  .p-select, .p-multiselect { max-width: 100%; min-width: 0 !important; }
+  .toolbar { flex-wrap: wrap; }
+
   /* phone / small tablet: the side menu becomes a compact top bar whose links scroll sideways */
   .sidebar { position: static; width: auto; padding: 10px 12px 6px; }
   .brand { padding: 0 2px 8px; } .brand p { display: none; }

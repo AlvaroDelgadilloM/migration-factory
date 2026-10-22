@@ -94,7 +94,8 @@ import { DataStageStore } from './store';
     .pilot .mono{word-break:break-all}:host ::ng-deep .nowrap-btn{white-space:nowrap}.hero{flex-wrap:wrap}
     .ok-c b{color:#067647}.info-c b{color:#0a5f73}.warn-c b{color:#b54708}
     .ok-c > i{background:#e7f6ec !important;color:#067647 !important}.warn-c > i{background:#fff4e5 !important;color:#b54708 !important}
-    @media (max-width:1100px){.grid{grid-template-columns:1fr}}`],
+    .card{min-width:0}:host ::ng-deep .card .p-datatable{overflow-x:auto}
+    @media (max-width:1100px){.grid{grid-template-columns:minmax(0,1fr)}}`],
 })
 export class DsOverview {
   ds = inject(DataStageStore);

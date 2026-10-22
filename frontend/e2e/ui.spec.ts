@@ -41,11 +41,18 @@ test('secuencia DataStage abre su diagrama frente al DAG de Airflow', async ({ p
   await expect(page.getByRole('img', { name: /Secuencia de \d+ actividades/ })).toBeVisible();
 });
 
-test('en celular el menú del proyecto es una fila horizontal', async ({ page, isMobile }) => {
+test('en celular el menú del proyecto es una fila horizontal y ninguna pantalla se desborda', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'solo celular');
   await login(page);
-  await page.locator('a[href$="/ds"]').first().click();
-  await page.waitForURL(/\/ds$/);
+  const java = (await page.locator('a[href*="/inventory"]').first().getAttribute('href'))!.replace(/\/inventory$/, '');
+  const ds = (await page.locator('a[href$="/ds"]').first().getAttribute('href'))!;
+  await page.goto(ds);
   await expect(page.getByRole('link', { name: 'Jobs' })).toBeVisible();
-  await noHorizontalScroll(page);
+  const screens = ['/portfolio', '/rules', '/audit', ...['', '/jobs', '/oleadas', '/acciones', '/reconciliacion'].map(x => ds + x),
+                   ...['/inventory', '/findings', '/plan', '/execution', '/diff', '/validation', '/settings'].map(x => java + x)];
+  for (const url of screens) {
+    await page.goto(url);
+    await page.waitForLoadState('networkidle');
+    await test.step(url, () => noHorizontalScroll(page));
+  }
 });
