@@ -1287,9 +1287,21 @@ def do_datastage_migrate(job: Job, ctx: Context):
         ctx.emit('info', 'snapshot', f'Origen {repo.source_type}' + (f' · commit {sha}' if sha else ''))
         set_phase(ctx, 'datastage', 30)
         out = ctx.workdir / 'out'
+        ai_call = None
+        if dm.options.get('aiAssist'):
+            from ..datastage import ai_fallback
+            try:
+                key = resolve_credential(ai_fallback.credential_ref(), CREDENTIALS or None)
+            except UnsafeInput as e:
+                raise StepFailure('AI_NOT_CONFIGURED', f'Credencial de la IA no disponible: {e}') from None
+            if not key:
+                raise StepFailure('AI_NOT_CONFIGURED', f'La credencial {ai_fallback.credential_ref()} de la IA está vacía en el worker')
+            ctx.secrets.append(key)
+            ai_call = lambda prompt: ai_fallback.anthropic_call(prompt, key)  # noqa: E731
         try:
             rep = adapter.migrate(src, out, project.name, os.environ.get('MF_AIRFLOW_PYTHON'), dm.options.get('timezone', 'America/Mexico_City'),
-                                  log=lambda m: ctx.emit('info', 'datastage', m), schedules=dm.options.get('schedules'))
+                                  log=lambda m: ctx.emit('info', 'datastage', m), schedules=dm.options.get('schedules'),
+                                  ai_assist=ai_call is not None, ai_call=ai_call)
         except adapter.InvalidInput as e:
             raise StepFailure('DSX_INVALID', str(e)) from None
         set_phase(ctx, 'artifacts', 90)
@@ -1314,7 +1326,7 @@ def do_datastage_migrate(job: Job, ctx: Context):
                       for n, j in rep['jobs'].items()}
         dm.summary = {k: rep[k] for k in ('status', 'functionalValidation', 'technicalValidation', 'parse', 'counts', 'gates', 'pilot',
                                           'manualActions', 'actions', 'airflow')} | {
-            'schedules': dict(dm.options.get('schedules') or {}),  # the ones this run applied (options may be edited later)
+            'schedules': dict(dm.options.get('schedules') or {}), 'aiProposals': rep.get('aiProposals'),  # the ones this run applied (options may be edited later)
             'waves': rep['graph']['waves'], 'droppedEdges': rep['graph']['droppedEdges'], 'masterSequences': rep['graph']['masterSequences'],
             'dags': rep['dags'], 'artifacts': arts}
         db.commit()

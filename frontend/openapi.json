@@ -4394,6 +4394,60 @@
         }
       }
     },
+    "/api/v1/datastage-migrations/{dm_id}/schedules": {
+      "put": {
+        "tags": [
+          "datastage"
+        ],
+        "summary": "Set Schedules",
+        "description": "Cron of each DAG (the DSX has no schedule): saved on this run and applied by the next migration (audited).",
+        "operationId": "set_schedules_api_v1_datastage_migrations__dm_id__schedules_put",
+        "parameters": [
+          {
+            "name": "dm_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dm Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataStageSchedulesIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataStageMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/datastage-migrations/{dm_id}/reconciliations": {
       "post": {
         "tags": [
@@ -4760,6 +4814,11 @@
             },
             "type": "array",
             "title": "Gitallowedhosts"
+          },
+          "datastageAi": {
+            "type": "boolean",
+            "title": "Datastageai",
+            "default": false
           }
         },
         "type": "object",
@@ -4909,6 +4968,31 @@
             "pattern": "^[A-Za-z_]+(/[A-Za-z_+-]+){0,2}$",
             "title": "Timezone",
             "default": "America/Mexico_City"
+          },
+          "aiAssist": {
+            "type": "boolean",
+            "title": "Aiassist",
+            "default": false
+          },
+          "schedules": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^(@(hourly|daily|weekly|monthly|yearly)|[0-9*,/-]+( [0-9*,/-]+){3} [0-9A-Za-z*,/-]+)$"
+                },
+                "propertyNames": {
+                  "maxLength": 255,
+                  "minLength": 1
+                },
+                "type": "object",
+                "maxProperties": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedules"
           }
         },
         "type": "object",
@@ -5002,6 +5086,28 @@
           "createdAt"
         ],
         "title": "DataStageMigrationOut"
+      },
+      "DataStageSchedulesIn": {
+        "properties": {
+          "schedules": {
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(@(hourly|daily|weekly|monthly|yearly)|[0-9*,/-]+( [0-9*,/-]+){3} [0-9A-Za-z*,/-]+)$"
+            },
+            "propertyNames": {
+              "maxLength": 255,
+              "minLength": 1
+            },
+            "type": "object",
+            "maxProperties": 500,
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedules"
+        ],
+        "title": "DataStageSchedulesIn"
       },
       "DevLogin": {
         "properties": {

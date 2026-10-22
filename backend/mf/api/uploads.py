@@ -12,6 +12,7 @@ from .. import audit
 from ..auth import Principal, current_principal
 from ..config import get_settings
 from ..db import get_db
+from ..datastage import ai_fallback
 from ..errors import ApiError
 from ..models import Upload
 from ..schemas import BrowseOut, Capabilities, UploadOut
@@ -24,7 +25,8 @@ router = APIRouter(tags=['sources'])
 def capabilities(_: Principal = Depends(current_principal)):
     s = get_settings()
     return Capabilities(local_source_enabled=bool(local_roots()), local_source_roots=[str(r) for r in local_roots()],
-                        max_upload_mb=s.max_upload_mb, git_allowed_hosts=s.list_of(s.git_allowed_hosts))
+                        max_upload_mb=s.max_upload_mb, git_allowed_hosts=s.list_of(s.git_allowed_hosts),
+                        datastage_ai=ai_fallback.enabled())
 
 
 BROWSE_SKIP = {'target', 'node_modules', '__MACOSX'}

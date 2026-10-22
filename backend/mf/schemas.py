@@ -473,6 +473,7 @@ class Capabilities(Dto):
     local_source_roots: list[str]
     max_upload_mb: int
     git_allowed_hosts: list[str]
+    datastage_ai: bool = False  # doc 58: AI proposals for untranslated DataStage expressions can be requested
 
 
 class BrowseEntry(Dto):
@@ -689,6 +690,7 @@ CRON = r'^(@(hourly|daily|weekly|monthly|yearly)|[0-9*,/-]+( [0-9*,/-]+){3} [0-9
 
 class DataStageMigrationIn(Dto):
     timezone: str = Field(default='America/Mexico_City', pattern=r'^[A-Za-z_]+(/[A-Za-z_+-]+){0,2}$')
+    ai_assist: bool = False  # doc 58: ask the configured LLM for proposals (never applied); refused when not configured
     # DataStage job/sequence name -> cron of its DAG; None = keep the project's saved schedules (the DSX has none)
     schedules: dict[Annotated[str, Field(min_length=1, max_length=255)], Annotated[str, Field(pattern=CRON)]] | None = Field(default=None, max_length=500)
 

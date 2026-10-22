@@ -10,7 +10,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import validation
+from . import ai_fallback, validation
 from .analysis import analyze
 from .generation import AIRFLOW, Project, connections
 from .parser import parse_files
@@ -45,7 +45,7 @@ def analyze_only(source: Path, name: str):
 
 
 def migrate(source: Path, out: Path, name: str | None = None, airflow_python: str | None = None, timezone_name='America/Mexico_City',
-            log=lambda m: None, schedules: dict | None = None) -> dict:
+            log=lambda m: None, schedules: dict | None = None, ai_assist: bool = False, ai_call=None) -> dict:
     source, out = Path(source).resolve(), Path(out).resolve()
     if out == source or source in out.parents:
         raise InvalidInput('La salida no puede estar dentro del origen (el origen nunca se modifica)')
@@ -93,6 +93,12 @@ def migrate(source: Path, out: Path, name: str | None = None, airflow_python: st
               'graph': analysis['graph'], 'pilot': analysis['pilot'], 'manualActions': manual, 'actions': worklist(analysis, results),
               'dags': gen.dags,
               'airflow': AIRFLOW, 'generatedAt': datetime.now(timezone.utc).isoformat(timespec='seconds')}
+    if ai_assist and ai_call:  # doc 58: proposals only, validated, never applied
+        log('pidiendo propuestas a la IA para las expresiones sin traducción')
+        props = ai_fallback.propose(project, call=ai_call, log=log)
+        report['aiProposals'] = props
+        (report_dir / 'ai-proposals.json').write_text(json.dumps(props, ensure_ascii=False, indent=1), encoding='utf-8')
+        (report_dir / 'ai-proposals.md').write_text(ai_fallback.markdown(props), encoding='utf-8')
     (report_dir / 'inventory.json').write_text(json.dumps(analysis['jobs'], ensure_ascii=False, indent=1), encoding='utf-8')
     (report_dir / 'dependency-graph.json').write_text(json.dumps(analysis['graph'], ensure_ascii=False, indent=1), encoding='utf-8')
     (report_dir / 'stage-decisions.json').write_text(json.dumps(analysis['decisions'], ensure_ascii=False, indent=1), encoding='utf-8')

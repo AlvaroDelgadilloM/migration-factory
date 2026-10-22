@@ -2,6 +2,7 @@
 name: migration-factory
 
 x-backend-env: &backend-env
+  MF_AI_ENABLED: ${MF_AI_ENABLED:-false}   # DataStage AI proposals (doc 58); the key MF_CRED_AI only reaches the workers
   MF_ENV: ${MF_ENV:-development}
   MF_DATABASE_URL: postgresql+psycopg://mf:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/mf
   MF_REDIS_URL: redis://:${REDIS_PASSWORD:?set in .env}@redis:6379/0
@@ -82,6 +83,9 @@ services:
       MF_MAVEN_OPTS: -Xmx1g
       # Git credentials are referenced as env:MF_CRED_<NAME> (project setting "Referencia de credencial"); values only in .env
       MF_CRED_GITHUB: ${MF_CRED_GITHUB:-}
+      # DataStage: AI proposals for expressions without deterministic translation (doc 58). Off by default; the key only in .env
+      MF_AI_MODEL: ${MF_AI_MODEL:-claude-sonnet-5-5}
+      MF_CRED_AI: ${MF_CRED_AI:-}
       # heavy re-creatable files (candidates, patches, old snapshots) older than N days are deleted; 0 = keep forever
       MF_ARTIFACT_RETENTION_DAYS: ${MF_ARTIFACT_RETENTION_DAYS:-30}
     volumes: [artifacts:/artifacts, "${MF_HOST_SOURCES_DIR:-./examples}:/sources:ro", work:/work, m2:/m2]

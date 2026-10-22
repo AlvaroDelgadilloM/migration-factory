@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
@@ -18,8 +18,11 @@ import { DataStageStore } from './store';
   template: `
     <mf-page-header title="Resumen" crumb="DATASTAGE → AIRFLOW" subtitle="Dónde está la migración y qué sigue.">
       <span class="tz"><label for="tz">Zona horaria de los DAGs</label><input pInputText id="tz" [(ngModel)]="timezone" /></span>
+      <label class="ai" [title]="aiOn() ? 'Para cada expresión que no se pudo traducir, un modelo de IA propone SQL de Oracle. Se valida y nunca se aplica solo: queda para revisión. Se envían la expresión y los nombres de columnas, nunca datos.' : 'La IA no está configurada en esta instalación (MF_AI_ENABLED y MF_CRED_AI)'">
+        <input type="checkbox" [(ngModel)]="aiAssist" [disabled]="!aiOn()" /> Pedir propuestas a la IA
+      </label>
       <mf-action [label]="ds.current() ? 'Volver a migrar' : 'Analizar y migrar'" icon="pi pi-play" [busy]="ds.busy()"
-                 [disabledReason]="ds.startReason()" (run)="ds.start(timezone)" />
+                 [disabledReason]="ds.startReason()" (run)="ds.start(timezone, aiAssist && aiOn())" />
     </mf-page-header>
     @if (ds.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
 
@@ -80,7 +83,8 @@ import { DataStageStore } from './store';
         }
       }
     </mf-state>`,
-  styles: [`.tz{display:flex;flex-direction:column;gap:4px}.tz label{font-size:12px;color:var(--mf-muted)}
+  styles: [`.ai{display:flex;gap:6px;align-items:center;font-size:13px;white-space:nowrap}.ai input{width:16px;height:16px}
+    .tz{display:flex;flex-direction:column;gap:4px}.tz label{font-size:12px;color:var(--mf-muted)}
     .hero{display:flex;justify-content:space-between;align-items:center;gap:1rem;background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:20px 24px;margin-bottom:16px}
     .hero h2{margin:8px 0 4px;font-size:22px}
     .next{background:#f0f7f7;border:1px solid #cfe5e6;border-radius:12px;padding:16px 20px;margin-bottom:16px}.next h3{margin:0 0 6px}
@@ -96,6 +100,9 @@ export class DsOverview {
   ds = inject(DataStageStore);
   api = inject(Api);
   timezone = 'America/Mexico_City';
+  aiAssist = false;
+  aiOn = signal(false);
+  constructor() { this.api.capabilities().then(c => this.aiOn.set(!!c.datastageAi)).catch(() => undefined); }
   s = this.ds.summary;
   doneCount = computed(() => this.ds.actions().filter(a => this.ds.actionState()[a.key]?.done).length);
   pending = computed(() => this.ds.actions().filter(a => a.severity === 'manual' && !this.ds.actionState()[a.key]?.done).length);

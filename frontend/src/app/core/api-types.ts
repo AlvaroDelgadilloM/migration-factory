@@ -1219,6 +1219,26 @@ export interface paths {
         patch: operations["set_action_api_v1_datastage_migrations__dm_id__actions_patch"];
         trace?: never;
     };
+    "/api/v1/datastage-migrations/{dm_id}/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Schedules
+         * @description Cron of each DAG (the DSX has no schedule): saved on this run and applied by the next migration (audited).
+         */
+        put: operations["set_schedules_api_v1_datastage_migrations__dm_id__schedules_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datastage-migrations/{dm_id}/reconciliations": {
         parameters: {
             query?: never;
@@ -1349,6 +1369,11 @@ export interface components {
             maxUploadMb: number;
             /** Gitallowedhosts */
             gitAllowedHosts: string[];
+            /**
+             * Datastageai
+             * @default false
+             */
+            datastageAi: boolean;
         };
         /** CatalogCreate */
         CatalogCreate: {
@@ -1414,6 +1439,15 @@ export interface components {
              * @default America/Mexico_City
              */
             timezone: string;
+            /**
+             * Aiassist
+             * @default false
+             */
+            aiAssist: boolean;
+            /** Schedules */
+            schedules?: {
+                [key: string]: string;
+            } | null;
         };
         /** DataStageMigrationOut */
         DataStageMigrationOut: {
@@ -1465,6 +1499,13 @@ export interface components {
              */
             createdAt: string;
             job?: components["schemas"]["JobOut"] | null;
+        };
+        /** DataStageSchedulesIn */
+        DataStageSchedulesIn: {
+            /** Schedules */
+            schedules: {
+                [key: string]: string;
+            };
         };
         /** DevLogin */
         DevLogin: {
@@ -5487,6 +5528,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DataStageActionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataStageMigrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_schedules_api_v1_datastage_migrations__dm_id__schedules_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataStageSchedulesIn"];
             };
         };
         responses: {

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit, jobs
 from ..auth import Principal, authorize, current_principal
-from ..datastage import reconcile
+from ..datastage import ai_fallback, reconcile
 from ..db import get_db
 from ..errors import ApiError
 from ..models import DataStageMigration, Job, now
@@ -30,7 +30,9 @@ def start(project_id: uuid.UUID, body: DataStageMigrationIn, request: Request, i
     p = authorize(db, me, project_id, 'execute')
     if p.migration_type != 'DATASTAGE_AIRFLOW':
         raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'El proyecto es Java/Camel: use análisis y planes')
-    payload = body.model_dump(mode='json')
+    payload = body.model_dump(mode='json', by_alias=True)
+    if payload.get('aiAssist') and not ai_fallback.enabled():
+        raise ApiError(409, 'AI_NOT_CONFIGURED', 'La IA no está configurada en esta instalación (MF_AI_ENABLED y MF_AI_API_KEY)')
     endpoint = f'POST /projects/{project_id}/datastage-migrations'
     replay = jobs.idempotent_replay(db, me.subject, idempotency_key, endpoint, payload)
     if replay:

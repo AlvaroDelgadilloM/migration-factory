@@ -41,6 +41,9 @@ export class DataStageStore {
   /** cron per DAG: saved (applied by the next migration) and applied by this run */
   readonly schedules = computed(() => ((this.current()?.options as Record<string, unknown> | undefined)?.['schedules'] ?? {}) as Record<string, string>);
   readonly appliedSchedules = computed(() => (this.summary()?.schedules ?? {}) as Record<string, string>);
+  /** doc 58: AI proposals of this run, by job (validated, never applied) */
+  readonly aiProposals = computed(() => (this.summary()?.aiProposals ?? []) as { job: string; stage: string; link: string; column: string;
+    expression: string; status: string; sql?: string; notes?: string; problems: string[] }[]);
   readonly airflowZip = computed(() => this.artifacts().find(a => a.name.endsWith('.zip')) ?? null);
   readonly startReason = computed(() => {
     if (!this.ctx.can('execute')) return `Su rol (${this.ctx.role()}) no permite migrar`;
@@ -62,12 +65,12 @@ export class DataStageStore {
 
   reload() { return this.list.reload(); }
 
-  async start(timezone: string) {
+  async start(timezone: string, aiAssist = false) {
     const id = this.ctx.projectId();
     if (!id) return;
     this.error.set(null);
     this.busy.set(true);
-    try { await this.api.startDataStageMigration(id, { timezone: timezone.trim() }); await this.reload(); }
+    try { await this.api.startDataStageMigration(id, { timezone: timezone.trim(), aiAssist }); await this.reload(); }
     catch (e) { this.error.set(UiError.from(e)); }
     finally { this.busy.set(false); }
   }

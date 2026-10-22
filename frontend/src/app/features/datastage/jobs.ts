@@ -86,6 +86,19 @@ const FACTORS: Record<string, string> = {
           <h3>Secuencia de DataStage → DAG de Airflow</h3>
           <mf-flow-diagram [flow]="f" />
         }
+        @if (proposalsFor(j.name); as ps) { @if (ps.length) {
+          <h3>Propuestas de la IA <span class="muted small">(sin aplicar: revise y copie al SQL de la etapa)</span></h3>
+          @for (p of ps; track $index) {
+            <div class="aip small">
+              <div><strong>{{ p.stage }} · {{ p.link }}.{{ p.column }}</strong>
+                <span [class]="'st ' + (p.status === 'AI_PROPOSED_VALID' ? 'st-REVIEW' : 'st-MANUAL')">{{ aiLabel(p.status) }}</span></div>
+              <div>DataStage: <code>{{ p.expression }}</code></div>
+              @if (p.sql) { <div>SQL propuesto: <code>{{ p.sql }}</code></div> }
+              @if (p.notes) { <div class="muted">{{ p.notes }}</div> }
+              @if (p.problems.length) { <div class="muted">Rechazada por: {{ p.problems.join('; ') }}</div> }
+            </div>
+          }
+        } }
         <h3>Por qué esta complejidad</h3>
         <p class="small muted">La complejidad es una suma de puntos: cada elemento del job suma según lo difícil que es migrarlo.
           Menos de 15 puntos es baja, menos de 35 media, menos de 70 alta y desde 70 muy alta.</p>
@@ -112,6 +125,7 @@ const FACTORS: Record<string, string> = {
     </p-drawer>`,
   styles: [`.clickable{cursor:pointer}.pts{display:block;margin-top:3px}.st{font-size:12px;padding:1px 8px;border-radius:10px}.st-OK{background:#e7f6ec;color:#067647}
     .st-REVIEW{background:#e6f2f3;color:#0a5f73}.st-MANUAL{background:#fdecea;color:#b42318}.issue{padding-left:16px}
+    .aip{border:1px solid var(--mf-line);border-radius:10px;padding:8px 10px;margin:6px 0;display:flex;flex-direction:column;gap:4px}.aip code{word-break:break-all}
     .sched{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;max-width:46rem}.sched .row{display:flex;gap:8px}.sched .err{color:#b42318}.sched input{flex:1;font-family:ui-monospace,Menlo,monospace}h3{margin:16px 0 6px;font-size:15px}`],
 })
 export class DsJobs {
@@ -137,6 +151,10 @@ export class DsJobs {
       .map(j => ({ ...j, pending: this.ds.actions().filter(a => a.job === j.name && a.severity === 'manual' && !st[a.key]?.done).length }));
   });
   draft: Record<string, string> = {};
+  proposalsFor(job: string) { return this.ds.aiProposals().filter(p => p.job === job); }
+  aiLabel(s: string) {
+    return ({ AI_PROPOSED_VALID: 'Pasó las validaciones', AI_PROPOSED_REJECTED: 'Rechazada', AI_DECLINED: 'La IA no propuso', AI_ERROR: 'Error al consultar' } as Record<string, string>)[s] ?? s;
+  }
   async saveCron(job: string) {
     if (await this.ds.setSchedule(job, this.draft[job] ?? '')) delete this.draft[job];
   }
