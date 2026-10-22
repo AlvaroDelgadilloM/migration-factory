@@ -57,6 +57,15 @@ def integration_inventory(report) -> str:
     return '\n'.join(lines) + '\n'
 
 
+def _vuln_line(v) -> str:
+    if not v:
+        return '- Escaneo de vulnerabilidades de dependencias: NOT_RUN'
+    if v['status'] in ('PASS', 'FINDINGS'):
+        return (f"- Escaneo de vulnerabilidades de dependencias: **{v['status']}** ({v['count']} vulnerabilidad(es) conocidas en "
+                f"{v.get('packages', 0)} paquete(s); {v.get('tool')}; detalle en reports/vulnerabilities.json). El inventario no sale del worker.")
+    return f"- Escaneo de vulnerabilidades de dependencias: {v['status']} ({v.get('reason', '')})"
+
+
 def security_report(report, result, sbom_count=None) -> str:
     sec = result.get('security') or {}
     secrets = [f for f in report['findings'] if f['ruleId'] == 'HARDCODED_SECRET']
@@ -66,8 +75,7 @@ def security_report(report, result, sbom_count=None) -> str:
              f"- Secretos detectados en el origen: {len(secrets)} · externalizados: {sec.get('secretsExternalized', 'n/a')}",
              f"- Archivos sensibles excluidos del candidato: {len(excluded)}",
              f"- SBOM: reports/sbom.cdx.json ({sbom_count} componentes)" if sbom_count is not None else '- SBOM: no generado',
-             '- Escaneo de vulnerabilidades de dependencias: NOT_RUN (requiere una base de vulnerabilidades aprobada por la organización; '
-             'la herramienta no envía el inventario a servicios externos)', '',
+             _vuln_line(result.get('vulnerabilityScan')), '',
              'Estados: PASS (sin hallazgos), FINDINGS (hallazgos abiertos), ERROR (fallo de la herramienta; nunca se reporta como hallazgo).', '']
     if secrets:
         lines += ['## Secretos en el origen (valores nunca mostrados)', '', _table([(f['file'], f['line']) for f in secrets], ['Archivo', 'Línea'])]

@@ -791,9 +791,14 @@ def migrate(source, out, target, java, accepted, *, dry_run, autofix, max_rounds
         from .analysis.scanner import scan as static_scan
         eff = {(m['groupId'], m['artifactId']): {'deps': {(d['groupId'], d['artifactId']): d['versionResolved'] for d in m['dependencies']}}
                for m in static_scan(work, target)['modules']}
-    bom = sbom.cyclonedx(eff, result['trace']['engineVersion'], result['trace']['date'])
+    bom = sbom.transitive(ctx, work) or sbom.cyclonedx(eff, result['trace']['engineVersion'], result['trace']['date'])
     write_json(out / 'reports' / 'sbom.cdx.json', bom)
     result['sbomComponents'] = len(bom['components'])
+    result['sbomScope'] = next((p['value'] for p in bom['metadata'].get('properties', []) if p['name'] == 'mf:scope'), '')
+    from . import vulnscan
+    vulns = vulnscan.scan(ctx, out / 'reports' / 'sbom.cdx.json')
+    write_json(out / 'reports' / 'vulnerabilities.json', vulns)
+    result['vulnerabilityScan'] = {k: vulns[k] for k in ('status', 'reason', 'tool', 'packages') if k in vulns} | {'count': len(vulns['vulnerabilities'])}
     from .worker.tasks import aggregate_status, build_root_causes
     kinds = {s['key']: s['kind'] for s in plan['steps']}
     smap = {'APPLIED': 'applied', 'ROLLED_BACK': 'failed-rolled-back', 'FAILED': 'failed-rolled-back',

@@ -2,7 +2,7 @@ FROM eclipse-temurin:25.0.4.1_1-jdk-noble AS jdk25
 # JDK 21 + Maven 3.9.11 (pinned) + Python 3.12 for the orchestration code. No Docker socket, non-root.
 FROM maven:3.9.11-eclipse-temurin-21-noble
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv git util-linux \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv git util-linux curl \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv \
     && useradd --uid 10001 --create-home mf \
@@ -20,6 +20,15 @@ RUN python3 -m venv /tmp/pw && /tmp/pw/bin/pip install "playwright==1.49.1" \
     && ln -s "$(ls -d /opt/ms-playwright/chromium-*/chrome-linux/chrome | head -1)" /usr/local/bin/chromium \
     && rm -rf /tmp/pw /var/lib/apt/lists/* \
     && chromium --version
+# Dependency vulnerability scan (mf.vulnscan): osv-scanner, pinned and verified against its published SHA256SUMS. It downloads the
+# public OSV database (Maven) into the job workspace and matches offline: the dependency inventory never leaves the worker.
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64) sum=160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b ;; \
+      arm64) sum=4061ef4c021ed3c47f203b818f337e351336cc5cd67c0274fc36bd1dfc728dd7 ;; \
+      *) echo "arquitectura no soportada: $TARGETARCH" && exit 1 ;; esac \
+    && curl -fsSL -o /usr/local/bin/osv-scanner "https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_${TARGETARCH}" \
+    && echo "$sum  /usr/local/bin/osv-scanner" | sha256sum -c - && chmod 755 /usr/local/bin/osv-scanner && osv-scanner --version
 # DataStage -> Airflow DAG_PARSE_GATE: Apache Airflow in its own venv (pinned with the official constraints), used only to
 # import the GENERATED DAGs with DagBag in a separate process; the platform venv never imports Airflow.
 RUN python3 -m venv /opt/airflow-venv \
@@ -34,7 +43,7 @@ COPY rules/ /app/rules/
 COPY examples/ /app/examples/
 ENV PATH=/opt/venv/bin:$PATH MF_RULES_CATALOG=/app/rules/catalog.json MAVEN_HOME=/usr/share/maven \
     MF_AIRFLOW_PYTHON=/opt/airflow-venv/bin/python MF_JDK25_HOME=/opt/jdk-25 \
-    MF_BROWSER=/usr/local/bin/chromium MF_BROWSER_CONTAINER=1
+    MF_BROWSER=/usr/local/bin/chromium MF_BROWSER_CONTAINER=1 MF_OSV_SCANNER=/usr/local/bin/osv-scanner
 USER 10001
 # The base image entrypoint writes to /root/.m2; not needed (maven.repo.local is set per run).
 ENTRYPOINT []

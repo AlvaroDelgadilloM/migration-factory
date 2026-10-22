@@ -1,8 +1,30 @@
-"""SBOM and artifact hashes (improvements/11). The SBOM lists the *declared* dependencies of each module as Maven resolved
-them (effective POM); transitive dependencies are not included (that needs a dependency-resolution plugin run)."""
+"""SBOM and artifact hashes (improvements/11). Preferred: the full dependency tree (transitive included) from the CycloneDX
+Maven plugin; when it cannot run (offline without the plugin, build error) the declared dependencies of each module as Maven
+resolved them (effective POM), marked as such in metadata (mf:scope)."""
 import hashlib
+import json
 import uuid
 from pathlib import Path
+
+CYCLONEDX_PLUGIN = 'org.cyclonedx:cyclonedx-maven-plugin:2.9.3'
+
+
+def transitive(ctx, project: Path) -> dict | None:
+    """makeAggregateBom over the project (runtime + compile scopes, no test): every resolved dependency, with its tree."""
+    from .worker import mavenops
+    res = mavenops.mvn(ctx, project, [f'{CYCLONEDX_PLUGIN}:makeAggregateBom', '-DoutputFormat=json', '-DoutputName=mf-sbom',
+                                      '-DincludeTestScope=false', '-DincludeSystemScope=false', '-DincludeLicenseText=false'], 'sbom-cyclonedx')
+    path = project / 'target' / 'mf-sbom.json'
+    if res.exit_code != 0 or not path.exists():
+        return None
+    try:
+        bom = json.loads(path.read_text(encoding='utf-8'))
+    except ValueError:
+        return None
+    meta = bom.setdefault('metadata', {})
+    meta['properties'] = [p for p in meta.get('properties', []) if p.get('name') != 'mf:scope'] + [
+        {'name': 'mf:scope', 'value': 'árbol completo de dependencias (transitivas incluidas), sin alcance test'}]
+    return bom
 
 
 def cyclonedx(effective: dict, tool_version: str, timestamp: str) -> dict:
