@@ -259,11 +259,14 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
     if m.get('coreComponent'):
         from .profiles import CORE_COMPONENTS, USED_COMPONENTS
         used = sorted((set(components) & set(CORE_COMPONENTS) if uses_core else set())
-                      | {USED_COMPONENTS[c] for c in components if c in USED_COMPONENTS})
+                      | {USED_COMPONENTS[c] for c in components if c in USED_COMPONENTS}
+                      | ({'direct'} if findings_by_rule.get('CAMEL_REST_INLINE_ROUTE') else set()))  # routes camel-rest-inline creates
         for c in used:  # Camel 2 camel-core/JBoss modules bundled these; Camel 3+ ships them separately (AddDependency is idempotent)
+            # no onlyIfUsing: the scan already saw the usage, and that check needs every Camel type resolved at recipe time (it
+            # silently skipped camel-quarkus-rest on a WAR found starting the app in Pruebas); scope explicit: without onlyIfUsing
+            # OpenRewrite cannot infer it and wrote test scope (the app then failed to start)
             items.append(('org.openrewrite.maven.AddDependency',
-                          {'groupId': m['groupId'], 'artifactId': m['coreComponent'].format(c), 'version': m['version'],
-                           'onlyIfUsing': 'org.apache.camel..*'}))
+                          {'groupId': m['groupId'], 'artifactId': m['coreComponent'].format(c), 'version': m['version'], 'scope': 'compile'}))
         if used:
             notes.append(f"Componentes core usados añadidos explícitamente: {', '.join(used)}.")
     if 'cxfrs' in components:  # Camel 4 split camel-cxf into cxf-soap and cxf-rest
@@ -490,6 +493,17 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
         rollback=ROLLBACK_RECIPE, notes=['La receta cubre Camel 3.x→4.x; no cubre JBoss ni la migración 2→3.',
                                          'Fase 1 de 2: después se normaliza el POM y se aplica el mapeo de compatibilidad.'])
     mapping_dep = 'camel-3-to-4'
+    if by_rule.get('CAMEL_REST_INLINE_ROUTE'):  # Camel 4 removed .route() inside the REST DSL (mf.rest_inline)
+        first = {}
+        for f in by_rule['CAMEL_REST_INLINE_ROUTE']:
+            if f.file.endswith('.java'):
+                first.setdefault(f.file, f.line)
+        if first:
+            add('camel-rest-inline', 'REST DSL: rutas dentro de rest() → rutas direct: con el mismo routeId (Camel 4)', 'transform', 'AUTO_TEST',
+                recipe={'edits': [{'op': 'rest-inline', 'file': f, 'line': ln} for f, ln in sorted(first.items())]}, preconditions=base_pre,
+                depends_on=['camel-3-to-4'], finding_ids=ids(['CAMEL_REST_INLINE_ROUTE']), rollback=ROLLBACK_RECIPE,
+                notes=['Cada .get()/.post()... .route() ... .endRest() pasa a .to("direct:<routeId>") y una ruta from("direct:<routeId>") '
+                       'con el mismo cuerpo; lo valida la compilación y las pruebas del candidato.'])
     if present:
         add('camel4-compat-mapping', 'Mapeo de compatibilidad Camel 4 (renombres, retiros y alineación de versiones)', 'transform', 'AUTO_TEST',
             recipe={'pomMapping': {'decisions': [d for d in decisions if d['action'] in ('RENAME', 'REMOVE')], 'targetVersion': camel_target},

@@ -644,9 +644,18 @@ arranque) y envía los casos al migrado y, si se da, al sistema original del amb
 - Real, ejemplo JBoss contra WildFly 10.1 + PostgreSQL (mismos datos): Spring Boot 3.5 **6/6 iguales**; Tomcat 10.1 WAR **6/6**;
   Tomcat 11 + Java 25 **6/6**. Los 5 endpoints se mapearon solos (`GET /customers/{id}`, `/customers/{id}/orders`, `/products`,
   `/stats/top-products`, `POST /orders`).
-- Quarkus: el ejemplo JBoss no migra a Quarkus (usa camel-spring, bloqueado a propósito). Con el piloto: compila, arranca
-  `quarkus-run.jar` y Camel inicia; se detiene por el datasource `ordersDS` que JBoss daba por JNDI (lo reporta con la causa) →
-  falta un ejemplo Quarkus con REST y base configurada para comparar respuesta por respuesta.
+- Quarkus: ejemplo nuevo `examples/camel2-rest-catalog` (WAR Camel 2.24.3 en WildFly 10.1, REST DSL en Java sobre camel-servlet,
+  arranque con camel-servletlistener, sin Spring). Migrado a Quarkus 3.40.1 / Camel 4.22.1, levantado y comparado contra el
+  WildFly original: **8/8 iguales** (incluye 404 y 400), 4 endpoints mapeados solos. Levantar la app encontró y se corrigieron:
+  - `camel-servletlistener` se bloqueaba: ahora se quita cuando el código Java no lo importa (el runtime arranca Camel);
+  - Camel 4 eliminó las rutas dentro del REST DSL (`.get().route()…endRest()`): nuevo paso automático `camel-rest-inline`
+    (`mf/rest_inline.py`, regla `CAMEL_REST_INLINE_ROUTE`) que las separa en `direct:` con el mismo routeId;
+  - el REST DSL en Java no se registraba como componente (faltaba `camel-quarkus-rest`/`camel-rest-starter`) y la marca se perdía
+    en la segunda pasada del análisis (POM efectivo);
+  - las dependencias de componentes usados con `onlyIfUsing` no se agregaban en un WAR (tipos sin resolver al correr la receta) y,
+    sin él, OpenRewrite las ponía con alcance `test`: ahora se agregan con alcance `compile` porque el análisis ya vio el uso.
+  Con el piloto: arranca `quarkus-run.jar` y se detiene por el datasource `ordersDS` que JBoss daba por JNDI (lo reporta con la
+  causa; se configura con variables adicionales `QUARKUS_DATASOURCE_*`).
 - **Errores reales que encontró levantar las apps** (corregidos en el planificador): el runtime Quarkus no agregaba
   `quarkus-maven-plugin` (el módulo compilaba y pasaba pruebas pero no era una aplicación) y un jar migrado a Spring Boot no
   agregaba `spring-boot-maven-plugin` repackage (no corría con `java -jar`). Verificado con Maven real tras la corrección.

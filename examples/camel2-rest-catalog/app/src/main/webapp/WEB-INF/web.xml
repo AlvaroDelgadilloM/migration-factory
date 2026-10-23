@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd" version="3.1">
+    <display-name>Catálogo (Camel 2 en WildFly, sin Spring)</display-name>
+    <context-param>
+        <param-name>routeBuilder-catalog</param-name>
+        <param-value>demo.catalog.CatalogRoutes</param-value>
+    </context-param>
+    <listener>
+        <listener-class>org.apache.camel.component.servletlistener.SimpleCamelServletContextListener</listener-class>
+    </listener>
+    <servlet>
+        <servlet-name>CamelServlet</servlet-name>
+        <servlet-class>org.apache.camel.component.servlet.CamelHttpTransportServlet</servlet-class>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>CamelServlet</servlet-name>
+        <url-pattern>/api/*</url-pattern>
+    </servlet-mapping>
+</web-app>

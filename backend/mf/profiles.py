@@ -42,7 +42,8 @@ CORE_COMPONENTS = ('bean', 'direct', 'log', 'seda', 'timer', 'file')
 # so the legacy POM may not declare them).
 USED_COMPONENTS = {'quartz2': 'quartz', 'quartz': 'quartz', 'http4': 'http', 'https4': 'http', 'http': 'http', 'https': 'http',
                    'ftp': 'ftp', 'sftp': 'ftp', 'ftps': 'ftp', 'jms': 'jms', 'jdbc': 'jdbc', 'sql': 'sql', 'smtp': 'mail',
-                   'smtps': 'mail', 'imap': 'mail', 'pop3': 'mail', 'cxf': 'cxf-soap', 'kafka': 'kafka'}
+                   'smtps': 'mail', 'imap': 'mail', 'pop3': 'mail', 'cxf': 'cxf-soap', 'kafka': 'kafka',
+                   'rest': 'rest'}  # REST DSL: camel-rest(-starter) / camel-quarkus-rest (verified in the BOMs)
 
 SPRING_CAMEL = '4.14.9'
 SPRING4_CAMEL = '4.22.1'  # Camel 4.22 LTS: first line with official Java 25 support (camel.apache.org/download)
