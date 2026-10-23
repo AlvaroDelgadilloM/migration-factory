@@ -57,7 +57,7 @@ def memory_mb(pid: int | None) -> float | None:
     try:
         if os.name == 'nt':
             out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV', '/NH'], capture_output=True, text=True, timeout=10).stdout
-            m = re.search(r'"([\d.,\s]+)\s*K"', out)
+            m = re.search(r'"([\d.,\s\xa0]+)\s*KB?"', out)  # 'K' in English, 'KB' in Spanish Windows
             return round(int(re.sub(r'\D', '', m.group(1))) / 1024, 1) if m else None
         out = subprocess.run(['ps', '-o', 'rss=', '-p', str(pid)], capture_output=True, text=True, timeout=10).stdout.strip()
         return round(int(out) / 1024, 1) if out else None

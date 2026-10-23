@@ -497,7 +497,11 @@ def baseline_command(source: Path, out: Path, modules: list, servlets: str, etc:
     # shadow it (ehcache 2.x carries an old terracotta-statistics that ehcache 3.x cannot use). Newer major versions first.
     jars = sorted(lib2.glob('*.jar'), key=lambda j: (not re.match(r'ehcache-3', j.name), j.name))
     classpath += jars + [Path(c) for c in extra_classpath]
-    cmd = [_java('java')] + [f'--add-opens={o}=ALL-UNNAMED' for o in OPENS] + [f'-Dmf.etc={Path(etc).resolve()}', 'BaselineServer', str(port), servlets]
+    # the same logging as the migrated WAR (its log4j.properties): Fuse logs a failed exchange with its stack trace, and a
+    # baseline that logs nothing made the performance comparison unfair (Posadas mobile: 68 KB against 81 MB of log)
+    log4j = (pipeline.RULES_DIR / 'template' / 'webapp' / 'src' / 'main' / 'resources' / 'log4j.properties').resolve().as_uri()
+    cmd = [_java('java')] + [f'--add-opens={o}=ALL-UNNAMED' for o in OPENS] + [f'-Dlog4j.configuration={log4j}', f'-Dmf.etc={Path(etc).resolve()}',
+                                                                               'BaselineServer', str(port), servlets]
     return cmd + [str(x) for x in xml_dirs], _env(classpath)
 
 
