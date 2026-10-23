@@ -41,8 +41,33 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 			context.getRestConfiguration().setInlineRoutes(false);
 			((ModelCamelContext) context).addModelLifecycleStrategy(new ProducesContentType());
 			((ModelCamelContext) context).addModelLifecycleStrategy(new CxfOperationHeaders());
+			context.addLifecycleStrategy(new NoAutomaticHttpRetries());
 		}
 		return bean;
+	}
+
+	/**
+	 * Reintentos HTTP automaticos. El cliente de Camel 4 (Apache HttpClient 5) repite por su cuenta una llamada que recibe
+	 * 503 o 429, despues de esperar 1 segundo; el de Camel 2 (HttpClient 4, componente http4) no lo hacia. Con un sistema
+	 * externo saturado eso suma un segundo y duplica las llamadas (Posadas: las consultas de reservas de Upsell Central a
+	 * ICP pasaban de milisegundos a 1 s). Se desactivan al crear el componente http/https, conservando el configurador
+	 * que el modulo hubiera puesto.
+	 */
+	static final class NoAutomaticHttpRetries extends org.apache.camel.support.LifecycleStrategySupport {
+
+		@Override
+		public void onComponentAdd(String name, org.apache.camel.Component component) {
+			if (component instanceof org.apache.camel.component.http.HttpComponent) {
+				org.apache.camel.component.http.HttpComponent http = (org.apache.camel.component.http.HttpComponent) component;
+				org.apache.camel.component.http.HttpClientConfigurer own = http.getHttpClientConfigurer();
+				http.setHttpClientConfigurer(builder -> {
+					if (own != null) {
+						own.configureHttpClient(builder);
+					}
+					builder.disableAutomaticRetries();
+				});
+			}
+		}
 	}
 
 	/**

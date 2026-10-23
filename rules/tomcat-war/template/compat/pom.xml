@@ -37,6 +37,11 @@
 			<groupId>org.apache.camel</groupId>
 			<artifactId>camel-http-common</artifactId>
 		</dependency>
+		<!-- LegacyCamelSettings: sin reintentos HTTP automaticos, como el http4 de Camel 2 (ya va en el WAR) -->
+		<dependency>
+			<groupId>org.apache.camel</groupId>
+			<artifactId>camel-http</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.apache.camel</groupId>
 			<artifactId>camel-xslt-saxon</artifactId>
