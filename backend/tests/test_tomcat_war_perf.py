@@ -115,3 +115,15 @@ def test_the_performance_result_is_recorded_with_the_migration():
     _register_responses(types.SimpleNamespace(get=lambda m, k: wm), run, {
         'status': 'PASS', 'mode': 'HUMO', 'totals': {'cases': 1, 'same': 1}, 'performance': perf_summary}, 'ev')
     assert wm.summary['performance']['comparison']['status'] == 'PASS' and wm.summary['performance']['httpTestRunId'] == str(run.id)
+
+
+def test_an_error_under_load_is_an_answer_other_than_the_one_given_alone(tmp_path):
+    """Posadas smoke test: many services answer 500 on BOTH sides by design (no data, simulated systems); the migrated side
+    was faster, so its share of those 500s grew and a 5xx count said FAIL. Only a different answer than alone (or none) counts."""
+    fast_500 = server(0.002, status=500)
+    try:
+        r = perf.run({'url': fast_500[1]}, {'url': fast_500[1]}, CASES, tmp_path, 2, 1, 0, 0.2, 'HUMO')
+    finally:
+        fast_500[0].shutdown()
+    assert r['original']['errors'] == 0 and r['migrated']['errors'] == 0 and r['comparison']['status'] != 'FAIL'
+    assert r['original']['statuses'] == {'500': r['original']['requests']}       # the 500s are still reported, as statuses

@@ -24,7 +24,8 @@ DEFAULTS = {'users': 10, 'seconds': 60, 'warmup': 10, 'tolerance': 0.20, 'slowMs
 def probe(original: str, migrated: str, cases: list, slow_ms: int, timeout: int = 30) -> tuple[list, list]:
     """Each case once on both sides. A case slower than slow_ms on either side is waiting on something this test does not
     have (an external system that is simulated, unreachable or slow): it would measure that wait, not the migration. Those
-    are left out and listed. Returns (cases to load, excluded with the reason)."""
+    are left out and listed. Each kept case carries how each side answers it alone (`_ref`): under load, an error is a
+    different answer than that (or none), not a 500 the service also gives alone. Returns (cases to load, excluded)."""
     keep, out = [], []
     for c in cases:
         times = {}
@@ -38,7 +39,7 @@ def probe(original: str, migrated: str, cases: list, slow_ms: int, timeout: int 
             out.append({'name': c['name'], 'reason': 'lento o sin respuesta (' + ', '.join(slow) + '): depende de un sistema externo '
                                                      'que en esta prueba no responde a tiempo'})
         else:
-            keep.append(c)
+            keep.append(dict(c, _ref={side: st for side, (_, st) in times.items()}))
     return keep, out
 
 
@@ -65,10 +66,11 @@ def memory_mb(pid: int | None) -> float | None:
 
 
 def load(base: str, cases: list, users: int, seconds: int, warmup: int, timeout: int = 30, pid: int | None = None,
-         log=lambda m: None) -> dict:
-    """`users` threads send the cases round-robin for `warmup` + `seconds`; only the measured window counts."""
+         log=lambda m: None, side: str | None = None) -> dict:
+    """`users` threads send the cases round-robin for `warmup` + `seconds`; only the measured window counts. With `side` and
+    cases from probe(), an error is an answer other than the one that side gives the case alone; without them, a 5xx or none."""
     hosts = tuple(sorted({base.split('//', 1)[-1].rstrip('/')}, key=len, reverse=True))
-    lat, statuses, per_case = [], Counter(), {}
+    lat, statuses, per_case, failed = [], Counter(), {}, Counter()
     lock, stop = threading.Lock(), threading.Event()
     measuring = threading.Event()
     mem = []
@@ -86,6 +88,9 @@ def load(base: str, cases: list, users: int, seconds: int, warmup: int, timeout:
                     lat.append(ms)
                     statuses[r['status']] += 1
                     per_case.setdefault(c['name'], []).append(ms)
+                    ref = (c.get('_ref') or {}).get(side) if side else None
+                    if r['status'] == 0 or (r['status'] != ref if ref is not None else r['status'] >= 500):
+                        failed[c['name']] += 1
 
     threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(users)]
     for t in threads:
@@ -103,12 +108,13 @@ def load(base: str, cases: list, users: int, seconds: int, warmup: int, timeout:
     for t in threads:
         t.join(timeout + 5)
     total = len(lat)
-    errors = statuses.get(0, 0) + sum(v for k, v in statuses.items() if k >= 500)
+    errors = sum(failed.values())
     slow = sorted(((name, _percentile(v, 95)) for name, v in per_case.items()), key=lambda x: -(x[1] or 0))[:10]
     return {'requests': total, 'throughput': round(total / seconds, 1) if seconds else None,
             'p50': _percentile(lat, 50), 'p95': _percentile(lat, 95), 'p99': _percentile(lat, 99), 'max': round(max(lat), 1) if lat else None,
             'errors': errors, 'errorRate': round(errors / total, 4) if total else None,
             'noResponse': statuses.get(0, 0), 'statuses': {str(k): v for k, v in sorted(statuses.items())},
+            'failedCases': dict(failed.most_common(10)),
             'memoryMb': {'max': max(mem), 'avg': round(sum(mem) / len(mem), 1)} if mem else None, 'slowestCases': slow}
 
 
@@ -116,7 +122,8 @@ def compare(original: dict, migrated: dict, tolerance: float) -> dict:
     """FAIL: the migrated side answers less (more errors or no answer) or is much slower; REVIEW: within 2x the tolerance."""
     reasons = []
     if (migrated['errorRate'] or 0) > (original['errorRate'] or 0) + 0.01:
-        reasons.append(f"más errores: {migrated['errorRate']:.1%} contra {original['errorRate']:.1%}")
+        reasons.append(f"más errores bajo carga: {migrated['errorRate']:.1%} contra {original['errorRate']:.1%} "
+                       f"(respuestas distintas a las que da cada servicio sin carga, o sin respuesta)")
     for k in ('p95', 'p50'):
         a, b = original[k], migrated[k]
         if a and b and b > a * (1 + tolerance) and b - a > 5:  # below 5 ms the difference is noise
@@ -132,7 +139,7 @@ def compare(original: dict, migrated: dict, tolerance: float) -> dict:
 def markdown(result: dict) -> str:
     o, m = result['original'], result['migrated']
     rows = [('Peticiones medidas', 'requests', ''), ('Peticiones por segundo', 'throughput', ''), ('Mediana (p50)', 'p50', ' ms'),
-            ('p95', 'p95', ' ms'), ('p99', 'p99', ' ms'), ('Máximo', 'max', ' ms'), ('Errores (5xx o sin respuesta)', 'errors', '')]
+            ('p95', 'p95', ' ms'), ('p99', 'p99', ' ms'), ('Máximo', 'max', ' ms'), ('Errores bajo carga (respuesta distinta a la de sin carga, o ninguna)', 'errors', '')]
     out = ['# Prueba de rendimiento comparativa', '',
            f"Estado: **{result['comparison']['status']}** · {result['users']} usuarios concurrentes · {result['seconds']} s medidos "
            f"(+{result['warmup']} s de calentamiento) · {result['cases']} casos · tolerancia {result['comparison']['tolerance']:.0%}", '',
@@ -220,9 +227,9 @@ def run(original: dict, migrated: dict, cases: list, out: Path, users: int, seco
                                                 encoding='utf-8')
         return result
     log(f'rendimiento: original ({len(cases)} casos)')
-    a = load(original['url'], cases, users, seconds, warmup, pid=original.get('pid'), log=log)
+    a = load(original['url'], cases, users, seconds, warmup, pid=original.get('pid'), log=log, side='original')
     log('rendimiento: migrado')
-    b = load(migrated['url'], cases, users, seconds, warmup, pid=migrated.get('pid'), log=log)
+    b = load(migrated['url'], cases, users, seconds, warmup, pid=migrated.get('pid'), log=log, side='migrated')
     result = {'check': 'performance', 'users': users, 'seconds': seconds, 'warmup': warmup, 'cases': len(cases), 'casesTotal': all_cases,
               'excluded': excluded, 'slowMs': slow_ms, 'original': a, 'migrated': b, 'comparison': compare(a, b, tolerance),
               'scope': ('Comparación en la misma máquina, uno después del otro, con los mismos casos'
