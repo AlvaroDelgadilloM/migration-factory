@@ -629,3 +629,25 @@ corrieron pipelines que instancien beans contra ese código (tiene configuració
 
 Sigue pendiente: reconciliación DataStage contra el DataStage del cliente (requiere su entorno; la reconciliación con Oracle y
 Airflow reales ya corre en CI con datos sintéticos) y login corporativo (excluido a pedido).
+
+## Pruebas automáticas de proyectos migrados: Spring Boot, Tomcat WAR y Quarkus (2026-10-23)
+
+Pruebas → Automáticas → «Probar el proyecto migrado» (`mf/runtime_test.py`, fuente `execution` de `http_test_run`, migración 0017):
+la plataforma toma el `candidate.zip` de una ejecución aplicada, detecta el runtime y el módulo desplegable, **pide las variables**
+`${VAR}` de su configuración (con pista de para qué sirve cada una; requeridas primero), lo compila, **lo levanta** (jar de Spring Boot,
+WAR en Tomcat 10.1/11 oficial bajado del mirror aprobado, `quarkus-run.jar`), **mapea los endpoints** que Camel publicó (su log de
+arranque) y envía los casos al migrado y, si se da, al sistema original del ambiente de pruebas (comparación) o hace prueba de humo.
+
+- Seguridad: los secretos solo como referencia (`env:MF_CRED_*`, `vault:`); toda URL/JDBC debe estar en `MF_TEST_ALLOWED_HOSTS`
+  (rechaza p. ej. la Oracle de producción); la app recibe solo esas variables; los valores secretos se redactan de logs y nunca
+  quedan en la base. Variables adicionales `NOMBRE=valor` (p. ej. `QUARKUS_DATASOURCE_JDBC_URL`) con las mismas reglas.
+- Real, ejemplo JBoss contra WildFly 10.1 + PostgreSQL (mismos datos): Spring Boot 3.5 **6/6 iguales**; Tomcat 10.1 WAR **6/6**;
+  Tomcat 11 + Java 25 **6/6**. Los 5 endpoints se mapearon solos (`GET /customers/{id}`, `/customers/{id}/orders`, `/products`,
+  `/stats/top-products`, `POST /orders`).
+- Quarkus: el ejemplo JBoss no migra a Quarkus (usa camel-spring, bloqueado a propósito). Con el piloto: compila, arranca
+  `quarkus-run.jar` y Camel inicia; se detiene por el datasource `ordersDS` que JBoss daba por JNDI (lo reporta con la causa) →
+  falta un ejemplo Quarkus con REST y base configurada para comparar respuesta por respuesta.
+- **Errores reales que encontró levantar las apps** (corregidos en el planificador): el runtime Quarkus no agregaba
+  `quarkus-maven-plugin` (el módulo compilaba y pasaba pruebas pero no era una aplicación) y un jar migrado a Spring Boot no
+  agregaba `spring-boot-maven-plugin` repackage (no corría con `java -jar`). Verificado con Maven real tras la corrección.
+- Pruebas: `tests/test_runtime_test.py` (detección, reglas de variables y secretos, flujo del worker con una app simulada).

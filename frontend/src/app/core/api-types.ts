@@ -1091,6 +1091,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/executions/{execution_id}/runtime-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Runtime Test Spec
+         * @description What a run of this migrated project needs: its runtime, the variables to fill (with hints) and the endpoints the
+         *     analysis saw (the run maps the real ones from the Camel startup log).
+         */
+        get: operations["runtime_test_spec_api_v1_executions__execution_id__runtime_test_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/http-tests/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Executions To Test
+         * @description Applied executions of the project with a migrated project to start, newest first.
+         */
+        get: operations["executions_to_test_api_v1_projects__project_id__http_tests_executions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/http-tests/data-packages": {
         parameters: {
             query?: never;
@@ -1925,11 +1966,21 @@ export interface components {
              * @default migration
              * @enum {string}
              */
-            source: "migration" | "urls";
+            source: "migration" | "urls" | "execution";
             /** Name */
             name?: string | null;
             /** Workspacemigrationid */
             workspaceMigrationId?: string | null;
+            /** Executionid */
+            executionId?: string | null;
+            /** Variables */
+            variables?: {
+                [key: string]: components["schemas"]["RuntimeVariable"];
+            };
+            /** Params */
+            params?: {
+                [key: string]: string;
+            };
             /** Container */
             container?: string | null;
             /** Datapackageid */
@@ -1969,6 +2020,22 @@ export interface components {
             source: string;
             /** Workspacemigrationid */
             workspaceMigrationId?: string | null;
+            /** Executionid */
+            executionId?: string | null;
+            /**
+             * Variables
+             * @default {}
+             */
+            variables: {
+                [key: string]: unknown;
+            };
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
             /** Container */
             container?: string | null;
             /** Dataartifactid */
@@ -2608,6 +2675,16 @@ export interface components {
              * @default []
              */
             endpoints: components["schemas"]["EndpointOut"][];
+        };
+        /**
+         * RuntimeVariable
+         * @description A value for one ${NAME} of the migrated app: a plain value (never for a secret) or a credential reference.
+         */
+        RuntimeVariable: {
+            /** Value */
+            value?: string | null;
+            /** Ref */
+            ref?: string | null;
         };
         /** ScanAccepted */
         ScanAccepted: {
@@ -5254,6 +5331,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HttpTestSource"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    runtime_test_spec_api_v1_executions__execution_id__runtime_test_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    executions_to_test_api_v1_projects__project_id__http_tests_executions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -88,6 +88,7 @@ jobs:
           MF_DEV_JWT_SECRET: ${{ secrets.MF_DEV_JWT_SECRET }}
           MF_CRED_GITHUB: ${{ secrets.MF_CRED_GITHUB }}
           MF_CRED_AI: ${{ secrets.MF_CRED_AI }}
+          MF_CRED_TEST_DB: ${{ secrets.MF_CRED_TEST_DB }}
           MF_CRED_VAULT_TOKEN: ${{ secrets.MF_CRED_VAULT_TOKEN }}
           MF_S3_ACCESS_KEY: ${{ secrets.MF_S3_ACCESS_KEY }}
           MF_S3_SECRET_KEY: ${{ secrets.MF_S3_SECRET_KEY }}
@@ -111,7 +112,7 @@ jobs:
             [ -n "${!v}" ] || { echo "Falta el secret obligatorio $v en el environment"; exit 1; }
           done
           umask 077
-          for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_CRED_AI MF_AI_ENABLED MF_CRED_VAULT_TOKEN MF_VAULT_ADDR MF_S3_ACCESS_KEY MF_S3_SECRET_KEY \
+          for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_CRED_AI MF_CRED_TEST_DB MF_AI_ENABLED MF_CRED_VAULT_TOKEN MF_VAULT_ADDR MF_S3_ACCESS_KEY MF_S3_SECRET_KEY \
                    MF_ARTIFACT_BACKEND MF_S3_BUCKET MF_S3_ENDPOINT_URL MF_S3_REGION MF_ENV MF_AUTH_MODE MF_OIDC_ISSUER \
                    MF_OIDC_AUDIENCE MF_OIDC_JWKS_URL MF_HOST_SOURCES_DIR MF_UI_BIND MF_MAVEN_EXTRA_REPOS MF_TEST_ALLOWED_HOSTS; do
             printf '%s=%s\n' "$v" "${!v}"

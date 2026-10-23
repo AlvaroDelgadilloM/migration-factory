@@ -361,6 +361,12 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
                 notes.append(f"{b['class']} no tiene constructor sin argumentos: registrarlo como bean manualmente.")
         pkg = min(pkgs, key=len) if pkgs else (min((b['package'] for b in usable), key=len) if usable else '')
         if profile.runtime == 'spring':
+            if not any(r == 'org.openrewrite.maven.AddPlugin' and o.get('artifactId') == 'spring-boot-maven-plugin' for r, o in items):
+                # without repackage the module builds and passes its tests but is not an application (found starting it in Pruebas)
+                items.append(('org.openrewrite.maven.AddPlugin', {'groupId': 'org.springframework.boot', 'artifactId': 'spring-boot-maven-plugin',
+                              'version': profile.runtime_version, 'filePattern': f'{prefix}pom.xml',
+                              'executions': '<executions><execution><goals><goal>repackage</goal></goals></execution></executions>'}))
+                notes.append('spring-boot-maven-plugin (repackage): el módulo queda ejecutable con java -jar.')
             if pkg:
                 items.append(('org.openrewrite.text.CreateTextFile',
                               {'relativeFileName': f"{prefix}src/main/java/{pkg.replace('.', '/')}/Application.java",
@@ -378,6 +384,11 @@ def runtime_recipe(profile: TargetProfile, modules, routes, findings_by_rule, co
             notes.append('Configuración en application.yml (si ya existía, no se sobrescribe: revisar).')
         else:
             notes.append('Camel Quarkus descubre RouteBuilder automáticamente; la validación nativa no es parte de este perfil.')
+            # quarkus:build produces target/quarkus-app/quarkus-run.jar: without it the module is a plain jar, not a Quarkus app
+            items.append(('org.openrewrite.maven.AddPlugin', {'groupId': 'io.quarkus.platform', 'artifactId': 'quarkus-maven-plugin',
+                          'version': profile.runtime_version, 'filePattern': f'{prefix}pom.xml',
+                          'executions': '<executions><execution><goals><goal>build</goal></goals></execution></executions>'}))
+            notes.append('quarkus-maven-plugin (build): el módulo queda ejecutable (target/quarkus-app/quarkus-run.jar).')
             props.insert(0, '# Generado por Migration Factory. Externalizar datasource/broker con referencias, sin secretos.')
             items.append(('org.openrewrite.text.CreateTextFile',
                           {'relativeFileName': f'{prefix}src/main/resources/application.properties',

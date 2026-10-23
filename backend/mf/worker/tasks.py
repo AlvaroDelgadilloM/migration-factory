@@ -1071,6 +1071,75 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                                               f"build {build['status']}; {len(res['manualActions'])} punto(s) de revisión manual")
 
 
+def _http_compare_execution(db, run, out: Path, ctx: Context) -> dict:
+    """Pruebas > Automáticas of a migrated project (mf.runtime_test): build the execution's candidate, start it in its runtime
+    (Spring Boot jar, Tomcat WAR, Quarkus) with the user's variables, map the endpoints Camel published, send the cases to it and,
+    when given, to the original test environment."""
+    from .. import runtime_test
+    from ..api.http_tests import candidate_artifact
+    from ..security import safe_extract_zip, test_host_allowed
+    from ..tomcat_war import autotest, http_run
+    ex = db.get(Execution, run.execution_id)
+    art = candidate_artifact(db, ex) if ex else None
+    if art is None:
+        raise StepFailure('SOURCE_MISSING', 'La ejecución ya no tiene su proyecto migrado; repita la ejecución')
+    set_phase(ctx, 'prepare', 5)
+    zp = ctx.workdir / 'candidate.zip'
+    zp.write_bytes(ArtifactStore().read(art))
+    root = ctx.workdir / 'app' / safe_extract_zip(zp, ctx.workdir / 'app')
+    project = runtime_test.module(root)  # the deployable module (multi-module candidates are built from the root)
+    kind = runtime_test.runtime(project)
+    spec = runtime_test.variables(project)
+    try:
+        env, secrets = runtime_test.resolve(spec, run.variables or {}, test_host_allowed,
+                                            lambda ref: resolve_credential(ref, CREDENTIALS or None))
+        original = {'label': run.original['label'], 'url': validate_test_url(run.original['url'])} if run.original else None
+    except (runtime_test.RuntimeTestError, UnsafeInput) as e:
+        raise StepFailure('VARIABLES_INVALID', str(e)) from None
+    ctx.secrets.extend(secrets)
+    ctx.emit('info', 'prepare', f"{kind}: {len(spec)} variable(s) ({', '.join(sorted(env)) or 'ninguna'})")
+    set_phase(ctx, 'build', 15)
+    res = mavenops.mvn(ctx, root, ['-DskipTests', 'package'], 'runtime-test-build')
+    if res.exit_code != 0:
+        raise StepFailure('BUILD_FAILED', 'El proyecto migrado no compiló: ' + res.log_text(ctx)[-1500:])
+    release = mavenops.pom_release(project) or mavenops.pom_release(root)
+    java = str(Path(mavenops.java_home_or_none(release) or os.environ.get('JAVA_HOME', '/usr')) / 'bin' / 'java') \
+        if release == '25' or os.environ.get('JAVA_HOME') else 'java'
+    set_phase(ctx, 'start', 35)
+    port = autotest.free_port()
+    try:
+        proc, logf, url = runtime_test.start(kind, project, ctx.workdir / 'run', port, env, java, lambda m: ctx.emit('info', 'start', m),
+                                             mvn=lambda goals, name: mavenops.mvn(ctx, root, goals, name))
+    except runtime_test.RuntimeTestError as e:
+        raise StepFailure('RUNTIME_START_FAILED', str(e)) from None
+    try:
+        try:
+            text = runtime_test.wait_ready(proc, logf, max(60, min(600, int(ctx.remaining()) - 120)))
+        except runtime_test.RuntimeTestError as e:
+            raise StepFailure('RUNTIME_START_FAILED', redact(str(e), ctx.secrets)) from None
+        eps = runtime_test.endpoints(text)
+        war = next((w.stem for w in (project / 'target').glob('*.war')), '')
+        base = runtime_test.base_path(kind, project, war)
+        ctx.emit('info', 'endpoints', f"{len(eps)} endpoint(s) publicados en {base or '/'}: "
+                 + ', '.join(f"{e['method']} {e['path']}" for e in eps[:20]))
+        cases = runtime_test.cases(eps, run.params or {}) + list(run.cases or [])
+        if not cases:
+            raise StepFailure('NO_ENDPOINTS', 'La aplicación arrancó pero Camel no publicó endpoints HTTP GET; agregue casos')
+        set_phase(ctx, 'compare', 60)
+        migrated = {'label': f'MIGRADO ({kind})', 'url': url + base}
+        if original:
+            summary = http_run.run(original, migrated, cases, out, run.screenshots, get_settings().test_timeout_seconds,
+                                   log=lambda m: ctx.emit('info', 'compare', m))
+        else:
+            summary = runtime_test.smoke(migrated['url'], cases, out, get_settings().test_timeout_seconds)
+    finally:
+        autotest._stop(proc)
+        if logf.exists():
+            _store(db, run.project_id, 'log', f'pruebas-{str(run.id)[:8]}-{kind}.log', redact(logf.read_text(errors='replace')[-2_000_000:], ctx.secrets),
+                   'text/plain; charset=utf-8', ctx)  # committed: the phase updates use their own session
+    return summary | {'runtime': kind, 'basePath': base, 'endpoints': eps, 'variables': sorted(env)}
+
+
 def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
     """Pruebas > Automáticas from a migration: the analysed source (scan snapshot), the migration's WAR and the optional
     data package, then mf.tomcat_war.autotest starts both sides here, generates the cases and compares."""
@@ -1156,6 +1225,8 @@ def do_http_compare(job: Job, ctx: Context):
         out = ctx.workdir / 'http-test'
         if run.source == 'migration':
             summary = _http_compare_migration(db, run, out, ctx)
+        elif run.source == 'execution':
+            summary = _http_compare_execution(db, run, out, ctx)
         else:
             try:
                 original, migrated = ({'label': t['label'], 'url': validate_test_url(t['url'])} for t in (run.original, run.migrated))

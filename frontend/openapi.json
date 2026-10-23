@@ -3924,6 +3924,90 @@
         }
       }
     },
+    "/api/v1/executions/{execution_id}/runtime-test": {
+      "get": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Runtime Test Spec",
+        "description": "What a run of this migrated project needs: its runtime, the variables to fill (with hints) and the endpoints the\nanalysis saw (the run maps the real ones from the Camel startup log).",
+        "operationId": "runtime_test_spec_api_v1_executions__execution_id__runtime_test_get",
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/http-tests/executions": {
+      "get": {
+        "tags": [
+          "pruebas"
+        ],
+        "summary": "Executions To Test",
+        "description": "Applied executions of the project with a migrated project to start, newest first.",
+        "operationId": "executions_to_test_api_v1_projects__project_id__http_tests_executions_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/http-tests/data-packages": {
       "post": {
         "tags": [
@@ -6130,7 +6214,8 @@
             "type": "string",
             "enum": [
               "migration",
-              "urls"
+              "urls",
+              "execution"
             ],
             "title": "Source",
             "default": "migration"
@@ -6159,6 +6244,40 @@
               }
             ],
             "title": "Workspacemigrationid"
+          },
+          "executionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executionid"
+          },
+          "variables": {
+            "patternProperties": {
+              "^[A-Z][A-Z0-9_]{1,100}$": {
+                "$ref": "#/components/schemas/RuntimeVariable"
+              }
+            },
+            "type": "object",
+            "maxProperties": 200,
+            "title": "Variables"
+          },
+          "params": {
+            "patternProperties": {
+              "^\\w{1,60}$": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[\\w.\\-~%]+$"
+              }
+            },
+            "type": "object",
+            "maxProperties": 50,
+            "title": "Params"
           },
           "container": {
             "anyOf": [
@@ -6270,6 +6389,30 @@
               }
             ],
             "title": "Workspacemigrationid"
+          },
+          "executionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executionid"
+          },
+          "variables": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Variables",
+            "default": {}
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params",
+            "default": {}
           },
           "container": {
             "anyOf": [
@@ -8052,6 +8195,37 @@
           "dynamicFrom"
         ],
         "title": "RouteOut"
+      },
+      "RuntimeVariable": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          }
+        },
+        "type": "object",
+        "title": "RuntimeVariable",
+        "description": "A value for one ${NAME} of the migrated app: a plain value (never for a secret) or a credential reference."
       },
       "ScanAccepted": {
         "properties": {

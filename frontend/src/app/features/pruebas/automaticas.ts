@@ -14,6 +14,7 @@ import { DataPackage, HttpCase, HttpCaseResult, HttpRunSummary, HttpTestRun, Htt
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
 import { ActionButton, JobLog, PageHeader, StateView, StatusTag } from '../../shared/ui';
+import { MigratedAppTest } from './migrated-app';
 import { CompareView, Side } from './compare';
 import { PruebasDraft, Target } from './draft';
 
@@ -28,7 +29,7 @@ const EXAMPLE = `{
 @Component({
   selector: 'mf-pruebas-automaticas',
   imports: [DatePipe, FormsModule, ButtonModule, CheckboxModule, InputTextModule, SelectModule, SelectButtonModule, TableModule, TextareaModule,
-            PageHeader, StateView, StatusTag, ActionButton, JobLog, CompareView],
+            PageHeader, StateView, StatusTag, ActionButton, JobLog, CompareView, MigratedAppTest],
   styles: [`
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 12px 18px; }
     .field { display: flex; flex-direction: column; gap: 4px; } .field label { font-size: 12px; color: var(--mf-muted); }
@@ -41,7 +42,9 @@ const EXAMPLE = `{
     pre.fmt { background: #f4f7fa; padding: 10px; border-radius: 6px; font-size: 12px; white-space: pre-wrap; }`],
   template: `
     <mf-page-header title="Pruebas automáticas" crumb="PRUEBAS / AUTOMÁTICAS"
-                    subtitle="El original (JBoss, Camel 2) contra el migrado (Tomcat, Camel 4): código HTTP, Content-Type y cuerpo de cada servicio" />
+                    subtitle="El original (JBoss, Camel 2) contra el migrado (Spring Boot, Tomcat o Quarkus, Camel 4): código HTTP, Content-Type y cuerpo de cada servicio" />
+
+    <mf-migrated-app-test [projectId]="projectId()" [running]="!!running()" (started)="jobId.set($event); reload()" />
 
     <fieldset>
       <legend>Probar una migración</legend>
@@ -155,6 +158,11 @@ casos.json              casos extra con el formato de la batería</pre>
     @if (selected(); as r) {
       @if (sum(r); as s) {
         <h2>{{ r.name }}</h2>
+        @if (s.endpoints; as eps) {
+          <p class="small">Levantado en <b>{{ s.runtime }}</b>{{ s.mode === 'SMOKE' ? ' (prueba de humo: sin sistema original; distinto = 5xx o sin respuesta)' : '' }}.
+            Endpoints que Camel publicó en <code>{{ s.basePath || '/' }}</code>: @for (e of eps; track $index) { <code>{{ e.method }} {{ e.path }}</code>{{ $last ? '' : ', ' }} }.
+            @if (s.variables?.length) { Variables usadas: {{ s.variables!.join(', ') }}. }</p>
+        }
         @if (s.startup; as st) {
           <p>{{ s.mode === 'DATOS' ? 'Con el paquete de datos de prueba.' : 'Prueba de humo: bases vacías y sistemas externos simulados (sin datos del cliente).' }}
             Contenedor <b>{{ s.container || 'todos' }}</b>. Arrancaron <b>{{ st.original.started }} de {{ st.original.total }}</b> módulos en el original
@@ -240,7 +248,8 @@ export class PruebasAutomaticas {
     const r = this.selected(), c = this.current();
     if (!r || !c) return [];
     const t = (x: Record<string, unknown> | null | undefined, fallback: string) => ({ label: String(x?.['label'] ?? fallback), url: String(x?.['url'] ?? '') });
-    return [{ ...t(r.original, 'ORIGINAL (Camel 2)'), ...c.original }, { ...t(r.migrated, 'MIGRADO (Tomcat, Camel 4)'), ...c.migrated }];
+    const mig = r.source === 'execution' ? `MIGRADO (${this.sum(r).runtime ?? ''})` : 'MIGRADO (Tomcat, Camel 4)';
+    return [{ ...t(r.original, 'ORIGINAL (Camel 2)'), ...c.original }, { ...t(r.migrated, mig), ...c.migrated }];
   });
 
   constructor() {
@@ -264,12 +273,13 @@ export class PruebasAutomaticas {
 
   sum(r: HttpTestRun | null): HttpRunSummary { return (r?.summary ?? {}) as HttpRunSummary; }
   kind(r: HttpTestRun) {
+    if (r.source === 'execution') return `Proyecto migrado · ${this.sum(r).runtime ?? ''}${this.sum(r).mode === 'SMOKE' ? ' · humo' : ''}`;
     if (r.source !== 'migration') return 'Sistemas levantados';
     const m = this.sum(r).mode ?? (r.dataArtifactId ? 'DATOS' : 'HUMO');
     return `Migración · ${m === 'DATOS' ? 'con datos' : 'humo'}${r.container ? ' · ' + r.container : ''}`;
   }
 
-  private running() { return this.runs.data()?.some(r => r.state === 'queued' || r.state === 'running'); }
+  running() { return this.runs.data()?.some(r => r.state === 'queued' || r.state === 'running'); }
 
   migrationReason() {
     if (!this.ctx.can('execute')) return 'Su rol en el proyecto no permite ejecutar pruebas';
