@@ -65,11 +65,40 @@ def memory_mb(pid: int | None) -> float | None:
         return None
 
 
+def _send_kept(conn: list, base: str, case: dict, timeout: int) -> dict:
+    """One request on the user's kept-alive connection (conn[0]); a broken or closed connection is reopened once.
+    Only the status matters here: the comparison of bodies is the functional test's job."""
+    import http.client
+    from urllib.parse import urlsplit
+    u = urlsplit(base)
+    body = case.get('body')
+    headers = dict(case.get('headers') or {})
+    if body is not None:
+        headers.setdefault('Content-Type', case.get('contentType', 'text/xml; charset=UTF-8'))
+    for attempt in (1, 2):
+        if conn[0] is None:
+            conn[0] = (http.client.HTTPSConnection if u.scheme == 'https' else http.client.HTTPConnection)(u.hostname, u.port, timeout=timeout)
+        try:
+            conn[0].request(case.get('method', 'GET'), u.path.rstrip('/') + case['path'],
+                            body=body.encode('utf-8') if body is not None else None, headers=headers)
+            r = conn[0].getresponse()
+            r.read()
+            if r.getheader('Connection', '').lower() == 'close':
+                conn[0].close()
+                conn[0] = None
+            return {'status': r.status}
+        except (OSError, http.client.HTTPException):
+            conn[0].close()
+            conn[0] = None
+            if attempt == 2:
+                return {'status': 0}
+    return {'status': 0}
+
+
 def load(base: str, cases: list, users: int, seconds: int, warmup: int, timeout: int = 30, pid: int | None = None,
          log=lambda m: None, side: str | None = None) -> dict:
     """`users` threads send the cases round-robin for `warmup` + `seconds`; only the measured window counts. With `side` and
     cases from probe(), an error is an answer other than the one that side gives the case alone; without them, a 5xx or none."""
-    hosts = tuple(sorted({base.split('//', 1)[-1].rstrip('/')}, key=len, reverse=True))
     lat, statuses, per_case, failed = [], Counter(), {}, Counter()
     lock, stop = threading.Lock(), threading.Event()
     measuring = threading.Event()
@@ -77,11 +106,12 @@ def load(base: str, cases: list, users: int, seconds: int, warmup: int, timeout:
 
     def worker(i: int):
         n = i
-        while not stop.is_set():
+        conn = [None]  # one kept-alive connection per user, as JMeter and Gatling do: a new connection per request ran
+        while not stop.is_set():  # the load generator out of local ports (Windows TIME_WAIT) and read as "no answer"
             c = cases[n % len(cases)]
             n += users
             t0 = time.perf_counter()
-            r = verify._send(base, c, timeout, hosts)
+            r = _send_kept(conn, base, c, timeout)
             ms = (time.perf_counter() - t0) * 1000
             if measuring.is_set() and not stop.is_set():
                 with lock:
