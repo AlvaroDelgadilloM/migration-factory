@@ -51,7 +51,7 @@ jobs:
             docker run -d --name "hop-$v" --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
               -v /tmp/hop-logs:/hop-logs "mf-odoo-hop:$v"
             python backend/tests/e2e/odoo_chain.py hop "$v" || { docker logs "hop-$v" | tail -50; exit 1; }
-            docker rm -f "hop-$v" && docker rmi "mf-odoo-hop:$v" "odoo:$v" > /dev/null
+            docker rm -f "hop-$v" && docker rmi "mf-odoo-hop:$v" > /dev/null && docker image prune -af > /dev/null
             df -h / | tail -1
             echo "::endgroup::"
           done
