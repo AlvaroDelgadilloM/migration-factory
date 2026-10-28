@@ -685,6 +685,11 @@ a la medida). Destino: Odoo 19 (OpenUpgrade 20.0 todavía no tiene scripts, veri
 - **Prueba real** (`.github/workflows/odoo-e2e.yml`): base Odoo 12 con los datos demo de Odoo (ventas, compras, facturación,
   inventario, CRM) por la cadena real. Primer hallazgo y corrección: en el salto 13 (fork completo de Odoo) el Odoo estándar de la
   imagen ocultaba los módulos del fork y sus scripts no corrían (fallaba el índice único de variantes de producto); ahora el
-  salto 12→13 termina sin errores. El resto de la cadena y la conciliación: en curso.
+  salto 12→13 termina sin errores. 13→14 también. Segundo hallazgo: el salto a 15.0 falla en `stock` («Incompatible companies on
+  records») porque el contacto de la empresa 2 de la demo pertenece a la empresa 1 y es el contacto de un almacén de la empresa 2.
+  Corrección: **catálogo de correcciones de datos** (`mf/odoo/fixes.py`): se detectan en el análisis (con los registros afectados),
+  se muestran en Resumen, un arquitecto decide «corregir en la copia» o «migrar sin corregir» con motivo (auditado, bloquea la
+  migración hasta decidir) y se aplican solo a la copia antes del primer salto. Verificado en la base demo restaurada (2 casos,
+  0 después de corregir). Resto de la cadena (15→19) y conciliación: en curso.
 - Pendiente / limitaciones: el filestore (adjuntos en disco) no viaja todavía; módulos a la medida con código portado (hoy solo
   «desinstalar»); Odoo 20 cuando OpenUpgrade publique sus scripts.
