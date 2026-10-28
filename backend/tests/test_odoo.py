@@ -52,14 +52,15 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     def analyze(ctx, run, dump, om_id, log):
         seen['dump'] = dump.read_text()
         return {'sourceDb': 'mf_x_src', 'sourceVersion': '12.0.1.3', 'from': '12.0', 'to': '19.0', 'hops': list(modules.VERSIONS[1:]),
-                'counts': modules.summary(rows), 'before': [], 'rows': rows}
+                'counts': modules.summary(rows), 'before': [], 'rows': rows,
+                'fixes': [{'id': 'company_partner_company', 'title': 't', 'why': 'w', 'fix': 'f', 'count': 1, 'records': []}]}
     monkeypatch.setattr(oj, 'analyze', analyze)
     r = client.post(f'{API}/projects/{pid}/odoo-analyses', headers=token('ana.arquitecta')).json()
     run_job(r['jobId'])
     a = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert a['state'] == 'succeeded' and seen['dump'].startswith('-- PostgreSQL') and a['summary']['counts']['block'] == 1
     blocked = client.post(f'{API}/projects/{pid}/odoo-migrations', headers=token('ana.arquitecta'))
-    assert blocked.status_code == 409 and blocked.json()['details']['modules'] == ['x_acme_custom']   # shown, and it blocks
+    assert blocked.status_code == 409 and blocked.json()['details']['modules'] == ['x_acme_custom', 'fix:company_partner_company']   # shown, and they block
 
     url = f"{API}/odoo-migrations/{a['id']}/decisions"
     assert client.put(f'{API}/projects/{pid}/members', headers=token('ana.arquitecta'), json={'subjectId': 'diego.dev', 'role': 'developer'}).status_code == 200
@@ -67,6 +68,11 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     assert client.patch(url, headers=token('ana.arquitecta'), json={'module': 'x_acme_custom', 'action': 'uninstall', 'reason': 'corto'}).status_code == 422
     ok = client.patch(url, headers=token('ana.arquitecta'), json={'module': 'x_acme_custom', 'action': 'uninstall', 'reason': 'ya no se usa en la empresa'})
     assert ok.status_code == 200 and ok.json()['decisions']['x_acme_custom']['by'] == 'ana.arquitecta'
+    fix = {'module': 'fix:company_partner_company', 'reason': 'dato inconsistente de la demo'}
+    assert client.patch(url, headers=token('ana.arquitecta'), json=fix | {'action': 'uninstall'}).status_code == 422
+    assert client.patch(url, headers=token('ana.arquitecta'), json=fix | {'module': 'fix:nope', 'action': 'apply'}).status_code == 404
+    assert client.patch(url, headers=token('ana.arquitecta'), json={'module': 'x_acme_custom', 'action': 'apply', 'reason': 'no aplica a módulos'}).status_code == 422
+    assert client.patch(url, headers=token('ana.arquitecta'), json=fix | {'action': 'apply'}).json()['decisions']['fix:company_partner_company']['action'] == 'apply'
 
     monkeypatch.setattr(chain, 'base_version', lambda db: '12.0.1.3')
     monkeypatch.setattr(chain, 'drop_db', lambda db: None)
@@ -84,7 +90,7 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     m = client.post(f'{API}/projects/{pid}/odoo-migrations', headers=token('ana.arquitecta')).json()
     run_job(m['jobId'])
     mig = client.get(f"{API}/odoo-migrations/{m['odooMigrationId']}", headers=token('ana.arquitecta')).json()
-    assert mig['state'] == 'succeeded' and got['uninstall'] == ['x_acme_custom'] and [h['version'] for h in mig['hops']][-1] == '19.0'
-    assert mig['summary']['reconciliationStatus'] == 'EQUAL' and mig['summary']['uninstalled'] == ['x_acme_custom']
+    assert mig['state'] == 'succeeded' and got['uninstall'] == ['fix:company_partner_company', 'x_acme_custom'] and [h['version'] for h in mig['hops']][-1] == '19.0'
+    assert mig['summary']['reconciliationStatus'] == 'EQUAL' and mig['summary']['uninstalled'] == ['x_acme_custom'] and mig['summary']['fixesApplied'] == ['company_partner_company']
     dl = client.get(f"{API}/artifacts/{mig['summary']['artifacts']['dump']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content == b'PGDMP-19'

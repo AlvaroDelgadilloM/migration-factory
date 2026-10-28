@@ -130,7 +130,7 @@ export class Api {
   startOdoo(projectId: string, mode: 'analyze' | 'migrate') {
     return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/${mode === 'analyze' ? 'odoo-analyses' : 'odoo-migrations'}`, {});
   }
-  decideOdoo(id: string, module: string, action: 'uninstall' | 'pending', reason: string) {
+  decideOdoo(id: string, module: string, action: 'uninstall' | 'apply' | 'ignore' | 'pending', reason: string) {
     return this.send<OdooRun>('PATCH', `/odoo-migrations/${id}/decisions`, { module, action, reason });
   }
   dataStageMigrations(projectId: string) { return this.get<DataStageMigration[]>(`/projects/${projectId}/datastage-migrations`); }

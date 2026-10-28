@@ -9,7 +9,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from . import chain, modules, reconcile
+from . import chain, fixes, modules, reconcile
 
 VERSIONS = modules.VERSIONS
 
@@ -74,7 +74,10 @@ def analyze(ctx, run, dump: Path, om_id, log) -> dict:
     rows = modules.classify(installed)
     before = [{'check': k, 'label': lbl, 'value': chain.query(src)(q12 if first == '12.0' else q19)}
               for k, (lbl, q12, q19) in reconcile.CHECKS.items()]
-    return {'sourceDb': src, 'sourceVersion': version, 'from': first, 'to': VERSIONS[-1],
+    found = fixes.detect(chain.query_all(src))
+    if found:
+        log('correcciones de datos sugeridas: ' + ', '.join(f"{f['title']} ({f['count']})" for f in found))
+    return {'sourceDb': src, 'sourceVersion': version, 'from': first, 'to': VERSIONS[-1], 'fixes': found,
             'hops': [v for v in VERSIONS if v > first], 'counts': modules.summary(rows), 'before': before, 'rows': rows}
 
 
@@ -115,6 +118,10 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
     src = analysis['sourceDb']
     _, mig = db_names(om_id)
     chain.copy_db(src, mig)
+    approved = [k.split(':', 1)[1] for k, v in decisions.items() if k.startswith('fix:') and v.get('action') == 'apply']
+    applied = fixes.apply(chain.execute(mig), approved)
+    if applied:
+        log(f"correcciones de datos aplicadas a la copia (aprobadas): {', '.join(applied)}")
     drop = sorted(k for k, v in decisions.items() if v.get('action') == 'uninstall')
     chain.mark_uninstall(mig, drop)
     if drop:

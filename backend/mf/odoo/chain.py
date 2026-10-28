@@ -105,6 +105,26 @@ def wait(task_id: int, timeout: int, cancelled=lambda: False, poll: float = 5, o
             time.sleep(poll)
 
 
+def query_all(database: str):
+    """sql -> list of rows (tuples of str), or None when the statement fails (table absent in that version)."""
+    import psycopg
+
+    def run(sql):
+        try:
+            with connect(database) as c:
+                return [tuple(str(x) if x is not None else None for x in row) for row in c.execute(sql).fetchall()]
+        except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+            return None
+    return run
+
+
+def execute(database: str):
+    def run(sql):
+        with connect(database) as c:
+            c.execute(sql)
+    return run
+
+
 def query(database: str):
     """sql -> first row as a tuple, or None when the statement fails (table absent in that version)."""
     def run(sql):

@@ -1,5 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { TableModule } from 'primeng/table';
 import { Api } from '../../core/api';
@@ -11,7 +13,7 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
 /** Odoo 12 -> 19 · Resumen: analyze the uploaded database, then migrate it hop by hop and reconcile before/after. */
 @Component({
   selector: 'mf-odoo-overview',
-  imports: [RouterLink, MessageModule, TableModule, ActionButton, JobLog, PageHeader, StateView, StatusTag],
+  imports: [FormsModule, InputTextModule, RouterLink, MessageModule, TableModule, ActionButton, JobLog, PageHeader, StateView, StatusTag],
   styles: [`
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; margin: 10px 0 16px; }
     .cards article { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 10px 14px; }
@@ -20,6 +22,9 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
     .hop { border: 1px solid var(--mf-line); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
     .hop b { display: block; font-size: 15px; } .hop.succeeded { border-color: #12b76a; } .hop.failed, .hop.timed_out { border-color: #d92d20; }
     pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 22rem; overflow: auto; white-space: pre-wrap; }
+    .fix { border-top: 1px solid var(--mf-line); padding: 10px 0 0; margin-top: 10px; } .fix h3 { font-size: 15px; margin: 0 0 4px; }
+    .decide { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; } .decide input { flex: 1 1 14rem; min-width: 0; }
+    button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }
     .bad { color: #b42318; } .ok { color: #067647; } h2 { font-size: 17px; margin: 0 0 8px; }`],
   template: `
     <mf-page-header title="Resumen" crumb="ODOO 12 → 19" subtitle="Base de datos de Odoo Community migrada con OpenUpgrade, salto por salto, sobre una copia.">
@@ -50,6 +55,28 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
               <a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'modulos']">Revíselos en Módulos</a>: un arquitecto decide (con motivo) si se desinstalan antes de migrar.</span></p-message>
           }
         </section>
+        @if (a.summary['fixes']?.length) {
+          <section class="card">
+            <h2>Correcciones de datos sugeridas</h2>
+            <p class="small">Datos de la base que hacen fallar un salto de OpenUpgrade. Si se aprueban, se corrigen solo en la copia que se migra,
+              antes del primer salto; la base original no cambia. Cada una necesita la decisión de un arquitecto, con motivo.</p>
+            @for (f of a.summary['fixes']; track f.id) {
+              <div class="fix">
+                <h3>{{ f.title }} ({{ f.count }})</h3>
+                <p class="small">{{ f.why }}<br /><strong>Corrección:</strong> {{ f.fix }}</p>
+                <p class="small">Registros: @for (r of f.records; track r.id + r.detail) { <code>#{{ r.id }} {{ r.name }}</code> ({{ r.detail }})@if (!$last) { · } }</p>
+                @if (a.decisions['fix:' + f.id]; as d) {
+                  <p class="small"><strong>{{ d.action === 'apply' ? 'Se corrige en la copia' : 'Se migra sin corregir' }}</strong> · {{ d.reason }} · {{ d.by }}
+                    @if (os.ctx.can('plan')) { <button class="link" (click)="os.decide('fix:' + f.id, 'pending', '')">deshacer</button> }</p>
+                } @else if (os.ctx.can('plan')) {
+                  <div class="decide"><input pInputText [(ngModel)]="reasons[f.id]" [attr.aria-label]="'Motivo: ' + f.title" placeholder="Motivo (queda registrado)" />
+                    <button class="p-button p-button-sm" [disabled]="(reasons[f.id] ?? '').trim().length < 10" (click)="os.decide('fix:' + f.id, 'apply', reasons[f.id])">Corregir en la copia</button>
+                    <button class="p-button p-button-sm p-button-outlined" [disabled]="(reasons[f.id] ?? '').trim().length < 10" (click)="os.decide('fix:' + f.id, 'ignore', reasons[f.id])">Migrar sin corregir</button></div>
+                } @else { <p class="small muted">Pendiente: decide un arquitecto.</p> }
+              </div>
+            }
+          </section>
+        }
       }
       @if (os.migration(); as m) {
         <section class="card">
@@ -71,6 +98,7 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
           @if (m.summary['artifacts']?.['dump']; as d) {
             <p style="margin-top:12px"><mf-action label="Descargar la base en Odoo 19 (pg_dump)" icon="pi pi-download" (run)="api.download(d, 'odoo19.dump')" /></p>
           }
+          @if (m.summary['fixesApplied']?.length) { <p class="small">Correcciones de datos aplicadas a la copia (aprobadas): {{ m.summary['fixesApplied'].join(', ') }}.</p> }
           @if (m.summary['uninstalled']?.length) { <p class="small">Desinstalados antes de migrar (decisión registrada): {{ m.summary['uninstalled'].join(', ') }}.</p> }
         </section>
       }
@@ -79,6 +107,7 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
 export class OdooOverview {
   os = inject(OdooStore);
   api = inject(Api);
+  reasons: Record<string, string> = {};
   failed = computed(() => this.os.migration()?.hops.find(h => h.state !== 'succeeded') ?? null);
   hopState(s: string) { return HOP_STATE[s] ?? s; }
   analyzeReason() {
@@ -90,6 +119,8 @@ export class OdooOverview {
     if (this.os.running()) return 'Hay un análisis o una migración en curso';
     if (!this.os.analysis()) return 'Primero analice la base';
     const n = this.os.pending().length;
-    return n ? `${n} módulo(s) bloquean sin decisión: revise Módulos` : null;
+    if (n) return `${n} módulo(s) bloquean sin decisión: revise Módulos`;
+    const f = this.os.pendingFixes().length;
+    return f ? `${f} corrección(es) de datos sin decisión` : null;
   }
 }

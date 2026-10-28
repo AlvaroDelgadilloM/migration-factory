@@ -4,7 +4,7 @@ The database server and the odoo-hop-<version> runners are started by the workfl
 import json
 import sys
 
-from mf.odoo import chain, modules, reconcile
+from mf.odoo import chain, fixes, modules, reconcile
 
 SOURCE, TARGET = 'demo12', 'mig19'
 
@@ -13,6 +13,9 @@ def main(cmd, *args):
     if cmd == 'prepare':
         chain.ensure_control()
         chain.copy_db(SOURCE, TARGET)
+        found = fixes.detect(chain.query_all(SOURCE))  # what the architect approves in the platform; the demo data has them
+        print('fixes:', fixes.apply(chain.execute(TARGET), [f['id'] for f in found]))
+        assert not fixes.detect(chain.query_all(TARGET))
         rows = modules.classify(chain.installed_modules(SOURCE))
         print(json.dumps(modules.summary(rows)))
         assert all(r['origin'] == 'CORE' for r in rows), [r['name'] for r in rows if r['origin'] != 'CORE']

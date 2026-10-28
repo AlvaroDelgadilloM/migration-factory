@@ -21,6 +21,11 @@ export class OdooStore {
     const a = this.analysis();
     return (a?.modules ?? []).filter(m => m.outcome === 'BLOCK' && a?.decisions?.[m.name]?.action !== 'uninstall');
   });
+  /** suggested data fixes of the latest analysis (mf.odoo.fixes) still without a decision: apply on the copy, or go on without */
+  readonly pendingFixes = computed(() => {
+    const a = this.analysis();
+    return ((a?.summary?.['fixes'] ?? []) as { id: string }[]).filter(f => !['apply', 'ignore'].includes(a?.decisions?.['fix:' + f.id]?.action ?? ''));
+  });
   private loadedFor: string | null = null;
 
   constructor() {
@@ -46,7 +51,7 @@ export class OdooStore {
     finally { this.busy.set(false); }
   }
 
-  async decide(module: string, action: 'uninstall' | 'pending', reason: string): Promise<boolean> {
+  async decide(module: string, action: 'uninstall' | 'apply' | 'ignore' | 'pending', reason: string): Promise<boolean> {
     const a = this.analysis();
     if (!a) return false;
     this.error.set(null);

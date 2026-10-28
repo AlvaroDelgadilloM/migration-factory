@@ -1442,6 +1442,7 @@ def do_odoo_migrate(job: Job, ctx: Context):
             om.reconciliation = res['reconciliation']
             om.summary = {'from': summary['from'], 'to': summary['to'], 'reconciliationStatus': res['reconciliationStatus'],
                           'uninstalled': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'uninstall'),
+                          'fixesApplied': sorted(k[4:] for k, v in (om.decisions or {}).items() if v.get('action') == 'apply'),
                           'artifacts': {'dump': str(art.id)}, 'migratedDb': res['database']}
             db.commit()
             chain.drop_db(res['database'])

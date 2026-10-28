@@ -39,8 +39,11 @@ class OdooMigrationOut(Dto):
 
 
 class OdooDecisionIn(Dto):
-    module: Annotated[str, Field(pattern=r'^[a-z0-9_]{2,100}$')]
-    action: Literal['uninstall', 'pending']   # uninstall: Odoo removes it (and its data) before the first hop; pending: undo
+    # a module name, or fix:<id> for a suggested data fix (mf.odoo.fixes)
+    module: Annotated[str, Field(pattern=r'^(fix:)?[a-z0-9_]{2,100}$')]
+    # uninstall (module): Odoo removes it and its data before the first hop · apply / ignore (fix): run it on the copy, or go on
+    # without it (the hop may fail) · pending: undo
+    action: Literal['uninstall', 'apply', 'ignore', 'pending']
     reason: str = Field(default='', max_length=1000)
 
 
@@ -59,8 +62,10 @@ def _project(db, me, project_id, perm):
 
 
 def blocking(om: OdooMigration) -> list[str]:
-    """Blocking modules of an analysis still without a decision."""
-    return [m['name'] for m in om.modules or [] if m.get('outcome') == 'BLOCK' and (om.decisions or {}).get(m['name'], {}).get('action') != 'uninstall']
+    """Blocking modules and suggested data fixes of an analysis still without a decision."""
+    d = om.decisions or {}
+    mods = [m['name'] for m in om.modules or [] if m.get('outcome') == 'BLOCK' and d.get(m['name'], {}).get('action') != 'uninstall']
+    return mods + [f"fix:{f['id']}" for f in (om.summary or {}).get('fixes') or [] if d.get(f"fix:{f['id']}", {}).get('action') not in ('apply', 'ignore')]
 
 
 def _start(db, me, p, mode, request, analysis=None) -> dict:
@@ -74,7 +79,8 @@ def _start(db, me, p, mode, request, analysis=None) -> dict:
     om.job_id = job.id
     audit.record(db, actor=me.subject, action=f'odoo.{mode}', entity_type='odoo_migration', entity_id=om.id, project_id=p.id,
                  details={'analysis': str(analysis.id) if analysis else None,
-                          'uninstall': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'uninstall')}, request=request)
+                          'uninstall': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'uninstall'),
+                          'fixes': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'apply')}, request=request)
     db.commit()
     jobs.try_publish(db)
     return {'odooMigrationId': str(om.id), 'jobId': str(job.id), 'status': 'queued'}
@@ -96,7 +102,7 @@ def migrate(project_id: uuid.UUID, request: Request, db: Session = Depends(get_d
         raise ApiError(409, 'ANALYSIS_REQUIRED', 'Primero analice la base (módulos instalados y su estado en 19)')
     pending = blocking(analysis)
     if pending:
-        raise ApiError(409, 'MODULES_BLOCKING', f"{len(pending)} módulo(s) sin versión 19 y sin decisión: {', '.join(pending[:10])}",
+        raise ApiError(409, 'MODULES_BLOCKING', f"{len(pending)} módulo(s) o corrección(es) de datos sin decisión: {', '.join(pending[:10])}",
                        {'modules': pending})
     return _start(db, me, p, 'migrate', request, analysis)
 
@@ -124,15 +130,19 @@ def decide(om_id: uuid.UUID, body: OdooDecisionIn, request: Request, db: Session
     if om is None or om.mode != 'analyze':
         raise ApiError(404, 'NOT_FOUND', 'Análisis no encontrado')
     authorize(db, me, om.project_id, 'plan')
-    if body.module not in {m['name'] for m in om.modules or []}:
-        raise ApiError(404, 'NOT_FOUND', 'Ese módulo no está instalado en la base analizada')
-    if body.action == 'uninstall' and len(body.reason.strip()) < 10:
-        raise ApiError(422, 'VALIDATION_ERROR', 'Indique el motivo (al menos 10 caracteres): sus datos no se migran')
+    is_fix = body.module.startswith('fix:')
+    known = {f"fix:{f['id']}" for f in (om.summary or {}).get('fixes') or []} if is_fix else {m['name'] for m in om.modules or []}
+    if body.module not in known:
+        raise ApiError(404, 'NOT_FOUND', 'Esa corrección no se detectó en la base analizada' if is_fix else 'Ese módulo no está instalado en la base analizada')
+    if body.action != 'pending' and (body.action == 'uninstall') == is_fix:
+        raise ApiError(422, 'VALIDATION_ERROR', 'Acción no válida: módulos → uninstall; correcciones de datos → apply o ignore')
+    if body.action != 'pending' and len(body.reason.strip()) < 10:
+        raise ApiError(422, 'VALIDATION_ERROR', 'Indique el motivo (al menos 10 caracteres): queda registrado')
     decisions = dict(om.decisions or {})
     if body.action == 'pending':
         decisions.pop(body.module, None)
     else:
-        decisions[body.module] = {'action': 'uninstall', 'reason': body.reason.strip(), 'by': me.subject, 'at': now().isoformat(timespec='seconds')}
+        decisions[body.module] = {'action': body.action, 'reason': body.reason.strip(), 'by': me.subject, 'at': now().isoformat(timespec='seconds')}
     om.decisions = decisions
     audit.record(db, actor=me.subject, action=f'odoo.decision.{body.action}', entity_type='odoo_migration', entity_id=om.id,
                  project_id=om.project_id, details={'module': body.module, 'reason': body.reason}, request=request)
