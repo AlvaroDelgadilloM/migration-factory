@@ -445,6 +445,24 @@ class HttpTestRun(Entity, Base):
     created_by: Mapped[str] = mapped_column(String(255))
 
 
+class OdooMigration(Entity, Base):
+    """Odoo Community 12 -> 19 database migration (mf.odoo). mode analyze: the dump is restored on the isolated odoo-db and every
+    installed module is classified; mode migrate: a copy goes through the seven OpenUpgrade hops, then reconciliation and the
+    migrated dump. decisions (module -> {action, reason, by, at}) are the architect's answers to the blocking modules."""
+    __tablename__ = 'odoo_migration'
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    mode: Mapped[str] = mapped_column(String(10), default='analyze')       # analyze | migrate
+    state: Mapped[str] = mapped_column(String(20), default='queued')
+    analysis_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)              # migrate: the analysis it follows
+    summary: Mapped[dict] = mapped_column(Json, default=dict)
+    modules: Mapped[list] = mapped_column(Json, default=list)
+    decisions: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')
+    hops: Mapped[list] = mapped_column(Json, default=list, server_default='[]')
+    reconciliation: Mapped[list] = mapped_column(Json, default=list, server_default='[]')
+    created_by: Mapped[str] = mapped_column(String(255))
+
+
 class DataStageMigration(Entity, Base):
     """IBM DataStage -> Apache Airflow run (migration-factory-datastage-airflow 51-68) over a project's DSX/ZIP source."""
     __tablename__ = 'datastage_migration'

@@ -372,6 +372,11 @@ def _mark_subject_cancelled(db, job):
         d = db.get(DataStageMigration, job.subject_id)
         if d and d.state == 'queued':
             d.state = 'cancelled'
+    elif job.kind in ('odoo_analyze', 'odoo_migrate'):
+        from ..models import OdooMigration
+        o = db.get(OdooMigration, job.subject_id)
+        if o and o.state == 'queued':
+            o.state = 'cancelled'
 
 
 @router.get('/jobs/{job_id}/logs', response_model=list[LogEvent])

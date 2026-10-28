@@ -50,8 +50,8 @@ class ProjectCreate(Dto):
     name: str = Field(min_length=2, max_length=200, pattern=r'^[\w .\-()]+$')
     description: str = Field(default='', max_length=2000)
     source_type: Literal['local', 'zip', 'git', 'agent']  # agent: the code stays on the user's machine (mf.api.agent)
-    migration_type: Literal['JAVA_CAMEL', 'DATASTAGE_AIRFLOW'] = 'JAVA_CAMEL'
-    target_runtime: Literal['spring', 'quarkus', 'airflow']
+    migration_type: Literal['JAVA_CAMEL', 'DATASTAGE_AIRFLOW', 'ODOO'] = 'JAVA_CAMEL'
+    target_runtime: Literal['spring', 'quarkus', 'airflow', 'odoo19']
     # git
     repository_url: str | None = Field(default=None, max_length=1000)
     default_branch: str | None = Field(default=None, pattern=r'^[\w./-]{1,200}$')
@@ -63,8 +63,11 @@ class ProjectCreate(Dto):
 
     @model_validator(mode='after')
     def _per_source(self):
-        if (self.migration_type == 'DATASTAGE_AIRFLOW') != (self.target_runtime == 'airflow'):
-            raise ValueError('DATASTAGE_AIRFLOW va con target airflow; JAVA_CAMEL con spring o quarkus')
+        expected = {'DATASTAGE_AIRFLOW': ('airflow',), 'ODOO': ('odoo19',)}.get(self.migration_type, ('spring', 'quarkus'))
+        if self.target_runtime not in expected:
+            raise ValueError('DATASTAGE_AIRFLOW va con target airflow; ODOO con odoo19; JAVA_CAMEL con spring o quarkus')
+        if self.migration_type == 'ODOO' and self.source_type != 'zip':
+            raise ValueError('ODOO: suba el respaldo de la base (ZIP con el dump)')
         given = {f for f in ('repository_url', 'default_branch', 'credential_ref', 'local_path', 'upload_id') if getattr(self, f)}
         missing = REQUIRED_SOURCE_FIELDS[self.source_type] - given
         if missing:

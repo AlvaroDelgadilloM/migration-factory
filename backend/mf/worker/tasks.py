@@ -119,6 +119,9 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'datastage_migrate':
             from ..models import DataStageMigration
             s.get(DataStageMigration, job.subject_id).state = state
+        elif job.kind in ('odoo_analyze', 'odoo_migrate'):
+            from ..models import OdooMigration
+            s.get(OdooMigration, job.subject_id).state = state
         elif job.kind in ('preview', 'apply'):
             ex = s.get(Execution, job.subject_id)
             ex.state = state
@@ -153,7 +156,7 @@ def run_job(job_id: str):
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
                    'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
                    'http_compare': do_http_compare,
-                   'datastage_migrate': do_datastage_migrate}[job.kind](job, ctx)
+                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -1355,6 +1358,97 @@ ROOT_CAUSE_ORDER = ('ORCHESTRATION_ERROR', 'STUB_LEAK_DETECTED', 'CAMEL_2_TO_3_D
 
 
 DS_STATE = {'SUCCEEDED': 'succeeded', 'PARTIAL_SUCCESS': 'partial_success', 'BLOCKED': 'blocked', 'FAILED': 'failed'}
+
+
+def _odoo_dump(db, project, ctx) -> Path:
+    import hashlib
+    from ..models import Upload
+    from ..odoo import jobs as oj
+    repo = db.get(Repository, project.repository_id)
+    up = db.get(Upload, repo.upload_id) if repo and repo.upload_id else None
+    if up is None or not (up.structure or {}).get('odooDump'):
+        raise StepFailure('UPLOAD_MISSING', 'El proyecto no tiene el respaldo de la base')
+    zp = ctx.workdir / 'backup.zip'
+    data = blobs().read(up.object_key)
+    if hashlib.sha256(data).hexdigest() != up.sha256:
+        raise StepFailure('UPLOAD_CORRUPT', 'El respaldo almacenado no coincide con su hash')
+    zp.write_bytes(data)
+    return oj.extract_dump(zp, up.structure['odooDump'], ctx.workdir)
+
+
+def do_odoo_analyze(job: Job, ctx: Context):
+    """Odoo 12 -> 19, step 1: restore the dump on the isolated odoo-db and classify every installed module (mf.odoo)."""
+    from ..models import OdooMigration
+    from ..odoo import jobs as oj
+    with session() as db:
+        om = db.get(OdooMigration, job.subject_id)
+        project = db.get(Project, om.project_id)
+        om.state = 'running'
+        db.commit()
+        set_phase(ctx, 'restore', 10)
+        try:
+            dump = _odoo_dump(db, project, ctx)
+            res = oj.analyze(ctx, runner.run, dump, om.id, lambda m: ctx.emit('info', 'odoo', m))
+        except oj.OdooJobError as e:
+            raise StepFailure(e.code, str(e)) from None
+        set_phase(ctx, 'classify', 80)
+        om.modules = res.pop('rows')
+        om.summary = res
+        c = res['counts']
+        ctx.emit('info' if not c['block'] else 'warn', 'odoo', f"{c['modules']} módulos: {c['core']} núcleo, {c['oca']} OCA, "
+                 f"{c['thirdParty']} de terceros · {c['block']} bloquean, {c['warn']} con advertencia")
+        db.commit()
+    return None
+
+
+def do_odoo_migrate(job: Job, ctx: Context):
+    """Odoo 12 -> 19, step 2: a copy of the analysed database through every OpenUpgrade hop, reconciliation, migrated dump."""
+    from ..models import OdooMigration
+    from ..odoo import chain, jobs as oj
+    with session() as db:
+        om = db.get(OdooMigration, job.subject_id)
+        analysis = db.get(OdooMigration, om.analysis_id)
+        project = db.get(Project, om.project_id)
+        om.state = 'running'
+        db.commit()
+        summary = dict(analysis.summary or {}) | {'rows': list(analysis.modules or [])}
+        set_phase(ctx, 'prepare', 5)
+        try:
+            exists = chain.base_version(summary['sourceDb'])
+        except Exception:  # noqa: BLE001 — the analysed copy was removed: restore again
+            exists = None
+        try:
+            if not exists:
+                oj.restore(ctx, runner.run, _odoo_dump(db, project, ctx), summary['sourceDb'])
+
+            def fetch(url):
+                import httpx
+                r = httpx.get(url, timeout=300, follow_redirects=True)
+                r.raise_for_status()
+                return r.content
+            res = oj.migrate(ctx, summary, dict(om.decisions or {}), om.id, lambda m: ctx.emit('info', 'odoo', m),
+                             lambda i, n: set_phase(ctx, f'hop {i}/{n}', 10 + int(75 * i / n)), fetch, ctx.cancel.is_set,
+                             get_settings().odoo_hop_timeout_seconds)
+            om.hops = res['hops']
+            for h in res['hops']:
+                ctx.emit('info' if h['state'] == 'succeeded' else 'error', 'odoo', f"{h['version']}: {h['state']} ({h['errors'] or 0} error(es) en el log)")
+            if res['state'] != 'succeeded':
+                db.commit()
+                last = res['hops'][-1]
+                raise StepFailure('HOP_FAILED', f"El salto a {last['version']} falló; ver su log en la pantalla")
+            set_phase(ctx, 'package', 90)
+            out = oj.dump(ctx, runner.run, res['database'])
+            art = _store(db, om.project_id, 'candidate-zip', f"odoo19-{str(om.id)[:8]}.dump", out.read_bytes(), 'application/octet-stream', commit=False)
+            om.reconciliation = res['reconciliation']
+            om.summary = {'from': summary['from'], 'to': summary['to'], 'reconciliationStatus': res['reconciliationStatus'],
+                          'uninstalled': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'uninstall'),
+                          'artifacts': {'dump': str(art.id)}, 'migratedDb': res['database']}
+            db.commit()
+            chain.drop_db(res['database'])
+        except oj.OdooJobError as e:
+            raise StepFailure(e.code, str(e)) from None
+    st = res['reconciliationStatus']
+    return None if st == 'EQUAL' else ('partial_success', 'RECONCILIATION_' + st, 'La conciliación antes/después tiene diferencias o no aplica')
 
 
 def do_datastage_migrate(job: Job, ctx: Context):

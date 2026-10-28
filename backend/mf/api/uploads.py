@@ -19,6 +19,22 @@ from ..schemas import BrowseOut, Capabilities, UploadOut
 from ..security import UnsafeInput, inspect_zip, local_roots, safe_join, validate_local_path
 from ..storage import blobs
 
+
+class _Stored(Exception):
+    """Odoo dump already stored (its structure is not a Maven or DSX one)."""
+    def __init__(self, structure):
+        super().__init__('stored')
+        self.structure = structure
+
+
+def odoo_dump(files) -> str | None:
+    """The database dump inside an Odoo backup ZIP (dump.sql + filestore/ + manifest.json) or a pg_dump file (.sql / .dump)."""
+    names = [f for f in files if not f.endswith('/')]
+    if 'dump.sql' in names:
+        return 'dump.sql'
+    dumps = [f for f in names if f.lower().endswith(('.dump', '.backup', '.sql')) and '/' not in f.strip('/')]
+    return dumps[0] if len(dumps) == 1 else None
+
 router = APIRouter(tags=['sources'])
 
 
@@ -73,7 +89,7 @@ def _kinds(files) -> str:
 
 @router.post('/uploads', response_model=UploadOut, status_code=201)
 async def upload_zip(request: Request, x_filename: str = Header('project.zip', max_length=255),
-                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW)$'),
+                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$'),
                      content_length: int | None = Header(None), db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     """Body = the ZIP bytes (Content-Type: application/zip). Size enforced while streaming, structure validated before storing."""
     s = get_settings()
@@ -100,9 +116,21 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
         try:
             mode = x_migration_type
             probe = None
-            if mode == 'AUTO':  # the platform decides from the content: .dsx = DataStage export, else a Maven project
+            if mode == 'AUTO':  # the platform decides from the content: .dsx = DataStage, a database dump = Odoo, else Maven
                 probe = inspect_zip(Path(tmp), require_maven=False)
-                mode = 'DATASTAGE_AIRFLOW' if any(f.lower().endswith('.dsx') for f in probe['files']) else 'JAVA_CAMEL'
+                mode = 'DATASTAGE_AIRFLOW' if any(f.lower().endswith('.dsx') for f in probe['files']) else \
+                    'ODOO' if odoo_dump(probe['files']) else 'JAVA_CAMEL'
+            if mode == 'ODOO':
+                structure = probe or inspect_zip(Path(tmp), require_maven=False)
+                dump = odoo_dump(structure['files'])
+                if not dump:
+                    raise UnsafeInput('NO_DUMP', 'El ZIP no trae el respaldo de la base: dump.sql (respaldo de Odoo), un .sql o un .dump '
+                                                 f'de pg_dump; trae: {_kinds(structure["files"])}.')
+                files = structure.pop('files')
+                structure |= {'migrationType': 'ODOO', 'odooDump': dump, 'filestore': any(f.startswith('filestore/') for f in files),
+                              'odooManifest': 'manifest.json' in files}
+                blobs().write_file(key, Path(tmp))
+                raise _Stored(structure)
             datastage = mode == 'DATASTAGE_AIRFLOW'
             try:  # metadata only: nothing is extracted here
                 structure = probe if (datastage and probe) else inspect_zip(Path(tmp), require_maven=not datastage)
@@ -121,7 +149,10 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             structure['migrationType'] = mode
         except UnsafeInput as e:
             raise ApiError(422, e.code, str(e)) from None
-        blobs().write_file(key, Path(tmp))
+        except _Stored as st:
+            structure = st.structure
+        else:
+            blobs().write_file(key, Path(tmp))
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)

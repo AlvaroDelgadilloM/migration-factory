@@ -82,8 +82,10 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
                 raise ApiError(404, 'NOT_FOUND', 'Archivo subido no encontrado')
             if upload.project_id:
                 raise ApiError(409, 'UPLOAD_IN_USE', 'Este archivo ya está asociado a otro proyecto')
-            if (body.migration_type == 'DATASTAGE_AIRFLOW') != bool((upload.structure or {}).get('dsxFiles')):
-                raise ApiError(422, 'UPLOAD_TYPE_MISMATCH', 'El ZIP no corresponde al tipo de migración (DSX para DataStage, Maven para Java/Camel)')
+            kind = (upload.structure or {}).get('migrationType') or ('DATASTAGE_AIRFLOW' if (upload.structure or {}).get('dsxFiles') else 'JAVA_CAMEL')
+            if body.migration_type != kind:
+                raise ApiError(422, 'UPLOAD_TYPE_MISMATCH', 'El ZIP no corresponde al tipo de migración (DSX para DataStage, respaldo de la '
+                                                            'base para Odoo, Maven para Java/Camel)')
             repo = Repository(source_type='zip', provider='zip', upload_id=upload.id)
     except UnsafeInput as e:
         raise ApiError(422, e.code, str(e)) from None
@@ -110,7 +112,7 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
 
 @router.get('/projects', response_model=Page[ProjectOut])
 def list_projects(q: str | None = None, limit: int = limit_param(), cursor: str | None = None,
-                  migration_type: str | None = Query(None, alias='migrationType', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW)$'),
+                  migration_type: str | None = Query(None, alias='migrationType', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$'),
                   db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     stmt = select(Project).order_by(Project.name, Project.id)
     ids = visible_project_ids(db, me)
@@ -238,6 +240,8 @@ def create_scan(project_id: uuid.UUID, body: ScanCreate, request: Request, idemp
     p = authorize(db, me, project_id, 'scan')
     if p.migration_type == 'DATASTAGE_AIRFLOW':
         raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'Proyecto DataStage → Airflow: use POST /projects/{id}/datastage-migrations')
+    if p.migration_type == 'ODOO':
+        raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'Proyecto Odoo: use POST /projects/{id}/odoo-migrations')
     endpoint = f'POST /projects/{project_id}/scans'
     payload = body.model_dump(mode='json')
     replay = jobs.idempotent_replay(db, me.subject, idempotency_key, endpoint, payload)

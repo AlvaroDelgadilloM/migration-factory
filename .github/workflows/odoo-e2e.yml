@@ -28,7 +28,8 @@ jobs:
         run: |
           PW="$(openssl rand -hex 16)"; echo "::add-mask::$PW"
           echo "MF_ODOO_DB_PASSWORD=$PW" >> "$GITHUB_ENV"
-          echo "MF_DEV_JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          JWT="$(openssl rand -hex 32)"; echo "::add-mask::$JWT"
+          echo "MF_DEV_JWT_SECRET=$JWT" >> "$GITHUB_ENV"
           docker run -d --name odoo-db --network host -e POSTGRES_USER=odoo -e POSTGRES_PASSWORD="$PW" postgres:13
           for i in $(seq 1 30); do docker exec odoo-db pg_isready -U odoo && break; sleep 2; done
       - name: Base Odoo 12 con datos demo
