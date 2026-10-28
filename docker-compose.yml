@@ -94,6 +94,8 @@ services:
       # DataStage: AI proposals for expressions without deterministic translation (doc 58). Off by default; the key only in .env
       MF_AI_MODEL: ${MF_AI_MODEL:-claude-sonnet-5-5}
       MF_CRED_AI: ${MF_CRED_AI:-}
+      # Pruebas > Automáticas: password of the TEST database a migrated app is started against (variables as env:MF_CRED_TEST_DB)
+      MF_CRED_TEST_DB: ${MF_CRED_TEST_DB:-}
       # credentials as vault:mount/path[#field] (HashiCorp Vault KV v2); the token is a credential, removed from the worker env
       MF_VAULT_ADDR: ${MF_VAULT_ADDR:-}
       MF_CRED_VAULT_TOKEN: ${MF_CRED_VAULT_TOKEN:-}

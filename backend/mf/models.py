@@ -428,8 +428,12 @@ class HttpTestRun(Entity, Base):
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     state: Mapped[str] = mapped_column(String(20), default='queued')
     name: Mapped[str] = mapped_column(String(200))
-    source: Mapped[str] = mapped_column(String(20), default='urls', server_default='urls')  # urls | migration
+    source: Mapped[str] = mapped_column(String(20), default='urls', server_default='urls')  # urls | migration | execution
     workspace_migration_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    # source execution (mf.runtime_test): the applied execution whose candidate the worker builds and starts
+    execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    variables: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')  # NAME -> {value} | {ref}; never a secret value
+    params: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')     # path parameters of the generated cases
     container: Mapped[str | None] = mapped_column(String(60))
     data_artifact_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)  # client's test data package; none = smoke test
     original: Mapped[dict | None] = mapped_column(Json, nullable=True)   # {label, url} (source urls)

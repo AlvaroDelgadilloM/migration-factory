@@ -653,13 +653,32 @@ class PerformanceIn(Dto):
     seconds: int = Field(default=60, ge=10, le=900)
 
 
+class RuntimeVariable(Dto):
+    """A value for one ${NAME} of the migrated app: a plain value (never for a secret) or a credential reference."""
+    value: str | None = Field(default=None, max_length=2000)
+    ref: str | None = Field(default=None, max_length=400)
+
+    @model_validator(mode='after')
+    def one(self):
+        if (self.value is None) == (self.ref is None):
+            raise ValueError('indique value o ref')
+        if self.ref is not None and not CREDENTIAL_REF.match(self.ref):
+            raise ValueError('ref: env:MF_CRED_NOMBRE o vault:montaje/ruta[#campo]')
+        return self
+
+
 class HttpTestRunIn(Dto):
     """source 'migration' (default): the worker starts the original code and the migration's WAR and reads the cases from
     the code; only workspace_migration_id is required (name, container and data package are optional). source 'urls': two
     systems already running (original, migrated) and the cases to send."""
-    source: Literal['migration', 'urls'] = 'migration'
+    source: Literal['migration', 'urls', 'execution'] = 'migration'
     name: str | None = Field(default=None, min_length=1, max_length=200)
     workspace_migration_id: uuid.UUID | None = None
+    # source execution: an applied execution (Spring Boot / Tomcat WAR / Quarkus) the worker builds and starts; original optional
+    execution_id: uuid.UUID | None = None
+    variables: dict[Annotated[str, Field(pattern=r'^[A-Z][A-Z0-9_]{1,100}$')], RuntimeVariable] = Field(default_factory=dict, max_length=200)
+    params: dict[Annotated[str, Field(pattern=r'^\w{1,60}$')], Annotated[str, Field(max_length=200, pattern=r'^[\w.\-~%]+$')]] = \
+        Field(default_factory=dict, max_length=50)
     container: str | None = Field(default=None, pattern=r'^[\w.\-]{1,60}$')
     data_package_id: uuid.UUID | None = None  # POST /projects/{id}/http-tests/data-packages; none = smoke test
     original: HttpTarget | None = None
@@ -672,9 +691,11 @@ class HttpTestRunIn(Dto):
     def by_source(self):
         if self.source == 'migration' and not self.workspace_migration_id:
             raise ValueError('workspaceMigrationId es obligatorio para probar una migración')
+        if self.source == 'execution' and not self.execution_id:
+            raise ValueError('executionId es obligatorio para probar un proyecto migrado')
         if self.source == 'urls' and not (self.original and self.migrated and self.cases and self.name):
             raise ValueError('Con sistemas ya levantados indique name, original, migrated y al menos un caso')
-        if self.source == 'urls' and self.performance:
+        if self.source != 'migration' and self.performance:
             raise ValueError('La prueba de rendimiento levanta los dos sistemas: solo está disponible al probar una migración')
         return self
 
@@ -687,6 +708,9 @@ class HttpTestRunOut(Dto):
     name: str
     source: str = 'urls'
     workspace_migration_id: uuid.UUID | None = None
+    execution_id: uuid.UUID | None = None
+    variables: dict = {}
+    params: dict = {}
     container: str | None = None
     data_artifact_id: uuid.UUID | None = None
     original: dict | None = None

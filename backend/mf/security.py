@@ -55,6 +55,13 @@ def validate_git_url(url: str, resolve=socket.getaddrinfo) -> dict:
     return {'provider': provider, 'url': f'https://{host}{parts.path}', 'host': host}
 
 
+def test_host_allowed(host: str) -> bool:
+    """host (with or without a port entry) on MF_TEST_ALLOWED_HOSTS."""
+    s = get_settings()
+    host = host.lower()
+    return any(a == host or a.split(':', 1)[0] == host for a in s.list_of(s.test_allowed_hosts))
+
+
 def validate_test_url(url: str) -> str:
     """Base URL of a system under test (Pruebas). http/https, no credentials, query or fragment, and the host (or host:port)
     on MF_TEST_ALLOWED_HOSTS. Returns it without the trailing slash."""

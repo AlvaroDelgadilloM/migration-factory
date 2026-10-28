@@ -103,6 +103,14 @@ def apply_edits(root: Path, edits, runtime: str) -> list[dict]:
             secret_props[(_module_of(e['file']), prop)] = var
             lines[i] = line[:lit.start()] + lit[1] + lit[2] + 'RAW({{' + prop + '}})' + lit[5] + lit[1] + line[lit.end():]
             r |= {'applied': True, 'change': f'valor del parámetro {lit[3]} -> RAW({{{{{prop}}}}}) = ${{{var}}}', 'env': var, 'property': prop}
+        elif e['op'] == 'rest-inline':  # whole file: every inlined route of its rest(...) statements (mf.rest_inline)
+            from .rest_inline import transform as rest_transform
+            new_src, ids = rest_transform('\n'.join(lines))
+            if not ids:
+                results.append(r | {'reason': 'no se encontró rest(...).VERB().route()...endRest() legible'})
+                continue
+            lines = new_src.split('\n')
+            r |= {'applied': True, 'change': f"{len(ids)} ruta(s) separadas: {', '.join(ids)}"}
         elif e['op'] == 'simple-property':  # Camel 3 removed the Simple `property` function: exchangeProperty is the same value
             new = re.sub(r'(\$(?:simple)?\{)property([.\[])', r'\1exchangeProperty\2', line)
             if new == line:

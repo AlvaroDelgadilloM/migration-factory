@@ -155,6 +155,10 @@ export class Api {
   startHttpRun(projectId: string, body: unknown) {
     return this.send<{ httpTestRunId: string; jobId: string }>('POST', `/projects/${projectId}/http-tests/runs`, body, { 'Idempotency-Key': this.key() });
   }
+  runtimeTestExecutions(projectId: string) {
+    return this.get<{ executionId: string; createdAt: string; state: string; status: string | null; candidate: boolean }[]>(`/projects/${projectId}/http-tests/executions`);
+  }
+  runtimeTestSpec<T>(executionId: string) { return this.get<T>(`/executions/${executionId}/runtime-test`); }
   httpTestSources(projectId: string) { return this.get<HttpTestSource[]>(`/projects/${projectId}/http-tests/sources`); }
   uploadDataPackage(projectId: string, file: File) {
     return firstValueFrom(this.http.post<DataPackage>(`${B}/projects/${projectId}/http-tests/data-packages`, file,

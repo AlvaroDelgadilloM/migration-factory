@@ -1,14 +1,14 @@
 """http_test_performance: options of the comparative load test of an automatic test run
 
-Revision ID: 0017
-Revises: 0016
+Revision ID: 0018
+Revises: 0017
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = '0017'
-down_revision = '0016'
+revision = '0018'
+down_revision = '0017'
 branch_labels = None
 depends_on = None
 

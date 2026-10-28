@@ -1,0 +1,11 @@
+# Sistema ORIGINAL de prueba: WildFly 10.1 (Java 8) con el WAR Camel 2 del catálogo. Sin base de datos.
+#   cd examples/camel2-rest-catalog && (cd app && mvn -q -DskipTests package) && docker compose up -d
+#   Servicios: http://127.0.0.1:18082/catalog/api/items ...
+name: camel2-rest-catalog
+
+services:
+  wildfly:
+    image: jboss/wildfly:10.1.0.Final
+    ports: ["127.0.0.1:18082:8080"]
+    volumes:
+      - ./app/target/catalog.war:/opt/jboss/wildfly/standalone/deployments/catalog.war:ro

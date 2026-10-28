@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "2026.10.8",
+  "catalogVersion": "2026.10.9",
   "description": "Reglas de diagnóstico estático. Son indicios revisables, no una matriz completa de compatibilidad Camel.",
   "rules": [
     {
@@ -342,6 +342,26 @@
         ],
         "negative": [
           "// texto activemq sin endpoint"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL_REST_INLINE_ROUTE",
+      "version": 1,
+      "detector": "text",
+      "pattern": "\\.route\\(\\)",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recommendation": "Camel 4 eliminó las rutas dentro del REST DSL (.route()...endRest()): el paso camel-rest-inline las separa en rutas direct: con el mismo routeId.",
+      "source": "https://camel.apache.org/manual/camel-4-migration-guide.html",
+      "examples": {
+        "positive": [
+          "rest(\"/items\").get().route().routeId(\"items\")"
+        ],
+        "negative": [
+          "rest(\"/items\").get().to(\"direct:items\")"
         ]
       },
       "category": "MIGRATION"

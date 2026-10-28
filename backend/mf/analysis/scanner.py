@@ -232,6 +232,8 @@ def scan(root, target='spring', catalog=None):
                 report['errors'].append({'file': rel, 'code': 'INVALID_POM'})
         if f.suffix == '.java':
             routes, matchable = java_routes(rel, content)
+            if re.search(r'\b(rest|restConfiguration)\s*\(', matchable) and 'RouteBuilder' in matchable:
+                report['restDsl'] = True  # kept: finalize runs again after the effective POM
             report['routes'] += routes
             report['routeBuilders'] += java_route_builders(rel, matchable)
             if '/src/test/' in '/' + rel and re.search(r'@Test\b', matchable):
@@ -301,7 +303,8 @@ def finalize(report, catalog):
     tests = report.get('testClasses', 0)
     if builders and tests < len(builders):  # rule: at least one test class per RouteBuilder
         add('TEST_COVERAGE', builders[0]['file'], 1, f'{tests} clase(s) de prueba para {len(builders)} RouteBuilder')
-    report['components'] = sorted({e['component'] for r in report['routes'] for e in r['endpoints'] if e['component']})
+    report['components'] = sorted({e['component'] for r in report['routes'] for e in r['endpoints'] if e['component']}
+                                  | ({'rest'} if report.get('restDsl') else set()))  # REST DSL in Java: its component is camel-rest
     report['platform'] = detect_platform(report['modules'], report.get('usage'))  # doc 42 PlatformDetector (static)
     kind = {c: t for t, cs in INTEGRATION_TYPES.items() for c in cs}
     report['integrations'] = [{'type': kind[e['component']], 'component': e['component'], 'uri': e['uri'], 'dynamic': e['dynamic'],

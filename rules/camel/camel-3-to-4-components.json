@@ -45,7 +45,8 @@
     "rest-swagger:",
     "restConfiguration",
     "servlet:",
-    "springframework.org/schema/beans"
+    "springframework.org/schema/beans",
+    "import org.apache.camel.component.servletlistener"
   ],
   "components": {
     "camel-ahc": {
@@ -81,6 +82,15 @@
         "bundle → jar si el runtime destino lo requiere"
       ],
       "reason": "OSGi Blueprint no existe en Camel 4: es una migración de runtime, no de artefacto. Sin rediseño: perfil tomcat-war (un WAR para Tomcat con Camel 4; migración de workspace con target tomcat-war o migrate.py --target tomcat-war)."
+    },
+    "camel-servletlistener": {
+      "status": "ARCHITECTURAL_MIGRATION",
+      "confidence": "HIGH",
+      "ifUnused": {"tokens": ["import org.apache.camel.component.servletlistener"], "action": "REMOVE"},
+      "reason": "camel-servletlistener se eliminó en Camel 3: arrancaba Camel desde web.xml. En Spring Boot y Quarkus el runtime arranca Camel y descubre los RouteBuilder; si el código Java lo usa (CamelContextLifecycle propio) hay que rediseñar ese arranque.",
+      "runtimeOptions": ["Spring Boot 3", "Quarkus 3"],
+      "artifactTarget": null,
+      "evidence": ["import org.apache.camel.component.servletlistener"]
     },
     "camel-cdi": {
       "status": "ARCHITECTURAL_MIGRATION",
