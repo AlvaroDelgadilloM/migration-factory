@@ -83,7 +83,13 @@ class Settings(BaseSettings):
     # allowlist (mirror + MF_MAVEN_EXTRA_REPOS)
     maven_network: Literal['offline', 'central', 'allowlist'] = 'allowlist'
     maven_repo_local: Path = Path('/tmp/mf-m2')
-    maven_proxy: str = ''  # host:port of the egress proxy (k8s runner pods); empty = direct
+    maven_proxy: str = ''
+    # Odoo 12 -> 19 database migration: the isolated PostgreSQL where dumps are restored and the odoo-hop-<v> runners work
+    odoo_db_host: str = 'odoo-db'
+    odoo_db_port: int = 5432
+    odoo_db_user: str = 'odoo'
+    odoo_db_password: str = ''
+    odoo_hop_timeout_seconds: int = 4 * 3600  # host:port of the egress proxy (k8s runner pods); empty = direct
     maven_file_locks: bool = False  # true when several workers share maven_repo_local
     # one local repository per project under maven_repo_local/projects/<id>: a build (untrusted plugins) can only poison its own
     # project's cache, at the cost of downloading each project's dependencies once

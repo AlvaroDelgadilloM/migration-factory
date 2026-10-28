@@ -1,0 +1,61 @@
+name: Odoo e2e
+
+# Odoo Community 12 -> 19 on real Odoo and OpenUpgrade: a 12.0 database with Odoo's own demo data (sales, purchases, invoicing,
+# stock, CRM) goes through the seven hops with the same runner image the platform uses (docker/odoo-hop.Dockerfile, commits in
+# rules/odoo/hops.json), then the before/after reconciliation must match. Synthetic data only; the password is per run.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['backend/mf/odoo/**', 'docker/odoo-hop*', 'docker/odoo-hop/**', 'rules/odoo/**', 'backend/tests/e2e/odoo_chain.py', '.github/workflows/odoo-e2e.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  chain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      MF_ODOO_DB_HOST: 127.0.0.1
+      MF_ODOO_DB_USER: odoo
+      PYTHONPATH: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.12'}
+      - name: PostgreSQL 13 (base aislada de la migración)
+        run: |
+          PW="$(openssl rand -hex 16)"; echo "::add-mask::$PW"
+          echo "MF_ODOO_DB_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "MF_DEV_JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          docker run -d --name odoo-db --network host -e POSTGRES_USER=odoo -e POSTGRES_PASSWORD="$PW" postgres:13
+          for i in $(seq 1 30); do docker exec odoo-db pg_isready -U odoo && break; sleep 2; done
+      - name: Base Odoo 12 con datos demo
+        run: |
+          docker run --rm --network host -e HOST=127.0.0.1 -e USER=odoo -e PASSWORD="$MF_ODOO_DB_PASSWORD" odoo:12.0 \
+            odoo -d demo12 -i sale_management,purchase,account,stock,crm,contacts --stop-after-init
+          docker rmi odoo:12.0
+      - name: Preparar (copia, módulos y control)
+        run: |
+          pip install -q -r backend/requirements.lock
+          python backend/tests/e2e/odoo_chain.py prepare
+      - name: Siete saltos con OpenUpgrade
+        run: |
+          mkdir -p /tmp/hop-logs && chmod 777 /tmp/hop-logs
+          for row in $(jq -r '.hops[] | "\(.version)=\(.openupgrade)"' rules/odoo/hops.json); do
+            v="${row%%=*}"; c="${row##*=}"
+            echo "::group::Salto a $v"
+            docker build -q -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" -t "mf-odoo-hop:$v" .
+            docker run -d --name "hop-$v" --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
+              -v /tmp/hop-logs:/hop-logs "mf-odoo-hop:$v"
+            python backend/tests/e2e/odoo_chain.py hop "$v" || { docker logs "hop-$v" | tail -50; exit 1; }
+            docker rm -f "hop-$v" && docker rmi "mf-odoo-hop:$v" "odoo:$v" > /dev/null
+            df -h / | tail -1
+            echo "::endgroup::"
+          done
+      - name: Conciliación antes / después
+        run: python backend/tests/e2e/odoo_chain.py reconcile
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: odoo-hop-logs, path: /tmp/hop-logs, retention-days: 7}
