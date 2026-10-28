@@ -56,7 +56,8 @@ class AutoTestError(verify.ToolError):
 
 # --- what is deployed -----------------------------------------------------------------------------------------------------
 def explode_war(war: Path, target: Path) -> dict:
-    """Unpacks the WAR; every module jar (it carries META-INF/modules/<name>/module.properties) to its own folder.
+    """Unpacks the WAR; every module jar (it carries its XML in META-INF/modules/<name>/) to its own folder. Its containers come
+    from module.properties, which exists only when the migration was configured with containers; without it, it runs everywhere.
     Returns {name: {'dir', 'containers'}}."""
     shutil.rmtree(target, ignore_errors=True)
     with zipfile.ZipFile(war) as z:
@@ -64,17 +65,18 @@ def explode_war(war: Path, target: Path) -> dict:
     modules = {}
     for jar in sorted((target / 'war' / 'WEB-INF' / 'lib').glob('*.jar')):
         with zipfile.ZipFile(jar) as z:
-            props = [n for n in z.namelist() if re.fullmatch(r'META-INF/modules/[^/]+/module\.properties', n)]
-            if not props:
+            entries = [n for n in z.namelist() if re.fullmatch(r'META-INF/modules/[^/]+/[^/]+', n)]
+            if not entries:
                 continue
-            name = props[0].split('/')[2]
+            name = entries[0].split('/')[2]
             d = target / 'modules' / name
             z.extractall(d)
-            text = (d / props[0]).read_text(encoding='utf-8', errors='replace')
+            props = d / 'META-INF' / 'modules' / name / 'module.properties'
+            text = props.read_text(encoding='utf-8', errors='replace') if props.exists() else ''
             m = re.search(r'^containers\s*=\s*(.+)$', text, re.M)
             modules[name] = {'dir': d, 'jar': jar, 'containers': [c.strip() for c in m.group(1).split(',')] if m else []}
     if not modules:
-        raise AutoTestError(f'{war.name} no trae módulos migrados (META-INF/modules/*/module.properties)')
+        raise AutoTestError(f'{war.name} no trae módulos migrados (META-INF/modules/<módulo>/)')
     return modules
 
 

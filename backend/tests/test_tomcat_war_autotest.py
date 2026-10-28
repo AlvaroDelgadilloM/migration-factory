@@ -128,3 +128,24 @@ def test_simulator_answers_from_the_data_package_or_503():
         assert e.value.code == 503 and sim.calls == ['ws.siebel', 'ws.otro']
     finally:
         sim.stop()
+
+
+def test_war_modules_are_found_with_and_without_containers(tmp_path):
+    """A migration without containers in its config has no module.properties: its modules still count, deployed everywhere."""
+    def jar(path, entries):
+        with zipfile.ZipFile(path, 'w') as z:
+            for n, text in entries.items():
+                z.writestr(n, text)
+    lib = tmp_path / 'src' / 'WEB-INF' / 'lib'
+    lib.mkdir(parents=True)
+    jar(lib / 'orders.jar', {'META-INF/modules/orders/camel-context.xml': '<beans/>'})
+    jar(lib / 'members.jar', {'META-INF/modules/members/camel-context.xml': '<beans/>',
+                              'META-INF/modules/members/module.properties': 'containers=web1, web2\n'})
+    jar(lib / 'camel-core.jar', {'META-INF/MANIFEST.MF': ''})
+    war = tmp_path / 'ROOT.war'
+    jar(war, {f'WEB-INF/lib/{p.name}': p.read_bytes() for p in lib.glob('*.jar')})
+    modules = autotest.explode_war(war, tmp_path / 'out')
+    assert {n: m['containers'] for n, m in modules.items()} == {'orders': [], 'members': ['web1', 'web2']}
+    jar(war, {'WEB-INF/lib/camel-core.jar': (lib / 'camel-core.jar').read_bytes()})
+    with pytest.raises(autotest.AutoTestError):
+        autotest.explode_war(war, tmp_path / 'out2')
