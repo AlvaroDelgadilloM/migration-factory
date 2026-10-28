@@ -41,9 +41,11 @@ def _core_path(name: str, hops: list) -> dict:
             gaps.append(h['to'])
         if info['flag'] == 'del':
             if not info['into']:
-                return {'steps': steps, 'final': None, 'gaps': gaps, 'removedIn': h['to']}
+                import re
+                adopted = re.search(r'Adopted in OCA as (\w+)', info['extra'] or '')
+                return {'steps': steps, 'final': None, 'gaps': gaps, 'removedIn': h['to'], 'adopted': adopted[1] if adopted else None}
             current = info['into']
-    return {'steps': steps, 'final': current, 'gaps': gaps, 'removedIn': None}
+    return {'steps': steps, 'final': current, 'gaps': gaps, 'removedIn': None, 'adopted': None}
 
 
 def classify(installed: list[dict]) -> list[dict]:
@@ -60,8 +62,12 @@ def classify(installed: list[dict]) -> list[dict]:
         if name in core12 or any(a in author for a in ODOO_AUTHOR):
             p = _core_path(name, hops)
             row |= {'origin': 'CORE', 'path': p['steps'], 'final': p['final']}
-            if p['removedIn']:
-                row |= {'outcome': 'WARN', 'reason': f"Odoo lo eliminó en {p['removedIn']} sin reemplazo: sus datos propios no llegan a 19"}
+            if p['removedIn'] and p['adopted']:
+                row |= {'outcome': 'WARN', 'reason': f"Odoo lo retiró en {p['removedIn']} y OCA lo continúa como {p['adopted']}: para conservar sus datos "
+                                                     f"hay que incluir {p['adopted']} (OCA) en la migración"}
+            elif p['removedIn']:
+                row |= {'outcome': 'WARN', 'reason': f"Odoo lo retiró en {p['removedIn']} y OpenUpgrade no indica a dónde pasa: revisar si su "
+                                                     'funcionalidad quedó en otro módulo; sus datos propios no llegan a 19'}
             elif p['gaps']:
                 row |= {'outcome': 'WARN', 'reason': 'OpenUpgrade no documenta script para los saltos a ' + ', '.join(p['gaps'])
                         + ': revisar sus datos después de migrar'}

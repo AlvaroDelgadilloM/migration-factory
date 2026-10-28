@@ -660,3 +660,31 @@ arranque) y envía los casos al migrado y, si se da, al sistema original del amb
   `quarkus-maven-plugin` (el módulo compilaba y pasaba pruebas pero no era una aplicación) y un jar migrado a Spring Boot no
   agregaba `spring-boot-maven-plugin` repackage (no corría con `java -jar`). Verificado con Maven real tras la corrección.
 - Pruebas: `tests/test_runtime_test.py` (detección, reglas de variables y secretos, flujo del worker con una app simulada).
+
+## Odoo Community 12 → 19: migración de la base de datos (en curso, 2026-10-28)
+
+Nuevo tipo de proyecto **Odoo 12 → 19** (`migrationType: ODOO`). Alcance acordado: la base de datos (no el código de módulos
+a la medida). Destino: Odoo 19 (OpenUpgrade 20.0 todavía no tiene scripts, verificado en OCA/OpenUpgrade).
+
+- **Subida:** ZIP con el respaldo estándar de Odoo (`dump.sql` + `filestore/` + `manifest.json`) o un `pg_dump` (`.sql`/`.dump`);
+  detección automática en la subida.
+- **Análisis** (`mf/odoo/modules.py`, job `odoo_analyze`): el worker restaura el dump en `odoo-db` (PostgreSQL 13 aislado, red
+  interna sin internet, perfil Compose `odoo`) y clasifica cada módulo instalado:
+  núcleo (seguido salto por salto, renombres y fusiones incluidos, con la cobertura publicada de OpenUpgrade de cada salto),
+  OCA (disponibilidad rama por rama 12.0…19.0, porque su código hace falta en cada salto) o terceros / a la medida.
+  Datos públicos versionados en `rules/odoo/` (generados por `scripts/gen_odoo_index.py`: 653 módulos de núcleo en 18→19,
+  2 229 módulos OCA en 12.0 y 1 552 en 19.0).
+- **Pantalla Módulos:** los módulos de terceros u OCA sin versión 19 (o sin portar en alguna versión intermedia) se muestran
+  y **bloquean** hasta que un arquitecto decide desinstalarlos antes de migrar, con motivo (auditado; sus datos no se migran).
+- **Migración** (`mf/odoo/jobs.py`, job `odoo_migrate`): copia de la base, desinstalaciones decididas, código OCA de cada versión
+  (repositorio OCA por rama, en un volumen de solo lectura para los ejecutores) y **7 saltos** 13→19, cada uno en su ejecutor
+  `odoo-hop-<versión>` (imagen oficial `odoo:<versión>` + OCA/OpenUpgrade en el commit fijado en `rules/odoo/hops.json`;
+  sin internet ni acceso a la base de la plataforma). Se detiene en el primer salto con error y muestra su log.
+- **Resultado:** conciliación antes/después (`mf/odoo/reconcile.py`: contactos, usuarios, productos, ventas y compras con total,
+  facturas `account_invoice`→`account_move`, débito/crédito contable, inventario, CRM, adjuntos) y descarga del `pg_dump` en 19.
+- **Prueba real** (`.github/workflows/odoo-e2e.yml`): base Odoo 12 con los datos demo de Odoo (ventas, compras, facturación,
+  inventario, CRM) por la cadena real. Primer hallazgo y corrección: en el salto 13 (fork completo de Odoo) el Odoo estándar de la
+  imagen ocultaba los módulos del fork y sus scripts no corrían (fallaba el índice único de variantes de producto); ahora el
+  salto 12→13 termina sin errores. El resto de la cadena y la conciliación: en curso.
+- Pendiente / limitaciones: el filestore (adjuntos en disco) no viaja todavía; módulos a la medida con código portado (hoy solo
+  «desinstalar»); Odoo 20 cuando OpenUpgrade publique sus scripts.

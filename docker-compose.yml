@@ -150,7 +150,7 @@ services:
   # runner per target version (official Odoo image + OpenUpgrade at the commit of rules/odoo/hops.json). The «odoo» network is
   # internal: the runners reach only odoo-db, never internet or the platform database.
   odoo-db:
-    image: postgres:13.22-bookworm
+    image: postgres:13.23
     profiles: [odoo]
     environment:
       POSTGRES_USER: odoo
