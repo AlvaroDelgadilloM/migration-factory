@@ -11,7 +11,10 @@ RUN (pip3 install --no-cache-dir --no-deps --break-system-packages openupgradeli
     && python3 -c "import openupgradelib.openupgrade" \
     && mkdir -p /opt/openupgrade /opt/mf /hop-logs \
     && curl -fsSL "https://codeload.github.com/OCA/OpenUpgrade/tar.gz/${OU_COMMIT}" | tar -xz -C /opt/openupgrade --strip-components=1 \
-    && chown odoo /hop-logs
+    && chown odoo /hop-logs \
+    && if [ "${ODOO}" = "13.0" ]; then rm -rf /usr/lib/python3/dist-packages/odoo /usr/bin/odoo; fi
+# 13.0 is a full fork of Odoo (its addons carry the migration scripts): the image's own Odoo is removed so no module can be
+# loaded from it instead (it shadowed the fork's addons and their scripts never ran).
 COPY docker/odoo-hop/runner.py /opt/mf/runner.py
 ENV MF_ODOO_VERSION=${ODOO}
 USER odoo
