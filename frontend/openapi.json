@@ -104,7 +104,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^(JAVA_CAMEL|DATASTAGE_AIRFLOW)$"
+                  "pattern": "^(JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$"
                 },
                 {
                   "type": "null"
@@ -3139,7 +3139,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "pattern": "^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW)$",
+              "pattern": "^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$",
               "default": "JAVA_CAMEL",
               "title": "X-Migration-Type"
             }
@@ -4613,6 +4613,232 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/odoo-analyses": {
+      "post": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Analyze",
+        "description": "Restore the uploaded dump on the isolated database server and classify every installed module.",
+        "operationId": "analyze_api_v1_projects__project_id__odoo_analyses_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/odoo-migrations": {
+      "post": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Migrate",
+        "description": "The seven hops on a copy, from the latest analysis; every blocking module needs the architect's decision first.",
+        "operationId": "migrate_api_v1_projects__project_id__odoo_migrations_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "List Runs",
+        "operationId": "list_runs_api_v1_projects__project_id__odoo_migrations_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OdooMigrationOut"
+                  },
+                  "title": "Response List Runs Api V1 Projects  Project Id  Odoo Migrations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/odoo-migrations/{om_id}": {
+      "get": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_api_v1_odoo_migrations__om_id__get",
+        "parameters": [
+          {
+            "name": "om_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Om Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OdooMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/odoo-migrations/{om_id}/decisions": {
+      "patch": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Decide",
+        "description": "The architect's decision on a blocking module (role «plan»): uninstall it before migrating, with the reason.",
+        "operationId": "decide_api_v1_odoo_migrations__om_id__decisions_patch",
+        "parameters": [
+          {
+            "name": "om_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Om Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OdooDecisionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OdooMigrationOut"
+                }
               }
             }
           },
@@ -7137,6 +7363,141 @@
         ],
         "title": "ModuleOut"
       },
+      "OdooDecisionIn": {
+        "properties": {
+          "module": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{2,100}$",
+            "title": "Module"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "uninstall",
+              "pending"
+            ],
+            "title": "Action"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Reason",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "module",
+          "action"
+        ],
+        "title": "OdooDecisionIn"
+      },
+      "OdooMigrationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "jobId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobid"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "analysisId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysisid"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "modules": {
+            "items": {},
+            "type": "array",
+            "title": "Modules"
+          },
+          "decisions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Decisions"
+          },
+          "hops": {
+            "items": {},
+            "type": "array",
+            "title": "Hops"
+          },
+          "reconciliation": {
+            "items": {},
+            "type": "array",
+            "title": "Reconciliation"
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "jobId",
+          "mode",
+          "state",
+          "summary",
+          "modules",
+          "decisions",
+          "hops",
+          "reconciliation",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "OdooMigrationOut"
+      },
       "Page_ArtifactOut_": {
         "properties": {
           "items": {
@@ -7837,7 +8198,8 @@
             "type": "string",
             "enum": [
               "JAVA_CAMEL",
-              "DATASTAGE_AIRFLOW"
+              "DATASTAGE_AIRFLOW",
+              "ODOO"
             ],
             "title": "Migrationtype",
             "default": "JAVA_CAMEL"
@@ -7847,7 +8209,8 @@
             "enum": [
               "spring",
               "quarkus",
-              "airflow"
+              "airflow",
+              "odoo19"
             ],
             "title": "Targetruntime"
           },

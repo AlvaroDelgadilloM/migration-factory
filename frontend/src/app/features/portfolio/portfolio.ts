@@ -34,6 +34,7 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       <article><i class="pi pi-th-large" aria-hidden="true"></i><b>{{ list.data()?.total ?? '—' }}</b> proyectos visibles</article>
       <article><i class="pi pi-sync" aria-hidden="true"></i><b>{{ countType('JAVA_CAMEL') }}</b> Java / Camel</article>
       <article><i class="pi pi-share-alt" aria-hidden="true"></i><b>{{ countType('DATASTAGE_AIRFLOW') }}</b> DataStage → Airflow</article>
+      <article><i class="pi pi-database" aria-hidden="true"></i><b>{{ countType('ODOO') }}</b> Odoo 12 → 19</article>
       <article><i class="pi pi-check-circle" aria-hidden="true"></i><b>{{ analyzed() }}</b> con análisis o migración lista</article>
     </div>
 
@@ -59,11 +60,11 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
             <tr class="prow" (click)="open(p)">
               <td>
                 <div class="pname">
-                  <span class="picon" [class.ds]="p.migrationType === 'DATASTAGE_AIRFLOW'" aria-hidden="true">
-                    <i [class]="p.migrationType === 'DATASTAGE_AIRFLOW' ? 'pi pi-share-alt' : 'pi pi-sync'"></i></span>
+                  <span class="picon" [class.ds]="p.migrationType !== 'JAVA_CAMEL'" aria-hidden="true">
+                    <i [class]="'pi ' + (typeIcon[p.migrationType] ?? 'pi-sync')"></i></span>
                   <span class="ptext">
-                    <a [routerLink]="['/p', p.id, p.migrationType === 'DATASTAGE_AIRFLOW' ? 'ds' : 'inventory']" (click)="$event.stopPropagation()"><strong>{{ p.name }}</strong></a>
-                    <small class="muted">{{ p.migrationType === 'DATASTAGE_AIRFLOW' ? 'DataStage → Airflow' : 'Java / Camel' }}@if (p.description) { · {{ p.description }} }</small>
+                    <a [routerLink]="['/p', p.id, home(p.migrationType)]" (click)="$event.stopPropagation()"><strong>{{ p.name }}</strong></a>
+                    <small class="muted">{{ typeLabel(p.migrationType ?? 'JAVA_CAMEL') }}@if (p.description) { · {{ p.description }} }</small>
                   </span>
                 </div>
               </td>
@@ -224,9 +225,12 @@ export class Portfolio {
   dialog = false;
   step = signal(1);
   stepTitles = ['Origen', 'Tipo', 'Datos'];
-  typeFilter = signal<'ALL' | 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW'>('ALL');
-  typeOptions = [{ label: 'Todos', value: 'ALL' }, { label: 'Java / Camel', value: 'JAVA_CAMEL' }, { label: 'DataStage → Airflow', value: 'DATASTAGE_AIRFLOW' }];
-  runtimeLabel: Record<string, string> = { spring: 'Spring Boot', quarkus: 'Quarkus', airflow: 'Apache Airflow' };
+  typeFilter = signal<'ALL' | 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO'>('ALL');
+  typeOptions = [{ label: 'Todos', value: 'ALL' }, { label: 'Java / Camel', value: 'JAVA_CAMEL' }, { label: 'DataStage → Airflow', value: 'DATASTAGE_AIRFLOW' },
+                 { label: 'Odoo 12 → 19', value: 'ODOO' }];
+  typeIcon: Record<string, string> = { DATASTAGE_AIRFLOW: 'pi-share-alt', ODOO: 'pi-database', JAVA_CAMEL: 'pi-sync' };
+  home(t?: string | null) { return t === 'DATASTAGE_AIRFLOW' ? 'ds' : t === 'ODOO' ? 'odoo' : 'inventory'; }
+  runtimeLabel: Record<string, string> = { spring: 'Spring Boot', quarkus: 'Quarkus', airflow: 'Apache Airflow', odoo19: 'Odoo 19 Community' };
   creating = signal(false);
   createError = signal<UiError | null>(null);
   form = this.emptyForm();
@@ -251,6 +255,7 @@ export class Portfolio {
   migrationTypes = [
     { value: 'JAVA_CAMEL', label: 'Java / Camel', hint: 'JBoss o Fuse con Camel 2 → Camel 4 (Spring Boot, Quarkus o Tomcat).' },
     { value: 'DATASTAGE_AIRFLOW', label: 'DataStage → Airflow', hint: 'Exportaciones DSX de IBM DataStage → DAGs de Apache Airflow.' },
+    { value: 'ODOO', label: 'Odoo 12 → 19', hint: 'Base de datos de Odoo Community 12 → 19 con OpenUpgrade (respaldo ZIP de Odoo o pg_dump).' },
   ];
   short = short;
   sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git', agent: 'Agente local' };
@@ -274,15 +279,15 @@ export class Portfolio {
   constructor() { this.load(); }
 
   emptyForm() {
-    return { migrationType: 'JAVA_CAMEL' as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW', sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
+    return { migrationType: 'JAVA_CAMEL' as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO', sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
              localPath: '', repositoryUrl: '', defaultBranch: 'main', credentialRef: '' };
   }
   typeChanged() {
-    this.form.targetRuntime = this.form.migrationType === 'DATASTAGE_AIRFLOW' ? 'airflow' : 'spring';
+    this.form.targetRuntime = this.form.migrationType === 'DATASTAGE_AIRFLOW' ? 'airflow' : this.form.migrationType === 'ODOO' ? 'odoo19' : 'spring';
   }
   /** Type found in the uploaded ZIP (.dsx = DataStage, pom.xml = Java/Camel); git and local sources choose it by hand. */
   detected = computed(() => this.uploadedType());
-  private uploadedType = computed(() => (this.uploaded()?.structure?.['migrationType'] as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | undefined) ?? null);
+  private uploadedType = computed(() => (this.uploaded()?.structure?.['migrationType'] as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO' | undefined) ?? null);
   private applyDetected() {
     const t = this.uploadedType();
     if (t && this.form.sourceType === 'zip') { this.form.migrationType = t; this.typeChanged(); }
@@ -294,6 +299,7 @@ export class Portfolio {
   typeLabel(t: string | null | undefined) { return this.migrationTypes.find(x => x.value === t)?.label ?? '—'; }
   detectedText(u: Upload) {
     const st = u.structure as Record<string, any>;
+    if (st['odooDump']) return `Odoo · respaldo ${st['odooDump']}${st['filestore'] ? ' con filestore' : ' (sin filestore: los adjuntos en disco no viajan)'}`;
     return st['dsxFiles'] ? `DataStage → Airflow · ${st['dsxFiles'].length} exportación(es) DSX`
       : `Java / Camel · raíz Maven ${st['root']} · ${(st['modules'] ?? []).length} módulo(s)`;
   }

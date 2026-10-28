@@ -1318,6 +1318,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/odoo-analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze
+         * @description Restore the uploaded dump on the isolated database server and classify every installed module.
+         */
+        post: operations["analyze_api_v1_projects__project_id__odoo_analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/odoo-migrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_projects__project_id__odoo_migrations_get"];
+        put?: never;
+        /**
+         * Migrate
+         * @description The seven hops on a copy, from the latest analysis; every blocking module needs the architect's decision first.
+         */
+        post: operations["migrate_api_v1_projects__project_id__odoo_migrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/odoo-migrations/{om_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_odoo_migrations__om_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/odoo-migrations/{om_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Decide
+         * @description The architect's decision on a blocking module (role «plan»): uninstall it before migrating, with the reason.
+         */
+        patch: operations["decide_api_v1_odoo_migrations__om_id__decisions_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2296,6 +2374,64 @@ export interface components {
             /** Profiles */
             profiles: unknown[];
         };
+        /** OdooDecisionIn */
+        OdooDecisionIn: {
+            /** Module */
+            module: string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "uninstall" | "pending";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** OdooMigrationOut */
+        OdooMigrationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Jobid */
+            jobId: string | null;
+            /** Mode */
+            mode: string;
+            /** State */
+            state: string;
+            /** Analysisid */
+            analysisId?: string | null;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Modules */
+            modules: unknown[];
+            /** Decisions */
+            decisions: {
+                [key: string]: unknown;
+            };
+            /** Hops */
+            hops: unknown[];
+            /** Reconciliation */
+            reconciliation: unknown[];
+            /** Createdby */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            job?: components["schemas"]["JobOut"] | null;
+        };
         /** Page[ArtifactOut] */
         Page_ArtifactOut_: {
             /** Items */
@@ -2579,12 +2715,12 @@ export interface components {
              * @default JAVA_CAMEL
              * @enum {string}
              */
-            migrationType: "JAVA_CAMEL" | "DATASTAGE_AIRFLOW";
+            migrationType: "JAVA_CAMEL" | "DATASTAGE_AIRFLOW" | "ODOO";
             /**
              * Targetruntime
              * @enum {string}
              */
-            targetRuntime: "spring" | "quarkus" | "airflow";
+            targetRuntime: "spring" | "quarkus" | "airflow" | "odoo19";
             /** Repositoryurl */
             repositoryUrl?: string | null;
             /** Defaultbranch */
@@ -5818,6 +5954,165 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_api_v1_projects__project_id__odoo_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_projects__project_id__odoo_migrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OdooMigrationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migrate_api_v1_projects__project_id__odoo_migrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_odoo_migrations__om_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                om_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OdooMigrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_v1_odoo_migrations__om_id__decisions_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                om_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OdooDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OdooMigrationOut"];
                 };
             };
             /** @description Validation Error */

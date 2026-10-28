@@ -90,3 +90,17 @@ export interface ManualResult { results: (HttpAnswer & { label: string; url: str
 
 // Java / Spring versions each migration target accepts (GET /target-versions)
 export type TargetVersions = S['TargetVersions'];
+
+/** Odoo 12 -> 19 database migration run (mf.api.odoo): analyze (modules classified) or migrate (hops, reconciliation). */
+export interface OdooModule {
+  name: string; author: string; version?: string; origin: 'CORE' | 'OCA' | 'THIRD_PARTY'; outcome: 'OK' | 'WARN' | 'BLOCK'; reason: string;
+  repository?: string | null; availability?: Record<string, boolean>; final?: string | null;
+  path?: { hop: string; module: string; status: string; note?: string | null }[];
+}
+export interface OdooHop { version: string; state: string; exitCode: number | null; errors: number | null; baseVersion: string | null; logTail: string }
+export interface OdooRun {
+  id: string; projectId: string; jobId: string | null; mode: 'analyze' | 'migrate'; state: string; analysisId: string | null;
+  summary: Record<string, any>; modules: OdooModule[]; decisions: Record<string, { action: string; reason: string; by: string; at: string }>;
+  hops: OdooHop[]; reconciliation: { check: string; label: string; before: string[] | null; after: string[] | null; state: string }[];
+  createdBy: string; createdAt: string; job: any;
+}

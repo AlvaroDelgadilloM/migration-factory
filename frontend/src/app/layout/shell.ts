@@ -36,9 +36,14 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
           <div class="project-card">
             <small>Proyecto</small>
             <strong [title]="ctx.project()?.name ?? ''">{{ ctx.project()?.name ?? '…' }}</strong>
-            @if (ctx.project()) { <span class="type-chip" [class.ds]="isDs()" [class.java]="!isDs()">{{ isDs() ? 'DataStage → Airflow' : 'Java / Camel' }}</span> }
+            @if (ctx.project()) { <span class="type-chip" [class.ds]="isDs() || isOdoo()" [class.java]="!isDs() && !isOdoo()">{{ isDs() ? 'DataStage → Airflow' : isOdoo() ? 'Odoo 12 → 19' : 'Java / Camel' }}</span> }
           </div>
-          @if (isDs()) {
+          @if (isOdoo()) {
+            @for (s of odooScreens; track s[0]) {
+              <a [routerLink]="['/p', ctx.projectId(), ...s[0].split('/')]" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+                <i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
+            }
+          } @else if (isDs()) {
             @for (s of dsScreens; track s[0]) {
               <a [routerLink]="['/p', ctx.projectId(), ...s[0].split('/')]" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
                 <i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
@@ -82,7 +87,7 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
         </span>
       </header>
       <main id="main" tabindex="-1">
-        @if (ctx.projectId() && !isDs() && onProjectScreen()) { <mf-flow-progress /> }
+        @if (ctx.projectId() && !isDs() && !isOdoo() && onProjectScreen()) { <mf-flow-progress /> }
         <router-outlet />
       </main>
     </div>`,
@@ -94,6 +99,8 @@ export class Shell {
   tests = TEST_SCREENS;
   dsScreens = DS_SCREENS;
   isDs = computed(() => this.ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW');
+  isOdoo = computed(() => this.ctx.project()?.migrationType === 'ODOO');
+  odooScreens: [string, string, string][] = [['odoo', 'Resumen', 'pi-chart-bar'], ['odoo/modulos', 'Módulos', 'pi-th-large']];
   private url = signal('');
   /** the progress bar belongs to the five Java/Camel step screens, not to settings or tests */
   onProjectScreen = computed(() => /^\/p\/[^/]+\/(inventory|findings|plan|execution|diff|validation)/.test(this.url()));

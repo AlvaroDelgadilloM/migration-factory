@@ -6,6 +6,7 @@ name: Deploy VPS
 # Secrets of the environment "vps cpontabo":
 #   SSH (already configured): VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_SSH_PASSPHRASE, VPS_KNOWN_HOSTS, VPS_PATH (deploy folder)
 #   App: POSTGRES_PASSWORD, REDIS_PASSWORD, MF_DEV_JWT_SECRET (required), MF_CRED_GITHUB (optional, draft PRs),
+#        MF_ODOO_DB_PASSWORD + variable MF_ODOO_ENABLED=true (optional, Odoo 12 -> 19: builds the hop runners, starts profile odoo),
 #        MF_S3_ACCESS_KEY/MF_S3_SECRET_KEY + variables MF_ARTIFACT_BACKEND=s3, MF_S3_BUCKET, MF_S3_ENDPOINT_URL, MF_S3_REGION (optional),
 #        MF_CRED_VAULT_TOKEN + variable MF_VAULT_ADDR (optional, credentials as vault:mount/path[#field]),
 #        MF_CRED_AI (optional, Anthropic API key for DataStage AI proposals; also set the variable MF_AI_ENABLED=true)
@@ -49,6 +50,17 @@ jobs:
               -t "$REG/mf-$img:$SHA" -t "$REG/mf-$img:main" \
               --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" .
           done
+      - name: Ejecutores de saltos Odoo 12 → 19 (solo si MF_ODOO_ENABLED y solo los que falten)
+        if: vars.MF_ODOO_ENABLED == 'true'
+        env:
+          REG: ${{ steps.reg.outputs.registry }}
+        run: |
+          for row in $(jq -r '.hops[] | "\(.version)=\(.openupgrade)"' rules/odoo/hops.json); do
+            v="${row%%=*}"; c="${row##*=}"; tag="$REG/mf-odoo-hop:$v-${c:0:8}"
+            docker manifest inspect "$tag" > /dev/null 2>&1 && { echo "$tag ya existe"; continue; }
+            docker buildx build --push --platform linux/amd64 -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" \
+              -t "$tag" --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" .
+          done
 
   deploy:
     needs: images
@@ -63,7 +75,8 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           sed -E -e '/^\s+build: \{.*\}\s*$/d' \
-                 -e "s#image: migration-factory/(api|worker|frontend):local#image: $REG/mf-\1:$SHA#" docker-compose.yml > stack.yml
+                 -e "s#image: migration-factory/(api|worker|frontend):local#image: $REG/mf-\1:$SHA#" \
+                 -e "s#image: migration-factory/odoo-hop:#image: $REG/mf-odoo-hop:#" docker-compose.yml > stack.yml
           ! grep -nE '^\s+build:|migration-factory/.*:local' stack.yml
           grep -n "image:" stack.yml
       - name: SSH
@@ -89,6 +102,8 @@ jobs:
           MF_CRED_GITHUB: ${{ secrets.MF_CRED_GITHUB }}
           MF_CRED_AI: ${{ secrets.MF_CRED_AI }}
           MF_CRED_TEST_DB: ${{ secrets.MF_CRED_TEST_DB }}
+          MF_ODOO_DB_PASSWORD: ${{ secrets.MF_ODOO_DB_PASSWORD }}
+          COMPOSE_PROFILES: ${{ vars.MF_ODOO_ENABLED == 'true' && 'odoo' || '' }}
           MF_CRED_VAULT_TOKEN: ${{ secrets.MF_CRED_VAULT_TOKEN }}
           MF_S3_ACCESS_KEY: ${{ secrets.MF_S3_ACCESS_KEY }}
           MF_S3_SECRET_KEY: ${{ secrets.MF_S3_SECRET_KEY }}
@@ -112,7 +127,7 @@ jobs:
             [ -n "${!v}" ] || { echo "Falta el secret obligatorio $v en el environment"; exit 1; }
           done
           umask 077
-          for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_CRED_AI MF_CRED_TEST_DB MF_AI_ENABLED MF_CRED_VAULT_TOKEN MF_VAULT_ADDR MF_S3_ACCESS_KEY MF_S3_SECRET_KEY \
+          for v in POSTGRES_PASSWORD REDIS_PASSWORD MF_DEV_JWT_SECRET MF_CRED_GITHUB MF_CRED_AI MF_CRED_TEST_DB MF_ODOO_DB_PASSWORD COMPOSE_PROFILES MF_AI_ENABLED MF_CRED_VAULT_TOKEN MF_VAULT_ADDR MF_S3_ACCESS_KEY MF_S3_SECRET_KEY \
                    MF_ARTIFACT_BACKEND MF_S3_BUCKET MF_S3_ENDPOINT_URL MF_S3_REGION MF_ENV MF_AUTH_MODE MF_OIDC_ISSUER \
                    MF_OIDC_AUDIENCE MF_OIDC_JWKS_URL MF_HOST_SOURCES_DIR MF_UI_BIND MF_MAVEN_EXTRA_REPOS MF_TEST_ALLOWED_HOSTS; do
             printf '%s=%s\n' "$v" "${!v}"

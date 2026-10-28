@@ -9,6 +9,8 @@ export const routes: Routes = [
     path: '', component: Shell, canActivate: [authGuard], children: [
       { path: '', pathMatch: 'full', redirectTo: 'portfolio' },
       { path: 'portfolio', title: 'Cartera', loadComponent: () => import('./features/portfolio/portfolio').then(m => m.Portfolio) },
+      { path: 'p/:projectId/odoo', title: 'Resumen · Odoo', loadComponent: () => import('./features/odoo/overview').then(m => m.OdooOverview) },
+      { path: 'p/:projectId/odoo/modulos', title: 'Módulos · Odoo', loadComponent: () => import('./features/odoo/modules').then(m => m.OdooModules) },
       { path: 'p/:projectId/ds', title: 'Resumen · DataStage', loadComponent: () => import('./features/datastage/overview').then(m => m.DsOverview) },
       { path: 'p/:projectId/ds/jobs', title: 'Jobs · DataStage', loadComponent: () => import('./features/datastage/jobs').then(m => m.DsJobs) },
       { path: 'p/:projectId/ds/oleadas', title: 'Oleadas · DataStage', loadComponent: () => import('./features/datastage/waves').then(m => m.DsWaves) },

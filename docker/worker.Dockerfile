@@ -2,11 +2,11 @@ FROM eclipse-temurin:25.0.4.1_1-jdk-noble AS jdk25
 # JDK 21 + Maven 3.9.11 (pinned) + Python 3.12 for the orchestration code. No Docker socket, non-root.
 FROM maven:3.9.11-eclipse-temurin-21-noble
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv git util-linux curl \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv git util-linux curl postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv \
     && useradd --uid 10001 --create-home mf \
-    && mkdir -p /artifacts /sources /work /m2 && chown 10001 /artifacts /work /m2
+    && mkdir -p /artifacts /sources /work /m2 /odoo-addons && chown 10001 /artifacts /work /m2 /odoo-addons
 # Second JDK for migrations chosen with Java 25 (mf.versions): the official Temurin 25.0.4.1 image, pinned and multi-arch
 # (amd64 on the VPS, arm64 on Apple silicon). The default JDK (JAVA_HOME, from the base image) stays 21; the worker uses this
 # one only to build and run Java 25 results.

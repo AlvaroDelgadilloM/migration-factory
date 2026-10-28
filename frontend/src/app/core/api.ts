@@ -3,8 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
   Artifact, AuditEvent, Catalog, DiffFile, DiffFileDetail, Execution, Finding, FindingDetail, LogEvent, Member, Module,
-  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, TargetVersions, Upload, Validation,
-} from './models';
+  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, TargetVersions, Upload, Validation, OdooRun } from './models';
 
 const B = '/api/v1';
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -126,6 +125,13 @@ export class Api {
   }
   uploadDataStageReconciliation(id: string, result: unknown) {
     return this.send<DataStageMigration>('POST', `/datastage-migrations/${id}/reconciliations`, result);
+  }
+  odooRuns(projectId: string) { return this.get<OdooRun[]>(`/projects/${projectId}/odoo-migrations`); }
+  startOdoo(projectId: string, mode: 'analyze' | 'migrate') {
+    return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/${mode === 'analyze' ? 'odoo-analyses' : 'odoo-migrations'}`, {});
+  }
+  decideOdoo(id: string, module: string, action: 'uninstall' | 'pending', reason: string) {
+    return this.send<OdooRun>('PATCH', `/odoo-migrations/${id}/decisions`, { module, action, reason });
   }
   dataStageMigrations(projectId: string) { return this.get<DataStageMigration[]>(`/projects/${projectId}/datastage-migrations`); }
   startDataStageMigration(projectId: string, body: unknown) {
