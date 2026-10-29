@@ -374,7 +374,7 @@ export class Portfolio {
   }
   open(p: Project) {
     this.ctx.select(p.id);
-    this.router.navigate(['/p', p.id, p.migrationType === 'DATASTAGE_AIRFLOW' ? 'ds' : 'inventory']);
+    this.router.navigate(['/p', p.id, this.home(p.migrationType)]);
   }
 
   async create() {

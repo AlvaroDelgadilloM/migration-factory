@@ -252,6 +252,12 @@ export class Inventory {
 
   constructor() {
     effect(() => { const id = this.projectId(); this.ctx.select(id); this.loadScans(true); });
+    // a DataStage or Odoo project has its own screens: an old link or a wrong turn to this Java one goes there
+    effect(() => {
+      const p = this.ctx.project();
+      const home = p?.id === this.projectId() ? ({ ODOO: 'odoo', DATASTAGE_AIRFLOW: 'ds' } as Record<string, string>)[p.migrationType ?? ''] : undefined;
+      if (home) untracked(() => this.router.navigate(['/p', p!.id, home], { replaceUrl: true }));
+    });
     this.versions.load(() => this.api.targetVersions());
     // until someone chooses, ONE suggestion: Tomcat WAR when the analysis recommends it (a Fuse/Karaf workspace), else the
     // project's runtime. It only reads the project and the scan: reading the destination here would make it re-run on its own write.
