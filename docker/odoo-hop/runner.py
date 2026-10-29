@@ -16,7 +16,8 @@ DB = {'host': os.environ.get('MF_ODOO_DB_HOST', 'odoo-db'), 'user': os.environ.g
       'password': os.environ['MF_ODOO_DB_PASSWORD'], 'port': int(os.environ.get('MF_ODOO_DB_PORT', '5432'))}
 OU = '/opt/openupgrade'
 TAIL = 20000
-FATAL = ('Traceback (most recent call last)', ' CRITICAL ', 'Failed to load registry')
+# not 'Traceback': Odoo logs some at INFO (an attachment file missing from the filestore) and goes on
+FATAL = (' CRITICAL ', 'Failed to load registry')
 
 
 def command(database, extra_paths, install=None):
@@ -101,7 +102,7 @@ def execute(conn, task_id, database, extra_paths, install=None):
     if error_lines and error_lines[0] not in tail:
         tail = 'Líneas ERROR del log (%d):\n%s\n...\n%s' % (errors, '\n'.join(error_lines), tail)
     # Odoo logs some recoverable problems as ERROR and goes on (OpenUpgrade keeping an obsolete record still referenced, a module
-    # left uninstalled): those are counted and shown; the hop fails on a non-zero exit, a traceback or a registry that did not load
+    # left uninstalled): those are counted and shown; the hop fails on a non-zero exit, a CRITICAL line or a registry that did not load
     state = 'cancelled' if cancelled(conn, task_id) else 'succeeded' if proc.returncode == 0 and not fatal else 'failed'
     with conn, conn.cursor() as cur:
         cur.execute("""update mf_hop_task set state = %s, exit_code = %s, errors = %s, log_tail = %s, finished_at = now()
