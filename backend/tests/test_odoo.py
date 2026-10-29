@@ -38,6 +38,8 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     assert up.status_code == 201, up.text
     st = up.json()['structure']
     assert st['migrationType'] == 'ODOO' and st['odooDump'] == 'dump.sql' and st['filestore']
+    code = upload(client, token, backup_zip({'my_sale/__manifest__.py': '{}', 'my_sale/models/sale.py': '', 'my_sale/views/v.xml': ''}))
+    assert code.status_code == 422 and code.json()['code'] == 'ODOO_CODE_NOT_DB' and 'my_sale' in code.json()['message']
     plain = upload(client, token, backup_zip({'prod.dump': 'PGDMP'}))
     assert plain.json()['structure']['odooDump'] == 'prod.dump'
     body = {'name': f'Odoo {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': up.json()['id'], 'migrationType': 'ODOO', 'targetRuntime': 'odoo19'}

@@ -227,7 +227,7 @@ def test_platform_datastage_project_upload_job_and_artifacts(client, token, tmp_
     with zipfile.ZipFile(md, 'w') as zf:
         zf.writestr('docs/51.md', '# x')
     none = client.post('/api/v1/uploads', content=md.getvalue(), headers=hdr | {'X-Migration-Type': 'AUTO'})
-    assert none.status_code == 422 and 'ni exportaciones DataStage' in none.text and '1 .md' in none.text
+    assert none.status_code == 422 and 'exportaciones DataStage (.dsx) ni un respaldo de Odoo' in none.text and '1 .md' in none.text
 
 
 def test_cancelling_a_queued_datastage_run_frees_the_project(client, token, tmp_path):
