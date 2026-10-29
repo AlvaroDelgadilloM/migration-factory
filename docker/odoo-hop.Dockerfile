@@ -12,10 +12,10 @@ RUN (pip3 install --no-cache-dir --no-deps --break-system-packages openupgradeli
      || pip3 install --no-cache-dir --no-deps openupgradelib==3.13.7 cssselect==1.2.0 importlib_metadata==6.7.0 zipp==3.15.0 typing_extensions==4.7.1) \
     && if [ "${ODOO}" != "13.0" ]; then \
          d=$(python3 -c "import openupgradelib, os; print(os.path.dirname(openupgradelib.__file__))") \
-         && curl -fsSL "https://codeload.github.com/OCA/openupgradelib/tar.gz/${OUL_COMMIT}" | tar -xz -C "$d" --strip-components=2 "openupgradelib-${OUL_COMMIT}/openupgradelib"; fi \
+         && curl -fsSL --retry 4 --retry-all-errors "https://codeload.github.com/OCA/openupgradelib/tar.gz/${OUL_COMMIT}" | tar -xz -C "$d" --strip-components=2 "openupgradelib-${OUL_COMMIT}/openupgradelib"; fi \
     && python3 -c "import openupgradelib.openupgrade" \
     && mkdir -p /opt/openupgrade /opt/mf /hop-logs \
-    && curl -fsSL "https://codeload.github.com/OCA/OpenUpgrade/tar.gz/${OU_COMMIT}" | tar -xz -C /opt/openupgrade --strip-components=1 \
+    && curl -fsSL --retry 4 --retry-all-errors "https://codeload.github.com/OCA/OpenUpgrade/tar.gz/${OU_COMMIT}" | tar -xz -C /opt/openupgrade --strip-components=1 \
     && chown odoo /hop-logs \
     && if [ "${ODOO}" = "13.0" ]; then rm -rf /usr/lib/python3/dist-packages/odoo /usr/bin/odoo; fi
 # 13.0 is a full fork of Odoo (its addons carry the migration scripts): the image's own Odoo is removed so no module can be

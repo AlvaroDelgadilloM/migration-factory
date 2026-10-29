@@ -47,7 +47,7 @@ jobs:
           for row in $(jq -r '.hops[] | "\(.version)=\(.openupgrade)"' rules/odoo/hops.json); do
             v="${row%%=*}"; c="${row##*=}"
             echo "::group::Salto a $v"
-            docker build -q -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" --build-arg OUL_COMMIT="$(jq -r .openupgradelibCommit rules/odoo/hops.json)" -t "mf-odoo-hop:$v" .
+            docker build --progress=plain -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" --build-arg OUL_COMMIT="$(jq -r .openupgradelibCommit rules/odoo/hops.json)" -t "mf-odoo-hop:$v" .
             docker run -d --name "hop-$v" --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
               -v /tmp/hop-logs:/hop-logs "mf-odoo-hop:$v"
             python backend/tests/e2e/odoo_chain.py hop "$v" || { docker logs "hop-$v" | tail -50; exit 1; }
