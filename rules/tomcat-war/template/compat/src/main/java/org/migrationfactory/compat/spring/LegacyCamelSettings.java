@@ -24,6 +24,17 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
  */
 public class LegacyCamelSettings implements BeanPostProcessor {
 
+	private final boolean consumersOff;
+
+	public LegacyCamelSettings() {
+		this(false);
+	}
+
+	/** consumersOff: el modulo arranca sin sus colas ni tareas programadas (modo interno de una ola, o mf.consumers.off). */
+	public LegacyCamelSettings(boolean consumersOff) {
+		this.consumersOff = consumersOff;
+	}
+
 	@Override
 	public Object postProcessAfterInitialization(Object bean, String beanName) {
 		if (bean instanceof CamelContextFactoryBean) {
@@ -42,6 +53,9 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 			((ModelCamelContext) context).addModelLifecycleStrategy(new ProducesContentType());
 			((ModelCamelContext) context).addModelLifecycleStrategy(new CxfOperationHeaders());
 			context.addLifecycleStrategy(new NoAutomaticHttpRetries());
+			if (consumersOff) {
+				((ModelCamelContext) context).addModelLifecycleStrategy(new PassiveConsumers(context));
+			}
 		}
 		return bean;
 	}
@@ -66,6 +80,43 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 					}
 					builder.disableAutomaticRetries();
 				});
+			}
+		}
+	}
+
+	/**
+	 * Despliegue por olas: las rutas que consumen por su cuenta (colas, temporizadores, tareas programadas, archivos, sondeo de
+	 * base de datos) no arrancan; las que responden a una llamada (REST, SOAP, direct, direct-vm) si. Asi un modulo puede
+	 * correr en Tomcat sin procesar dos veces lo que el sistema actual todavia procesa.
+	 */
+	static final class PassiveConsumers extends ModelLifecycleStrategySupport {
+
+		static final java.util.Set<String> SCHEMES = java.util.Set.of("activemq", "jms", "amqp", "sjms", "sjms2", "stomp", "mqtt", "paho",
+				"kafka", "rabbitmq", "spring-rabbitmq", "timer", "quartz", "quartz2", "scheduler", "cron", "file", "ftp", "ftps", "sftp", "sql",
+				"jpa", "mybatis", "imap", "imaps", "pop3", "pop3s");
+
+		private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(PassiveConsumers.class);
+
+		private final CamelContext context;
+
+		PassiveConsumers(CamelContext context) {
+			this.context = context;
+		}
+
+		@Override
+		public void onAddRouteDefinition(RouteDefinition route) {
+			String from = route.getInput() == null ? null : route.getInput().getEndpointUri();
+			if (from != null && from.contains("{{")) {
+				try {
+					from = context.resolvePropertyPlaceholders(from);
+				} catch (RuntimeException e) {
+					LOG.warn("Ruta {}: no se pudo resolver {} para saber si consume de una cola o tarea", route.getRouteId(), from);
+				}
+			}
+			int colon = from == null ? -1 : from.indexOf(':');
+			if (colon > 0 && SCHEMES.contains(from.substring(0, colon))) {
+				route.setAutoStartup("false");
+				LOG.info("Ruta {} sin arrancar: consume de {} y su ola aun no la procesa aqui", route.getRouteId(), from.substring(0, colon));
 			}
 		}
 	}

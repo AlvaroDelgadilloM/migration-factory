@@ -683,6 +683,7 @@ class HttpTestRunIn(Dto):
     params: dict[Annotated[str, Field(pattern=r'^\w{1,60}$')], Annotated[str, Field(max_length=200, pattern=r'^[\w.\-~%]+$')]] = \
         Field(default_factory=dict, max_length=50)
     container: str | None = Field(default=None, pattern=r'^[\w.\-]{1,60}$')
+    wave: str | None = Field(default=None, pattern=r'^[\w.\-]{1,40}$')  # source migration: only that deployment wave
     data_package_id: uuid.UUID | None = None  # POST /projects/{id}/http-tests/data-packages; none = smoke test
     original: HttpTarget | None = None
     migrated: HttpTarget | None = None
@@ -698,6 +699,8 @@ class HttpTestRunIn(Dto):
             raise ValueError('executionId es obligatorio para probar un proyecto migrado')
         if self.source == 'urls' and not (self.original and self.migrated and self.cases and self.name):
             raise ValueError('Con sistemas ya levantados indique name, original, migrated y al menos un caso')
+        if self.source != 'migration' and self.wave:
+            raise ValueError('La ola solo aplica al probar una migración')
         if self.source != 'migration' and self.performance:
             raise ValueError('La prueba de rendimiento levanta los dos sistemas: solo está disponible al probar una migración')
         return self
@@ -715,6 +718,7 @@ class HttpTestRunOut(Dto):
     variables: dict = {}
     params: dict = {}
     container: str | None = None
+    wave: str | None = None
     data_artifact_id: uuid.UUID | None = None
     original: dict | None = None
     migrated: dict | None = None
@@ -775,6 +779,7 @@ class HttpTestSource(Dto):
     state: str
     build: str | None
     containers: list[str]
+    waves: list[dict] = []  # deployment waves: [{name, title}]
     war: bool
 
 

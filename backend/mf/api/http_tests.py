@@ -71,7 +71,9 @@ def sources(project_id: uuid.UUID, db: Session = Depends(get_db), me: Principal 
     rows = db.scalars(select(WorkspaceMigration).where(WorkspaceMigration.project_id == project_id, WorkspaceMigration.target == 'tomcat-war')
                       .order_by(WorkspaceMigration.created_at.desc()).limit(20))
     return [{'workspace_migration_id': w.id, 'scan_id': w.scan_id, 'created_at': w.created_at, 'state': w.state,
-             'build': ((w.summary or {}).get('build') or {}).get('status'), 'containers': _containers(w), 'war': war_artifact(db, w) is not None}
+             'build': ((w.summary or {}).get('build') or {}).get('status'), 'containers': _containers(w),
+             'waves': [{'name': x['name'], 'title': x.get('title') or ''} for x in ((w.summary or {}).get('deployWaves') or {}).get('waves') or []],
+             'war': war_artifact(db, w) is not None}
             for w in rows]
 
 
@@ -206,11 +208,12 @@ def start_run(project_id: uuid.UUID, body: HttpTestRunIn, request: Request, idem
     if db.scalar(select(HttpTestRun.id).where(HttpTestRun.project_id == project_id, HttpTestRun.state.in_(('queued', 'running')))):
         raise ApiError(409, 'INVALID_STATE', 'Ya hay una prueba automática en curso para este proyecto')
     name = body.name or (f"Proyecto migrado {str(body.execution_id)[:8]}" if body.source == 'execution' else
-                         f"Migración {str(body.workspace_migration_id)[:8]}" + (f' · {body.container}' if body.container else ''))
+                         f"Migración {str(body.workspace_migration_id)[:8]}" + (f' · {body.container}' if body.container else '')
+                         + (f' · ola {body.wave}' if body.wave else ''))
     run = HttpTestRun(project_id=project_id, name=name, source=body.source, workspace_migration_id=body.workspace_migration_id,
                       execution_id=body.execution_id, variables={k: v.model_dump(exclude_none=True) for k, v in body.variables.items()},
                       params=dict(body.params),
-                      container=body.container, data_artifact_id=body.data_package_id, original=original, migrated=migrated,
+                      container=body.container, wave=body.wave, data_artifact_id=body.data_package_id, original=original, migrated=migrated,
                       screenshots=body.screenshots, cases=[c.model_dump(mode='json', exclude_none=True) for c in body.cases],
                       performance=body.performance.model_dump() if body.performance else None, created_by=me.subject, summary={})
     db.add(run)

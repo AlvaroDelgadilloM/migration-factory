@@ -1338,6 +1338,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/odoo-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Port Code
+         * @description Custom module code: inventory, automatic port to 19 and an install check of each module on a new Odoo 19.
+         */
+        post: operations["port_code_api_v1_projects__project_id__odoo_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/odoo-migrations": {
         parameters: {
             query?: never;
@@ -2061,6 +2081,8 @@ export interface components {
             };
             /** Container */
             container?: string | null;
+            /** Wave */
+            wave?: string | null;
             /** Datapackageid */
             dataPackageId?: string | null;
             original?: components["schemas"]["HttpTarget"] | null;
@@ -2117,6 +2139,8 @@ export interface components {
             };
             /** Container */
             container?: string | null;
+            /** Wave */
+            wave?: string | null;
             /** Dataartifactid */
             dataArtifactId?: string | null;
             /** Original */
@@ -2176,6 +2200,13 @@ export interface components {
             build: string | null;
             /** Containers */
             containers: string[];
+            /**
+             * Waves
+             * @default []
+             */
+            waves: {
+                [key: string]: unknown;
+            }[];
             /** War */
             war: boolean;
         };
@@ -2382,7 +2413,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "uninstall" | "pending";
+            action: "uninstall" | "apply" | "ignore" | "pending";
             /**
              * Reason
              * @default
@@ -5968,6 +5999,37 @@ export interface operations {
         };
     };
     analyze_api_v1_projects__project_id__odoo_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    port_code_api_v1_projects__project_id__odoo_code_post: {
         parameters: {
             query?: never;
             header?: never;

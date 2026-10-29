@@ -67,7 +67,15 @@ const EXAMPLE = `{
               <p-select inputId="mg" [options]="list" optionLabel="label" optionValue="workspaceMigrationId" [(ngModel)]="migrationId" /></span>
             <span class="field"><label for="ct">Contenedor de origen</label>
               <p-select inputId="ct" [options]="containerOptions()" optionLabel="label" optionValue="value" [(ngModel)]="container" /></span>
+            @if (waveOptions().length > 1) {
+              <span class="field"><label for="wv">Ola de despliegue</label>
+                <p-select inputId="wv" [options]="waveOptions()" optionLabel="label" optionValue="value" [(ngModel)]="wave" /></span>
+            }
           </div>
+          @if (wave) {
+            <p class="muted small">Se levanta solo la ola {{ wave }}, como en su despliegue (<code>mf.waves={{ wave }}</code>). Lo que llame de otras olas
+              arranca en modo interno, sin colas ni tareas, y los casos salen solo de los servicios de esta ola.</p>
+          }
           <div class="pkg" style="margin-top:12px">
             <b>Datos de prueba</b> <span class="muted small">(opcional)</span>
             @if (pkg(); as p) {
@@ -180,7 +188,9 @@ casos.json              casos extra con el formato de la batería</pre>
         }
         @if (s.startup; as st) {
           <p>{{ s.mode === 'DATOS' ? 'Con el paquete de datos de prueba.' : 'Prueba de humo: bases vacías y sistemas externos simulados (sin datos del cliente).' }}
-            Contenedor <b>{{ s.container || 'todos' }}</b>. Arrancaron <b>{{ st.original.started }} de {{ st.original.total }}</b> módulos en el original
+            Contenedor <b>{{ s.container || 'todos' }}</b>@if (s.wave) { · ola <b>{{ s.wave }}</b> }.
+            @if (s.internalModules?.length) { En modo interno (los usa la ola): {{ s.internalModules?.join(', ') }}. }
+            Arrancaron <b>{{ st.original.started }} de {{ st.original.total }}</b> módulos en el original
             y <b>{{ st.migrado.started }} de {{ st.migrado.total }}</b> en el migrado.</p>
           @if (st.original.failed.length || st.migrado.failed.length) {
             <p class="small">No arrancaron — original: {{ st.original.failed.join(', ') || 'ninguno' }} · migrado: {{ st.migrado.failed.join(', ') || 'ninguno' }}.
@@ -250,8 +260,9 @@ export class PruebasAutomaticas {
   runs = new Loader<HttpTestRun[]>();
   sources = new Loader<(HttpTestSource & { label: string })[]>();
   get migrationId() { return this.migrationSig(); }
-  set migrationId(v: string | null) { this.migrationSig.set(v); this.container = ''; }
+  set migrationId(v: string | null) { this.migrationSig.set(v); this.container = ''; this.wave = ''; }
   container = '';
+  wave = '';
   pkg = signal<DataPackage | null>(null);
   pkgError = signal<UiError | null>(null);
   showFormat = signal(false);
@@ -285,6 +296,11 @@ export class PruebasAutomaticas {
     const m = this.sources.data()?.find(s => s.workspaceMigrationId === this.migrationSig());
     return [{ label: 'Todos los módulos', value: '' }, ...(m?.containers ?? []).map(c => ({ label: c, value: c }))];
   });
+  waveOptions = computed(() => {
+    const m = this.sources.data()?.find(s => s.workspaceMigrationId === this.migrationSig());
+    return [{ label: 'Todas las olas', value: '' },
+            ...((m?.waves ?? []) as { name: string; title?: string }[]).map(w => ({ label: `Ola ${w.name}${w.title ? ' · ' + w.title : ''}`, value: w.name }))];
+  });
   sides = computed<Side[]>(() => {
     const r = this.selected(), c = this.current();
     if (!r || !c) return [];
@@ -317,7 +333,7 @@ export class PruebasAutomaticas {
     if (r.source === 'execution') return `Proyecto migrado · ${this.sum(r).runtime ?? ''}${this.sum(r).mode === 'SMOKE' ? ' · humo' : ''}`;
     if (r.source !== 'migration') return 'Sistemas levantados';
     const m = this.sum(r).mode ?? (r.dataArtifactId ? 'DATOS' : 'HUMO');
-    return `Migración · ${m === 'DATOS' ? 'con datos' : 'humo'}${r.container ? ' · ' + r.container : ''}`;
+    return `Migración · ${m === 'DATOS' ? 'con datos' : 'humo'}${r.container ? ' · ' + r.container : ''}${r.wave ? ' · ola ' + r.wave : ''}`;
   }
 
   running() { return this.runs.data()?.some(r => r.state === 'queued' || r.state === 'running'); }
@@ -390,7 +406,7 @@ export class PruebasAutomaticas {
 
   startMigration() {
     if (this.migrationReason()) return;
-    return this.launch({ source: 'migration', workspaceMigrationId: this.migrationId, container: this.container || null,
+    return this.launch({ source: 'migration', workspaceMigrationId: this.migrationId, container: this.container || null, wave: this.wave || null,
                          dataPackageId: this.pkg()?.id ?? null, screenshots: this.screenshots,
                          performance: this.perf ? { users: Number(this.perfUsers) || 10, seconds: Number(this.perfSeconds) || 60 } : null });
   }

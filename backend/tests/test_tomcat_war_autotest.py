@@ -149,3 +149,15 @@ def test_war_modules_are_found_with_and_without_containers(tmp_path):
     jar(war, {'WEB-INF/lib/camel-core.jar': (lib / 'camel-core.jar').read_bytes()})
     with pytest.raises(autotest.AutoTestError):
         autotest.explode_war(war, tmp_path / 'out2')
+
+
+def test_a_wave_is_tested_with_what_it_calls_in_other_waves_in_internal_mode(tmp_path):
+    def mod(wave, needs=()):
+        return {'dir': tmp_path, 'containers': [], 'wave': wave, 'needs': list(needs)}
+    deployed = {'common-util': mod('0'), 'member-security': mod('1', ['common-util']), 'servlets': mod(''),
+                'booking': mod('2', ['member-security', 'ancillary-ws']), 'ancillary-ws': mod('4', ['common-util'])}
+    started, internal = autotest.by_wave(deployed, '2')
+    assert sorted(started) == ['ancillary-ws', 'booking', 'common-util', 'member-security', 'servlets']
+    assert internal == ['ancillary-ws', 'common-util', 'member-security']
+    with pytest.raises(autotest.AutoTestError, match='olas: 0, 1, 2, 4'):
+        autotest.by_wave(deployed, '9')

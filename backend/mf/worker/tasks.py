@@ -1066,6 +1066,7 @@ def _workspace_tomcat_war(db, wm, scan, src, ctx):
                   'equivalence': res['equivalence'], 'configKeys': res['configKeys'] | {'missing': res['configKeys']['missing'][:300]},
                   'clientConfig': bool(cfg),
                   'migrationWaves': [{'wave': 'WAR', 'projects': sorted(results), 'status': wave_status}], 'artifacts': arts,
+                  'deployWaves': res.get('waves'),  # deployment and rollback by wave (client config "waves", docs/19)
                   'exitCode': 0 if status in ('SUCCEEDED', 'PARTIAL_SUCCESS') else 2,
                   'note': 'Compilar prueba los POM y la API de Camel 4; la equivalencia funcional es el gate G4 (migrate.py verify).'}
     db.commit()
@@ -1178,7 +1179,7 @@ def _http_compare_migration(db, run, out: Path, ctx: Context) -> dict:
             raise StepFailure('JDK_MISSING', str(e)) from None
         return autotest.run(src, war_file, out, run.container or '', data, run.screenshots,
                             timeout=min(900, get_settings().workspace_timeout_seconds), log=lambda m: ctx.emit('info', 'compare', m),
-                            migrated_java_home=jdk, performance=run.performance)
+                            migrated_java_home=jdk, performance=run.performance, wave=run.wave or '')
     except autotest.AutoTestError as e:
         raise StepFailure('AUTOTEST_FAILED', str(e)[:2000]) from None
     finally:

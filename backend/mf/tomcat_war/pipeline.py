@@ -19,7 +19,7 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 
-from . import blueprint, config_keys
+from . import blueprint, config_keys, waves
 
 RULES_DIR = Path(__file__).resolve().parents[3] / 'rules' / 'tomcat-war'
 BOMS_DIR = Path(__file__).resolve().parents[3] / 'rules' / 'camel' / 'boms'
@@ -330,6 +330,7 @@ def validate_config(cfg: dict) -> dict:
             raise InvalidInput(f"Parche incompleto ({', '.join(sorted(missing))}): {p.get('name', p)}")
         if p.get('regex'):
             re.compile(p['find'])
+    waves.validate(cfg.get('waves'))
     c = cfg.get('containers')
     if c and not (c.get('names') and c.get('skipPattern')):
         raise InvalidInput('containers requiere names y skipPattern')
@@ -399,6 +400,18 @@ def migrate(source: Path, out: Path, config: Path | None = None, log=lambda m: N
     write(ws / 'modules/pom.xml', _aggregator(g, v, 'migrated-parent', 'migrated-modules', 'Modulos migrados',
                                                '\t<modules>\n' + '\n'.join(f'\t\t<module>{n}</module>' for n in names) + '\n\t</modules>'))
     _template(ws, rules, cfg)
+    wave_plan = None
+    if cfg.get('waves'):  # deployment and rollback by wave: each module says its wave and what it calls in other modules
+        needs = waves.links(ws, modules)
+        wave_plan = waves.plan(cfg['waves'], modules, needs)
+        for m in modules:
+            lines = waves.properties(m['artifactId'], wave_plan, needs)
+            if not (lines and m['xml']):
+                continue
+            props = ws / 'modules' / m['artifactId'] / 'src/main/resources/META-INF/modules' / m['artifactId'] / 'module.properties'
+            head = read(props) if props.exists() else f'# GENERADO por Migration Factory{NL}'
+            write(props, head + NL.join(lines) + NL)
+        report.append(f"== olas: {', '.join(w['name'] for w in wave_plan['waves'])} (module.properties: wave y needs)")
     overlay = cfg.get('overlay')
     if overlay:  # client additions (extra web.xml entries, datasources of the target environment...): copied last, over the result
         ov = (Path(config).resolve().parent / overlay).resolve()
@@ -407,12 +420,13 @@ def migrate(source: Path, out: Path, config: Path | None = None, log=lambda m: N
         shutil.copytree(ov, ws, dirs_exist_ok=True)
     wars, clashes = container_wars(ws, modules, cfg, report)
     unresolved = blueprint.unresolved_imports({m['artifactId']: m.pop('xml') for m in modules})
-    manual = [f"{m['artifactId']}: {line}" for m in modules for line in m['manual']] + clashes
+    manual = [f"{m['artifactId']}: {line}" for m in modules for line in m['manual']] + clashes + (waves.manual(wave_plan) if wave_plan else [])
     result = {
         'profile': rules['profile']['key'], 'rulesVersion': rules['version'], 'source': str(source), 'output': str(ws),
         'status': 'PARTIAL_SUCCESS' if manual or unresolved else 'SUCCEEDED',
         'totals': totals | {'modules': len(modules)}, 'modules': modules, 'manualActions': manual, 'unresolvedServices': unresolved,
         'wars': wars,
+        'waves': {k: v for k, v in wave_plan.items() if k != 'waveOf'} if wave_plan else None,
         'configKeys': config_keys.scan(source),  # keys the code reads that must come from the target etc folder
     }
     reports = out / 'reports'
@@ -527,6 +541,8 @@ def report_markdown(result: dict, lines: list) -> str:
         out += [f"| {u['module']} | `{u['interface']}` | {u['componentName'] or '—'} |" for u in result['unresolvedServices']] + ['']
     if result['manualActions']:
         out += ['## Revisión manual', ''] + [f'- {m}' for m in result['manualActions']] + ['']
+    if result.get('waves'):
+        out += [waves.markdown(result['waves'])]
     if result.get('configKeys'):
         out += [config_keys.markdown(result['configKeys'])]
     out += ['## Detalle por módulo', '', '```text'] + lines + ['```', '']

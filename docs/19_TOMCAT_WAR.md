@@ -82,7 +82,8 @@ Las decisiones de un cliente no viven en el motor:
   "containers": {"names": ["mobile", "web1"], "file": ".gitlab-ci.yml", "skipPattern": "SKIP_{NAME}:\\s*\"?true"},
   "patches": [{"name": "motivo", "module": "artifactId", "file": "Clase.java", "find": "...", "replace": "...", "regex": false}],
   "extraWarDependencies": ["g:a:v"],
-  "overlay": "carpeta-con-archivos-extra"
+  "overlay": "carpeta-con-archivos-extra",
+  "waves": [{"name": "1", "title": "Member", "modules": ["member-filter", "member-security"]}, {"name": "2", "modules": ["..."]}]
 }
 ```
 
@@ -104,6 +105,29 @@ Las decisiones de un cliente no viven en el motor:
   automáticas usan solas el WAR del contenedor que prueban.
 - `patches`: ajustes que no son mecánicos. **Si el texto ya no coincide, la migración se detiene**: nunca se aplican a ciegas.
 - `overlay`: archivos que se copian encima del resultado (p. ej. datasources del ambiente destino).
+- `waves`: olas de despliegue (ver «Despliegue y rollback por ola»). Cada módulo en una sola ola; los que no están en ninguna
+  (librerías, registro de servlets) arrancan siempre.
+
+## Despliegue y rollback por ola
+
+Pasar a producción por olas con vuelta atrás independiente, sin construir un WAR por ola:
+
+- **Un mismo WAR (por contenedor) trae todas las olas.** El despliegue elige las activas con `-Dmf.waves=0,1,2` o el
+  context-param `mf.waves` (vacío = todas, como antes). El sistema actual sigue encendido y el balanceador o API gateway manda a
+  Tomcat solo las rutas de las olas activas.
+- **Rollback de una ola**: quitarla de `mf.waves`, reiniciar ese contexto y devolver sus rutas al sistema actual. Las bases de
+  datos no cambian con la migración, así que no hay datos que revertir.
+- **Dependencias entre olas.** La migración lee del código qué llama cada módulo en otro en tiempo de ejecución
+  (`direct-vm:` y servicios OSGi importados, que no cruzan de un WAR a otro) y lo deja en su `module.properties`
+  (`wave=`, `needs=`). Si una ola activa necesita un módulo de una ola no activa, ese módulo arranca en **modo interno**: sin
+  sus colas ni tareas programadas, y su tráfico HTTP sigue en el sistema actual. Por eso revertir una ola nunca rompe a otra
+  activa. El reporte trae la tabla «Despliegue y rollback por ola» (qué necesita cada ola y quién la usa) y avisa, como acción
+  manual, cuando una ola usa un módulo de una ola posterior.
+- **Colas y tareas durante el cambio**: `-Dmf.consumers.off=<olas>` arranca esas olas sin sus consumidores (ActiveMQ/JMS,
+  timer, quartz, scheduler, file/ftp, sondeo SQL...; `LegacyCamelSettings.PassiveConsumers`), para que no procesen lo mismo
+  que el sistema actual. Se apagan en el origen, se quitan de la lista y se reinicia; el rollback es el paso inverso.
+- **Pruebas por ola**: `migrate.py verify auto ... --wave 2` y, en la plataforma, «Ola de despliegue» en Pruebas → Automáticas:
+  levanta solo esa ola (más lo que llama, en modo interno) y genera los casos solo de sus servicios.
 
 ## Evidencia de equivalencia (gate G4): `migrate.py verify`
 

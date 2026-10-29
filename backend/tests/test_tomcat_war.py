@@ -165,6 +165,35 @@ def test_client_config_patches_containers_and_war_dependencies(tmp_path):
     assert '<artifactId>h2</artifactId>' in (ws / 'webapp/pom.xml').read_text(encoding='utf-8')
 
 
+def test_waves_say_each_module_its_wave_and_what_it_calls_in_other_waves(tmp_path):
+    """Deployment and rollback by wave: orders-api (wave 1) calls direct-vm:normalize of common-services (wave 2, later). Each
+    module.properties carries its wave and its runtime needs, so the loader starts common-services in internal mode when only
+    wave 1 is active; the report tells it before deploying."""
+    cfg = {'waves': [{'name': '1', 'title': 'Pedidos', 'modules': ['orders-api']}, {'name': '2', 'modules': ['common-services']}]}
+    res, ws = run(tmp_path, cfg)
+    props = (ws / 'modules/orders-api/src/main/resources/META-INF/modules/orders-api/module.properties').read_text()
+    assert 'wave=1' in props and 'needs=common-services' in props
+    assert 'wave=2' in (ws / 'modules/common-services/src/main/resources/META-INF/modules/common-services/module.properties').read_text()
+    w1, w2 = res['waves']['waves']
+    (need,) = w1['needs']
+    assert need['module'] == 'common-services' and need['wave'] == '2' and need['by'] == ['orders-api']
+    assert 'direct-vm:normalize' in need['why'] and any(w.startswith('servicio ') for w in need['why'])  # route and OSGi service
+    assert w2['neededBy'] == ['1'] and res['waves']['unassigned'] == ['web-servlets']
+    assert any('modo interno' in m for m in res['manualActions'])
+    assert 'Despliegue y rollback por ola' in (tmp_path / 'out/reports/tomcat-war-report.md').read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('waves, error', [
+    ([{'name': '1', 'modules': ['orders-api']}, {'name': '1', 'modules': ['common-services']}], 'repetida'),
+    ([{'name': '1', 'modules': ['orders-api']}, {'name': '2', 'modules': ['orders-api']}], 'una sola'),
+    ([{'name': '1', 'modules': ['no-existe']}], 'no están en el workspace'),
+    ([{'name': 'ola 1', 'modules': ['orders-api']}], 'inválido'),
+])
+def test_invalid_waves_are_refused(tmp_path, waves, error):
+    with pytest.raises(pipeline.InvalidInput, match=error):
+        run(tmp_path, {'waves': waves})
+
+
 def test_same_class_in_bundles_of_different_containers_gets_one_war_per_container(tmp_path):
     """Posadas: nochespremio-booking-mob (mobile) and -web (web1, web2) carry 55 classes with the same name. Karaf isolates
     them per bundle; in one WAR the first jar wins and web1 ran mob's REST paths. One WAR per container keeps them apart."""

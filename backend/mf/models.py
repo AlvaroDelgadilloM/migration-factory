@@ -435,6 +435,7 @@ class HttpTestRun(Entity, Base):
     variables: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')  # NAME -> {value} | {ref}; never a secret value
     params: Mapped[dict] = mapped_column(Json, default=dict, server_default='{}')     # path parameters of the generated cases
     container: Mapped[str | None] = mapped_column(String(60))
+    wave: Mapped[str | None] = mapped_column(String(40))  # one deployment wave of the migration (its config "waves")
     data_artifact_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)  # client's test data package; none = smoke test
     original: Mapped[dict | None] = mapped_column(Json, nullable=True)   # {label, url} (source urls)
     migrated: Mapped[dict | None] = mapped_column(Json, nullable=True)

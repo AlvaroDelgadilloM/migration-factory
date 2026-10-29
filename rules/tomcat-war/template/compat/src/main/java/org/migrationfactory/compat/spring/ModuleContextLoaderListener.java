@@ -46,7 +46,8 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 		boolean failFast = Boolean.getBoolean("mf.modules.failFast");
 		List<Module> modules;
 		try {
-			modules = findModules(container(sce.getServletContext()));
+			modules = findModules(container(sce.getServletContext()), list(sce.getServletContext(), "mf.waves"),
+					list(sce.getServletContext(), "mf.consumers.off"));
 		} catch (Exception e) {
 			throw new IllegalStateException("No se pudieron localizar los modulos", e);
 		}
@@ -56,13 +57,14 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 			GenericApplicationContext ctx = new GenericApplicationContext(root);
 			ctx.setId(module.name);
 			ctx.setDisplayName("modulo " + module.name);
-			ctx.getBeanFactory().addBeanPostProcessor(new LegacyCamelSettings());
+			ctx.getBeanFactory().addBeanPostProcessor(new LegacyCamelSettings(module.consumersOff));
 			try {
 				new XmlBeanDefinitionReader(ctx).loadBeanDefinitions(module.resources.toArray(new Resource[0]));
 				ctx.refresh();
 				started.push(ctx);
-				LOG.info("Modulo {} iniciado en {} ms ({} archivos)", module.name, System.currentTimeMillis() - t0,
-						module.resources.size());
+				LOG.info("Modulo {} iniciado en {} ms ({} archivos){}", module.name, System.currentTimeMillis() - t0,
+						module.resources.size(), module.internal ? " en modo interno (lo usa otra ola activa; sin colas ni tareas)"
+								: module.consumersOff ? " sin colas ni tareas (mf.consumers.off)" : "");
 			} catch (Exception e) {
 				Throwable cause = e;
 				while (cause.getCause() != null && cause.getCause() != cause) {
@@ -110,7 +112,23 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 		return value;
 	}
 
-	private List<Module> findModules(String container) throws Exception {
+	/** Lista separada por comas de -D&lt;name&gt; o del context-param &lt;name&gt;; vacia si no hay. */
+	static java.util.Set<String> list(jakarta.servlet.ServletContext servletContext, String name) {
+		String value = System.getProperty(name, "").trim();
+		if (value.isEmpty() && servletContext != null) {
+			String param = servletContext.getInitParameter(name);
+			value = param == null ? "" : param.trim();
+		}
+		java.util.Set<String> out = new java.util.LinkedHashSet<>();
+		for (String v : value.split(",")) {
+			if (!v.trim().isEmpty()) {
+				out.add(v.trim());
+			}
+		}
+		return out;
+	}
+
+	private List<Module> findModules(String container, java.util.Set<String> waves, java.util.Set<String> consumersOff) throws Exception {
 		Map<String, Module> byName = new TreeMap<>();
 		for (Resource r : new PathMatchingResourcePatternResolver().getResources(MODULES_PATTERN)) {
 			String[] parts = r.getURL().toString().split("/");
@@ -121,23 +139,27 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 			m.exports |= xml.contains("compat.osgi.ServiceExport");
 			m.imports |= xml.contains("compat.osgi.ServiceImport");
 		}
-		// mobile|web1|web2: solo los modulos que hoy van a ese contenedor de Karaf (module.properties).
-		// Sin contenedor se cargan todos.
-		if (!container.isEmpty()) {
-			for (java.util.Iterator<Module> it = byName.values().iterator(); it.hasNext();) {
-				Module m = it.next();
-				Resource props = m.resources.get(0).createRelative("module.properties");
-				if (props.exists()) {
-					java.util.Properties p = new java.util.Properties();
-					try (java.io.InputStream in = props.getInputStream()) {
-						p.load(in);
-					}
-					List<String> allowed = java.util.Arrays.asList(p.getProperty("containers", container).split("\\s*,\\s*"));
-					if (!allowed.contains(container)) {
-						LOG.info("Modulo {} omitido: no se despliega en el contenedor '{}' {}", m.name, container, allowed);
-						it.remove();
-					}
+		Map<String, java.util.Properties> props = new TreeMap<>();
+		for (Module m : byName.values()) {
+			java.util.Properties p = new java.util.Properties();
+			Resource file = m.resources.get(0).createRelative("module.properties");
+			if (file.exists()) {
+				try (java.io.InputStream in = file.getInputStream()) {
+					p.load(in);
 				}
+			}
+			props.put(m.name, p);
+		}
+		Map<String, String> chosen = select(props, container, waves, consumersOff);
+		for (java.util.Iterator<Module> it = byName.values().iterator(); it.hasNext();) {
+			Module m = it.next();
+			String mode = chosen.get(m.name);
+			if (mode == null) {
+				LOG.info("Modulo {} omitido: {}", m.name, why(props.get(m.name), container, waves));
+				it.remove();
+			} else {
+				m.internal = INTERNAL.equals(mode);
+				m.consumersOff = !ACTIVE.equals(mode);
 			}
 		}
 		List<Module> modules = new ArrayList<>(byName.values());
@@ -145,11 +167,71 @@ public class ModuleContextLoaderListener implements ServletContextListener {
 		return modules;
 	}
 
+	static final String ACTIVE = "activo";
+	static final String INTERNAL = "interno";
+	static final String PASSIVE = "sin-consumidores";
+
+	/**
+	 * Que modulos arrancan y como, segun su module.properties (containers, wave, needs):
+	 * 1) mobile|web1|web2: solo los que hoy van a ese contenedor de Karaf; sin contenedor, todos.
+	 * 2) mf.waves: solo los de esas olas (y los que no tienen ola: librerias, servlets); sin olas, todos.
+	 * 3) Lo que un modulo elegido llama en otro (needs: direct-vm, servicios OSGi) arranca aunque su ola no este activa, en modo
+	 * interno: sin colas ni tareas programadas. Asi revertir una ola nunca rompe a otra activa.
+	 * 4) mf.consumers.off: las olas cuyas colas y tareas siguen detenidas (durante el cambio desde el sistema actual).
+	 * Devuelve nombre -&gt; ACTIVE | INTERNAL | PASSIVE; los que no arrancan no estan.
+	 */
+	static Map<String, String> select(Map<String, java.util.Properties> props, String container, java.util.Set<String> waves,
+			java.util.Set<String> consumersOff) {
+		Map<String, java.util.Properties> deployed = new TreeMap<>();
+		props.forEach((name, p) -> {
+			if (container.isEmpty() || values(p, "containers", container).contains(container)) {
+				deployed.put(name, p);
+			}
+		});
+		Map<String, String> out = new TreeMap<>();
+		Deque<String> todo = new ArrayDeque<>();
+		deployed.forEach((name, p) -> {
+			String wave = p.getProperty("wave", "").trim();
+			if (waves.isEmpty() || wave.isEmpty() || waves.contains(wave)) {
+				out.put(name, !wave.isEmpty() && consumersOff.contains(wave) ? PASSIVE : ACTIVE);
+				todo.add(name);
+			}
+		});
+		while (!todo.isEmpty()) {
+			for (String need : values(deployed.get(todo.pop()), "needs", "")) {
+				if (deployed.containsKey(need) && !out.containsKey(need)) {
+					out.put(need, INTERNAL);
+					todo.add(need);
+				}
+			}
+		}
+		return out;
+	}
+
+	private static List<String> values(java.util.Properties p, String key, String fallback) {
+		List<String> out = new ArrayList<>();
+		for (String v : p.getProperty(key, fallback).split(",")) {
+			if (!v.trim().isEmpty()) {
+				out.add(v.trim());
+			}
+		}
+		return out;
+	}
+
+	private static String why(java.util.Properties p, String container, java.util.Set<String> waves) {
+		if (!container.isEmpty() && !values(p, "containers", container).contains(container)) {
+			return "no se despliega en el contenedor '" + container + "' " + values(p, "containers", container);
+		}
+		return "su ola " + p.getProperty("wave", "") + " no esta activa " + waves;
+	}
+
 	private static final class Module {
 		final String name;
 		final List<Resource> resources = new ArrayList<>();
 		boolean exports;
 		boolean imports;
+		boolean internal;
+		boolean consumersOff;
 
 		Module(String name) {
 			this.name = name;

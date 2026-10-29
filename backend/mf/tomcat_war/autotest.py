@@ -58,7 +58,7 @@ class AutoTestError(verify.ToolError):
 def explode_war(war: Path, target: Path) -> dict:
     """Unpacks the WAR; every module jar (it carries its XML in META-INF/modules/<name>/) to its own folder. Its containers come
     from module.properties, which exists only when the migration was configured with containers; without it, it runs everywhere.
-    Returns {name: {'dir', 'containers'}}."""
+    Returns {name: {'dir', 'containers', 'wave', 'needs'}}."""
     shutil.rmtree(target, ignore_errors=True)
     with zipfile.ZipFile(war) as z:
         z.extractall(target / 'war')
@@ -73,8 +73,10 @@ def explode_war(war: Path, target: Path) -> dict:
             z.extractall(d)
             props = d / 'META-INF' / 'modules' / name / 'module.properties'
             text = props.read_text(encoding='utf-8', errors='replace') if props.exists() else ''
-            m = re.search(r'^containers\s*=\s*(.+)$', text, re.M)
-            modules[name] = {'dir': d, 'jar': jar, 'containers': [c.strip() for c in m.group(1).split(',')] if m else []}
+            def prop(key):
+                found = re.search(rf'^{key}\s*=\s*(.+)$', text, re.M)
+                return [x.strip() for x in found.group(1).split(',') if x.strip()] if found else []
+            modules[name] = {'dir': d, 'jar': jar, 'containers': prop('containers'), 'wave': ''.join(prop('wave')[:1]), 'needs': prop('needs')}
     if not modules:
         raise AutoTestError(f'{war.name} no trae módulos migrados (META-INF/modules/<módulo>/)')
     return modules
@@ -569,7 +571,7 @@ def _h2_database(h2: Path, folder: Path, data: Path | None, work: Path) -> str:
 
 
 def start_tomcat(war_dir: Path, work: Path, version: str, port: int, etc: Path, container: str, jdbc: str, h2: Path,
-                 java_home: Path | None = None) -> tuple:
+                 java_home: Path | None = None, wave: str = '') -> tuple:
     """The migrated WAR in a real Tomcat (official distribution), with the test configuration."""
     zip_file = _fetch(f'org.apache.tomcat:tomcat:{version}:zip', work / 'dist', work)
     home = work / 'tomcat'
@@ -590,7 +592,7 @@ def start_tomcat(war_dir: Path, work: Path, version: str, port: int, etc: Path, 
     java = str(Path(java_home) / 'bin' / ('java.exe' if os.name == 'nt' else 'java')) if java_home else verify._java('java')
     cmd = [java, f'-Dcatalina.home={home}', f'-Dcatalina.base={home}', f"-Djava.io.tmpdir={home / 'temp'}",
            f"-Djava.util.logging.config.file={home / 'conf' / 'logging.properties'}", '-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager',
-           f'-Dmf.etc={etc}', f'-Dmf.container={container}', f'-Dmf.test.jdbcUrl={jdbc}',
+           f'-Dmf.etc={etc}', f'-Dmf.container={container}', f'-Dmf.waves={wave}', f'-Dmf.test.jdbcUrl={jdbc}',
            '-cp', os.pathsep.join(str(home / 'bin' / j) for j in ('bootstrap.jar', 'tomcat-juli.jar')), 'org.apache.catalina.startup.Bootstrap', 'start']
     log = work / 'logs' / 'tomcat.log'
     return _start(cmd, log), log
@@ -653,10 +655,29 @@ def _data_dir(data: Path | None, work: Path) -> Path | None:
     return inner[0] if len(inner) == 1 and not any(target.glob('*.json')) and not (target / 'etc').exists() else target
 
 
+def by_wave(deployed: dict, wave: str) -> tuple[dict, list]:
+    """The modules a deployment of one wave starts (-Dmf.waves=<wave>, docs/19): those of the wave, those in no wave and, in
+    internal mode, what they call in other waves (needs). Returns (started, internal names); the cases come from the wave's own."""
+    if not any(m['wave'] == wave for m in deployed.values()):
+        waves = sorted({m['wave'] for m in deployed.values() if m['wave']})
+        raise AutoTestError(f"Ningún módulo de la ola '{wave}' en este WAR" + (f"; olas: {', '.join(waves)}" if waves else ' (la migración no tiene olas)'))
+    started = {n: m for n, m in deployed.items() if m['wave'] in (wave, '')}
+    todo, internal = list(started), []
+    while todo:
+        for need in deployed[todo.pop()]['needs']:
+            if need in deployed and need not in started:
+                started[need] = deployed[need]
+                internal.append(need)
+                todo.append(need)
+    return started, sorted(internal)
+
+
 def run(source: Path, war: Path, out: Path, container: str = '', data: Path | None = None, screenshots: bool = True,
-        timeout: int = 900, log=lambda m: None, migrated_java_home: Path | None = None, performance: dict | None = None) -> dict:
+        timeout: int = 900, log=lambda m: None, migrated_java_home: Path | None = None, performance: dict | None = None,
+        wave: str = '') -> dict:
     """performance: {'users', 'seconds', 'warmup', 'tolerance'} (mf.tomcat_war.perf.DEFAULTS) to also run the comparative
-    load test on the cases both sides answered, while both are up."""
+    load test on the cases both sides answered, while both are up. wave: only that deployment wave (and, in internal mode, what
+    it calls in other waves); its own services are the cases."""
     source, out = Path(source).resolve(), Path(out).resolve()
     work = out / '.verify' / 'auto'
     work.mkdir(parents=True, exist_ok=True)
@@ -671,6 +692,11 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
     deployed = {n: m for n, m in modules.items() if not container or container in m['containers'] or not m['containers']}
     if not deployed:
         raise AutoTestError(f"Ningún módulo se despliega en el contenedor '{container}'")
+    internal = []
+    if wave:
+        deployed, internal = by_wave(deployed, wave)
+        log(f"ola {wave}: {len(deployed) - len(internal)} módulos" + (f"; en modo interno (los usa la ola): {', '.join(internal)}" if internal else ''))
+    tested = {n: m for n, m in deployed.items() if n not in internal}
     projects = source_modules(source)
     aliases = servlets(projects)  # the bundle that registers a servlet is not always the one whose routes use it
     values = json.loads((data / 'valores.json').read_text(encoding='utf-8')) if data and (data / 'valores.json').is_file() else {}
@@ -684,7 +710,8 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
     dumps = verify.dump_migrated(source, {n: m['dir'] for n, m in deployed.items()}, work / 'migrated' / 'war', work, log, java_migrated)
     for module, ops in xml_rest(projects, deployed).items():  # REST declared in XML: not in the RouteBuilder dumps
         dumps[module] = {**dumps.get(module, {}), **ops}
-    cases = rest_cases(dumps, projects, aliases, values) + soap_cases(deployed)
+    dumps = {n: d for n, d in dumps.items() if n in tested}  # internal-mode modules keep their traffic on the source system
+    cases = rest_cases(dumps, projects, aliases, values) + soap_cases(tested)
     if data and (data / 'casos.json').is_file():
         extra = json.loads((data / 'casos.json').read_text(encoding='utf-8'))
         cases += extra['cases'] if isinstance(extra, dict) else extra
@@ -710,7 +737,7 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
         p_orig = _start(cmd, work / 'logs' / 'original.log', env=env)
         procs.append(p_orig)
         p_tc, tc_log = start_tomcat(work / 'migrated' / 'war', work, rules['profile']['tomcatVersion'], mg['port'], mg['etc'], container, mg['jdbc'], h2,
-                                     migrated_java_home)
+                                     migrated_java_home, wave)
         procs.append(p_tc)
         text_o = _wait(p_orig, work / 'logs' / 'original.log', 'BASELINE LISTO', timeout)
         text_m = _wait(p_tc, tc_log, 'Modulos iniciados:', timeout)
@@ -736,7 +763,7 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
         for p in procs:
             _stop(p)
         sim.stop()
-    return summary | {'mode': mode, 'container': container, 'modules': sorted(deployed), 'startup': started,
+    return summary | {'mode': mode, 'container': container, 'wave': wave or None, 'internalModules': internal, 'modules': sorted(deployed), 'startup': started,
                       'externalCalls': sorted(set(sim.calls)),
                       'configuration': {k: v for k, v in sides['original']['etcReport'].items() if k != 'files'} | {'files': len(sides['original']['etcReport']['files'])},
                       'generatedCases': len(cases), 'logs': str(work / 'logs')}

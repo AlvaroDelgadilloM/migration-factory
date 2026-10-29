@@ -1295,11 +1295,11 @@ def verify_cmd(args, log) -> int:
             from .tomcat_war import autotest
             res = autotest.run(Path(args.project), Path(args.war), out, args.container or '', Path(args.data) if args.data else None,
                                not args.no_screenshots, args.timeout, log, Path(args.migrated_java_home) if args.migrated_java_home else None,
-                               {'users': args.perf_users, 'seconds': args.perf_seconds} if args.perf else None)
+                               {'users': args.perf_users, 'seconds': args.perf_seconds} if args.perf else None, args.wave or '')
             t = res['totals']
             mode = 'con paquete de datos' if res['mode'] == 'DATOS' else 'prueba de humo (sin datos del cliente)'
             o, m = res['startup']['original'], res['startup']['migrado']
-            print(f"Modo: {mode} · contenedor {res['container'] or 'todos'}\n"
+            print(f"Modo: {mode} · contenedor {res['container'] or 'todos'}" + (f" · ola {res['wave']}" if res.get('wave') else '') + "\n"
                   f"Arranque: original {o['started']} de {o['total']} módulos, migrado {m['started']} de {m['total']}\n"
                   f"{t['cases']} casos generados: {t['same']} idénticos, {t['different']} distintos, {t['notExecutable']} sin ejecutar · {res['status']}\n"
                   f"Evidencia: {out / 'reports' / 'evidence' / 'index.html'}")
@@ -1485,6 +1485,7 @@ def main(argv=None):
     va = vsub.add_parser('auto', help='prueba automática: levanta el original (Camel 2) y el WAR (Tomcat), genera los casos y compara')
     va.add_argument('project', help='workspace original (el analizado)'); va.add_argument('--war', required=True, help='WAR migrado (migrate --build)')
     va.add_argument('--container', default='', help='contenedor de origen a reproducir (mobile, web1...); vacío = todos')
+    va.add_argument('--wave', default='', help='solo esa ola de despliegue (config "waves"); lo que llame de otras olas arranca en modo interno')
     va.add_argument('--data', help='paquete de datos de prueba (carpeta o .zip); sin él, prueba de humo')
     va.add_argument('--output', required=True); va.add_argument('--timeout', type=int, default=900, help='segundos para que arranque cada lado')
     va.add_argument('--no-screenshots', action='store_true')

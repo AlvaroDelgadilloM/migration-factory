@@ -4671,6 +4671,48 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/odoo-code": {
+      "post": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Port Code",
+        "description": "Custom module code: inventory, automatic port to 19 and an install check of each module on a new Odoo 19.",
+        "operationId": "port_code_api_v1_projects__project_id__odoo_code_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/odoo-migrations": {
       "post": {
         "tags": [
@@ -6517,6 +6559,18 @@
             ],
             "title": "Container"
           },
+          "wave": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[\\w.\\-]{1,40}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wave"
+          },
           "dataPackageId": {
             "anyOf": [
               {
@@ -6661,6 +6715,17 @@
             ],
             "title": "Container"
           },
+          "wave": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wave"
+          },
           "dataArtifactId": {
             "anyOf": [
               {
@@ -6799,6 +6864,15 @@
             },
             "type": "array",
             "title": "Containers"
+          },
+          "waves": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Waves",
+            "default": []
           },
           "war": {
             "type": "boolean",
@@ -7367,13 +7441,15 @@
         "properties": {
           "module": {
             "type": "string",
-            "pattern": "^[a-z0-9_]{2,100}$",
+            "pattern": "^(fix:)?[a-z0-9_]{2,100}$",
             "title": "Module"
           },
           "action": {
             "type": "string",
             "enum": [
               "uninstall",
+              "apply",
+              "ignore",
               "pending"
             ],
             "title": "Action"
