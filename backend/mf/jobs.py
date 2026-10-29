@@ -16,6 +16,14 @@ LONG_QUEUE = 'mf-long'  # workspace migrations and modernizations: own worker, n
 LONG_KINDS = {'workspace_migrate', 'modernize', 'datastage_migrate', 'http_compare', 'odoo_analyze', 'odoo_migrate', 'odoo_code'}
 
 
+def timeout_for(kind: str | None) -> int:
+    """Wall-clock limit of a job, the same for the queue (RQ) and the worker's deadline."""
+    s = get_settings()
+    if kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code'):
+        return s.odoo_job_timeout_seconds
+    return s.workspace_timeout_seconds if kind in ('workspace_migrate', 'http_compare') else s.job_timeout_seconds
+
+
 def queue_for(kind: str | None) -> str:
     return LONG_QUEUE if kind in LONG_KINDS else QUEUE
 TERMINAL = {'succeeded', 'partial_success', 'failed', 'blocked', 'cancelled', 'timed_out'}
@@ -72,7 +80,7 @@ def publish_outbox(db, limit=50) -> int:
         row.attempts += 1
         job_id = row.payload['jobId']
         job = db.get(Job, uuid.UUID(str(job_id)))
-        limit = get_settings().workspace_timeout_seconds if job is not None and job.kind == 'workspace_migrate' else get_settings().job_timeout_seconds
+        limit = timeout_for(job.kind if job is not None else None)
         # RQ job id = our job id + attempt counter; the worker claims through the DB lease, so a
         # duplicate delivery is harmless (at-least-once delivery, idempotent claim).
         name = queue_for(job.kind if job is not None else None)

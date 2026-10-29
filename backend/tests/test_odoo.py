@@ -125,3 +125,8 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0, 'modules': 1, 'installed': 0}
     dl = client.get(f"{API}/artifacts/{c['summary']['artifacts']['ported']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content[:2] == b'PK'
+
+
+def test_odoo_jobs_get_their_own_time_limit():
+    from mf.jobs import timeout_for   # a whole chain outlives the 30 min of short jobs (RQ killed a real migration at 32 min)
+    assert timeout_for('odoo_migrate') == timeout_for('odoo_code') == 12 * 3600 and timeout_for('scan') == 1800

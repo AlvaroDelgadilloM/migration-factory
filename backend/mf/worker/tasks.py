@@ -145,7 +145,8 @@ def run_job(job_id: str):
     s = get_settings()
     workdir = s.work_dir / job_id / f'attempt-{job.attempts}'
     workdir.mkdir(parents=True, exist_ok=True)
-    limit = s.workspace_timeout_seconds if job.kind in ('workspace_migrate', 'http_compare') else s.job_timeout_seconds
+    from ..jobs import timeout_for
+    limit = timeout_for(job.kind)
     ctx = Context(job_id, workdir, deadline=time.monotonic() + limit, emit=lambda l, p, m: emit(job_id, l, p, m))
     mavenops.use_project(job.project_id)
     hb = Heartbeat(ctx)
