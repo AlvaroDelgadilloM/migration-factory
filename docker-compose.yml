@@ -35,7 +35,7 @@ x-odoo-hop: &odoo-hop   # the seven runners of the Odoo 12 -> 19 chain (services
     MF_ODOO_DB_HOST: odoo-db
     MF_ODOO_DB_PASSWORD: ${MF_ODOO_DB_PASSWORD:-}
   volumes: [odoo-addons:/odoo-addons:ro]
-  tmpfs: ["/var/lib/odoo:uid=101,gid=101", "/hop-logs:uid=101,gid=101"]
+  tmpfs: ["/var/lib/odoo:mode=1777", "/hop-logs:mode=1777"]   # private to each runner; the odoo uid differs per image (19.0 is not 101)
   networks: [odoo]
   depends_on:
     odoo-db: {condition: service_healthy}
