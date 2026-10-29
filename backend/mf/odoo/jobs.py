@@ -74,7 +74,7 @@ def analyze(ctx, run, dump: Path, om_id, log, custom: frozenset = frozenset()) -
     log(f'base Odoo {version} restaurada como {src}')
     installed = chain.installed_modules(src)
     rows = modules.classify(installed, first, custom)
-    before = [{'check': k, 'label': lbl, 'value': chain.query(src)(q12 if first == '12.0' else q19)}
+    before = [{'check': k, 'label': lbl, 'value': chain.query(src)((q12 if first == '12.0' else q19).replace('{dropped}', ''))}
               for k, (lbl, q12, q19) in reconcile.CHECKS.items()]
     found = fixes.detect(chain.query_all(src))
     if found:
@@ -151,7 +151,7 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
         progress(i + 1, len(analysis['hops']))
         if res['state'] != 'succeeded':
             return {'state': 'failed', 'hops': hops, 'database': mig, 'technicalFixes': technical}
-    rows = reconcile.run(chain.query(src), chain.query(mig))
+    rows = reconcile.run(chain.query(src), chain.query(mig), drop, analysis['from'] == '12.0')
     return {'state': 'succeeded', 'hops': hops, 'database': mig, 'reconciliation': rows, 'reconciliationStatus': reconcile.status(rows),
             'technicalFixes': technical}
 

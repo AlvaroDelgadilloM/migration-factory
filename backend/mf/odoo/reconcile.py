@@ -3,8 +3,9 @@ migrated one, with the queries each schema needs (invoices: account_invoice in 1
 cannot run on one side (module not installed) is reported as not applicable, never as equal."""
 from __future__ import annotations
 
+# {dropped}: the modules uninstalled by the migration; their records stay without XML ID afterwards, so both sides treat them alike
 MODULE_XMLID = ("exists (select 1 from ir_model_data d where d.model = 'res.partner' and d.res_id = p.id "
-                "and d.module not in ('__export__', '__import__'))")
+                "and d.module not in ('__export__', '__import__'{dropped}))")
 PARTNERS = f'select count(*) from res_partner p where not {MODULE_XMLID}'
 PARTNERS_MODULES = f'select count(*) from res_partner p where {MODULE_XMLID}'
 INFO = {'partners_modules'}
@@ -45,11 +46,14 @@ CHECKS = {
 }
 
 
-def run(query_before, query_after) -> list[dict]:
-    """query_x(sql) -> tuple | None (None when the table does not exist). Returns one row per check."""
+def run(query_before, query_after, uninstalled=(), before_12=True) -> list[dict]:
+    """query_x(sql) -> tuple | None (None when the table does not exist). Returns one row per check. uninstalled: modules the
+    architect removed; before_12: the source is a 12.0 database (else both sides use the 13.0+ queries)."""
+    dropped = ''.join(", '" + m.replace("'", "") + "'" for m in uninstalled)
     rows = []
     for key, (label, q12, q19) in CHECKS.items():
-        b, a = query_before(q12), query_after(q19)
+        q12 = (q12 if before_12 else q19).replace('{dropped}', dropped)
+        b, a = query_before(q12), query_after(q19.replace('{dropped}', dropped))
         if b is None or a is None:
             state = 'NOT_APPLICABLE'
         else:
@@ -65,9 +69,13 @@ def status(rows: list[dict]) -> str:
 
 
 if __name__ == '__main__':  # self-check
-    before = {CHECKS['partners'][1]: (42,), CHECKS['sale_orders'][1]: (20, '124021.00')}
-    after = {CHECKS['partners'][2]: (42,), CHECKS['sale_orders'][2]: (20, '124021.00')}
+    q = lambda i, k: CHECKS[k][i].replace('{dropped}', '')  # noqa: E731
+    before = {q(1, 'partners'): (42,), q(1, 'sale_orders'): (20, '124021.00')}
+    after = {q(2, 'partners'): (42,), q(2, 'sale_orders'): (20, '124021.00')}
     rows = run(before.get, after.get)
     assert {r['check']: r['state'] for r in rows}['partners'] == 'EQUAL' and status(rows) == 'EQUAL'
     assert status(rows + [{'state': 'DIFFERENT', 'info': True}]) == 'EQUAL'
+    seen = []
+    run(lambda q: seen.append(q), lambda q: None, uninstalled=['legacy_x'])
+    assert "'__import__', 'legacy_x')" in next(q for q in seen if 'ir_model_data' in q) and not any('{dropped}' in q for q in seen)
     print('ok')
