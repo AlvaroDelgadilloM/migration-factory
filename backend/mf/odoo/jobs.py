@@ -43,7 +43,7 @@ def restore(ctx, run, dump: Path, database: str):
         c.execute(f'create database "{database}"')
     env = {'PGPASSWORD': s.odoo_db_password}
     base = ['-h', s.odoo_db_host, '-p', str(s.odoo_db_port), '-U', s.odoo_db_user, '-d', database]
-    if dump.name == 'dump.sql':
+    if dump.suffix.lower() == '.sql':
         cmd = ['psql', *base, '-q', '-v', 'ON_ERROR_STOP=0', '-f', str(dump)]
     else:
         cmd = ['pg_restore', *base, '--no-owner', '--no-acl', '--jobs', '2', str(dump)]
@@ -53,7 +53,9 @@ def restore(ctx, run, dump: Path, database: str):
     except Exception:  # noqa: BLE001 — not an Odoo database at all
         version = None
     if not version:
-        raise OdooJobError('NOT_ODOO_DB', 'El respaldo no es una base de Odoo (no tiene ir_module_module/base); ver el log de restauración')
+        tail = res.log_path.read_text(encoding='utf-8', errors='replace')[-1500:] if res.log_path.exists() else ''
+        raise OdooJobError('NOT_ODOO_DB', 'El respaldo no es una base de Odoo (no tiene ir_module_module/base). '
+                                          f'Final del log de restauración:\n{tail}')
     return res, version
 
 
