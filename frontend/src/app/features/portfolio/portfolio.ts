@@ -133,7 +133,7 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
               @if (uploaded(); as u) {
                 <p-message severity="success"><span><strong>{{ u.filename }}</strong> · {{ detectedText(u) }}</span></p-message>
               } @else {
-                <small class="muted">Proyecto Java/Maven o exportaciones DSX de DataStage: el tipo se detecta del contenido.</small>
+                <small class="muted">Proyecto Java/Maven, exportaciones DSX de DataStage o Odoo (respaldo de la base y/o módulos): el tipo se detecta del contenido.</small>
               }
             }
             @case ('git') {
@@ -171,6 +171,8 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
           @if (form.migrationType === 'JAVA_CAMEL') {
             <label for="rt">Runtime objetivo</label>
             <p-select inputId="rt" name="rt" [options]="runtimes" optionLabel="label" optionValue="value" [(ngModel)]="form.targetRuntime" />
+          } @else if (form.migrationType === 'ODOO') {
+            <small class="muted">Destino: Odoo 19 Community — la base con OpenUpgrade salto por salto y, si el ZIP los trae, los módulos a la medida portados versión por versión.</small>
           } @else {
             <small class="muted">Destino: Apache Airflow 2.10.5 — DAGs, SQL para Oracle, Connections y Variables, validados con DagBag.</small>
           }
@@ -255,7 +257,7 @@ export class Portfolio {
   migrationTypes = [
     { value: 'JAVA_CAMEL', label: 'Java / Camel', hint: 'JBoss o Fuse con Camel 2 → Camel 4 (Spring Boot, Quarkus o Tomcat).' },
     { value: 'DATASTAGE_AIRFLOW', label: 'DataStage → Airflow', hint: 'Exportaciones DSX de IBM DataStage → DAGs de Apache Airflow.' },
-    { value: 'ODOO', label: 'Odoo 12 → 19', hint: 'Base de datos de Odoo Community 12 → 19 con OpenUpgrade (respaldo ZIP de Odoo o pg_dump).' },
+    { value: 'ODOO', label: 'Odoo 12 → 19', hint: 'Odoo Community 12 → 19: la base con OpenUpgrade (respaldo ZIP de Odoo o pg_dump) y los módulos a la medida.' },
   ];
   short = short;
   sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git', agent: 'Agente local' };
@@ -299,7 +301,11 @@ export class Portfolio {
   typeLabel(t: string | null | undefined) { return this.migrationTypes.find(x => x.value === t)?.label ?? '—'; }
   detectedText(u: Upload) {
     const st = u.structure as Record<string, any>;
-    if (st['odooDump']) return `Odoo · respaldo ${st['odooDump']}${st['filestore'] ? ' con filestore' : ' (sin filestore: los adjuntos en disco no viajan)'}`;
+    if (st['migrationType'] === 'ODOO') {
+      const mods = (st['odooModules'] ?? []) as string[];
+      const db = st['odooDump'] ? `respaldo ${st['odooDump']}${st['filestore'] ? ' con filestore' : ' (sin filestore: los adjuntos en disco no viajan)'}` : 'sin respaldo de base';
+      return `Odoo · ${db}` + (mods.length ? ` · código de ${mods.length} módulo(s): ${mods.slice(0, 5).join(', ')}${mods.length > 5 ? '…' : ''}` : '');
+    }
     return st['dsxFiles'] ? `DataStage → Airflow · ${st['dsxFiles'].length} exportación(es) DSX`
       : `Java / Camel · raíz Maven ${st['root']} · ${(st['modules'] ?? []).length} módulo(s)`;
   }

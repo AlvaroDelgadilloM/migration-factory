@@ -661,46 +661,46 @@ arranque) y envía los casos al migrado y, si se da, al sistema original del amb
   agregaba `spring-boot-maven-plugin` repackage (no corría con `java -jar`). Verificado con Maven real tras la corrección.
 - Pruebas: `tests/test_runtime_test.py` (detección, reglas de variables y secretos, flujo del worker con una app simulada).
 
-## Odoo Community 12 → 19: migración de la base de datos (en curso, 2026-10-28)
+## Odoo Community 12 → 19: base de datos y módulos a la medida (2026-10-29)
 
-Nuevo tipo de proyecto **Odoo 12 → 19** (`migrationType: ODOO`). Alcance acordado: la base de datos (no el código de módulos
-a la medida). Destino: Odoo 19 (OpenUpgrade 20.0 todavía no tiene scripts, verificado en OCA/OpenUpgrade).
+Tipo de proyecto **Odoo 12 → 19** (`migrationType: ODOO`). Destino: Odoo 19 (OpenUpgrade 20.0 todavía no tiene scripts).
+El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `manifest.json` del gestor de Odoo, o un
+`pg_dump`), el código de los módulos a la medida (carpetas con `__manifest__.py`), o ambos.
 
-- **Subida:** ZIP con el respaldo estándar de Odoo (`dump.sql` + `filestore/` + `manifest.json`) o un `pg_dump` (`.sql`/`.dump`);
-  detección automática en la subida.
-- **Análisis** (`mf/odoo/modules.py`, job `odoo_analyze`): el worker restaura el dump en `odoo-db` (PostgreSQL 13 aislado, red
-  interna sin internet, perfil Compose `odoo`) y clasifica cada módulo instalado:
-  núcleo (seguido salto por salto, renombres y fusiones incluidos, con la cobertura publicada de OpenUpgrade de cada salto),
-  OCA (disponibilidad rama por rama 12.0…19.0, porque su código hace falta en cada salto) o terceros / a la medida.
-  Datos públicos versionados en `rules/odoo/` (generados por `scripts/gen_odoo_index.py`: 653 módulos de núcleo en 18→19,
-  2 229 módulos OCA en 12.0 y 1 552 en 19.0).
-- **Pantalla Módulos:** los módulos de terceros u OCA sin versión 19 (o sin portar en alguna versión intermedia) se muestran
-  y **bloquean** hasta que un arquitecto decide desinstalarlos antes de migrar, con motivo (auditado; sus datos no se migran).
-- **Migración** (`mf/odoo/jobs.py`, job `odoo_migrate`): copia de la base, desinstalaciones decididas, código OCA de cada versión
-  (repositorio OCA por rama, en un volumen de solo lectura para los ejecutores) y **7 saltos** 13→19, cada uno en su ejecutor
-  `odoo-hop-<versión>` (imagen oficial `odoo:<versión>` + OCA/OpenUpgrade en el commit fijado en `rules/odoo/hops.json`;
-  sin internet ni acceso a la base de la plataforma). Se detiene en el primer salto con error y muestra su log.
-- **Resultado:** conciliación antes/después (`mf/odoo/reconcile.py`: contactos, usuarios, productos, ventas y compras con total,
-  facturas `account_invoice`→`account_move`, débito/crédito contable, inventario, CRM, adjuntos) y descarga del `pg_dump` en 19.
-- **Prueba real** (`.github/workflows/odoo-e2e.yml`): base Odoo 12 con los datos demo de Odoo (ventas, compras, facturación,
-  inventario, CRM) por la cadena real. Primer hallazgo y corrección: en el salto 13 (fork completo de Odoo) el Odoo estándar de la
-  imagen ocultaba los módulos del fork y sus scripts no corrían (fallaba el índice único de variantes de producto); ahora el
-  salto 12→13 termina sin errores. 13→14 también. Segundo hallazgo: el salto a 15.0 falla en `stock` («Incompatible companies on
-  records») porque el contacto de la empresa 2 de la demo pertenece a la empresa 1 y es el contacto de un almacén de la empresa 2.
-  Corrección: **catálogo de correcciones de datos** (`mf/odoo/fixes.py`): se detectan en el análisis (con los registros afectados),
-  se muestran en Resumen, un arquitecto decide «corregir en la copia» o «migrar sin corregir» con motivo (auditado, bloquea la
-  migración hasta decidir) y se aplican solo a la copia antes del primer salto. Verificado en la base demo restaurada (2 casos,
-  0 después de corregir). Resto de la cadena (15→19) y conciliación: en curso.
-- **Código de módulos a la medida** (`mf/odoo/code.py`, job `odoo_code`, pantalla Código): el ZIP del proyecto puede traer
-  módulos (carpetas con `__manifest__.py`) en vez del respaldo, o junto con él. Inventario por archivo y línea (`@api.multi`,
-  `@api.one`, `track_visibility`, `attrs`/`states`, `<tree>`, `account.invoice`, `stock.production.lot`, `customer`/`supplier`,
-  SQL directo, `_auto = False`, tablas externas…), port automático con OCA odoo-module-migrator (commit fijado en la imagen del
-  worker, sin git ni red) y, por cada hallazgo, si quedó **automático**, **manual** (sigue en el código portado) o **a revisar**.
-  Cada módulo portado se instala en un Odoo 19 nuevo (ejecutor odoo-hop-19, tarea `install`) para saber si instala; se
-  descargan el código portado, el diff y el inventario. Nombres de archivo restringidos a `[A-Za-z0-9_./-]` porque la
-  herramienta renombra archivos por shell. Probado con los 5 módulos sintéticos de `examples/odoo-legacy-modules` (del
-  laboratorio del usuario): 20 cambios automáticos, 6 manuales (`account.invoice`, `stock.production.lot` en vistas, `customer`)
-  y 6 a revisar (SQL, vistas SQL, tabla externa, `@api.one`). La instalación en Odoo 19 real: en `odoo-e2e.yml` (en curso).
-- Pendiente / limitaciones: el filestore (adjuntos en disco) no viaja todavía; migrar los **datos** de módulos a la medida con
-  su código portado en cada salto (hoy, con respaldo, esos módulos solo se pueden desinstalar); Odoo 20 cuando OpenUpgrade
-  publique sus scripts.
+- **Análisis** (`mf/odoo/modules.py`): restaura la base en `odoo-db` (PostgreSQL 13 aislado, red interna) y clasifica cada
+  módulo según la versión de origen: núcleo (por las tablas de cobertura de OpenUpgrade de esa versión; el autor del manifiesto
+  no cuenta: Odoo 12 pone «Odoo S.A.» a cualquier módulo sin autor), OCA (rama por rama hasta 19), **a la medida con código** en
+  el proyecto (se migra con sus datos) o terceros sin código (bloquea hasta que un arquitecto decide desinstalarlo, con motivo).
+- **Correcciones de datos** (`mf/odoo/fixes.py`): inconsistencias que rompen un salto (contacto de empresa o de almacén de otra
+  empresa): se detectan con sus registros, un arquitecto decide con motivo y se aplican solo a la copia. **Correcciones técnicas
+  entre saltos** para fallos de OpenUpgrade sin cambio de significado (booleanos dependientes de empresa guardados como número
+  por OpenUpgrade 18, antes del salto a 19), registradas en el resultado.
+- **Código a la medida** (`mf/odoo/code.py`, pantalla Código): inventario por archivo y línea y **port versión por versión**
+  (12→13→…→19) con OCA odoo-module-migrator (commit fijado) más reglas propias para lo que la herramienta no porta
+  (`account.invoice` → `account.move` con campos y métodos, `customer`/`supplier` → `*_rank`, `stock.production.lot` en vistas) y
+  **scripts de datos generados** (campos propios de la factura copiados a `account.move` en el salto 13 vía `old_invoice_id`).
+  Cada módulo portado se instala en un Odoo 19 nuevo para saber si instala. Nombres de archivo restringidos a `[A-Za-z0-9_./-]`.
+- **Migración**: copia de la base, correcciones aprobadas, desinstalaciones decididas y **7 saltos** en los ejecutores
+  `odoo-hop-<versión>` (imagen oficial + OpenUpgrade fijado; el tag de la imagen incluye la huella de su receta). Cada salto usa el
+  código OCA y el código a la medida portado **de esa versión**. Un salto falla por código de salida, CRITICAL, registro que no
+  carga o base que no llegó a la versión; las líneas ERROR no fatales se cuentan y se muestran. Límite de 12 h por trabajo Odoo.
+- **Resultado**: conciliación de datos de negocio (contactos de usuarios, usuarios reales, productos, ventas/compras con total,
+  facturas, apuntes publicados —en 12.0 se suman las líneas de extracto sin conciliar, que desde 14.0 son asientos—, inventario,
+  CRM, adjuntos de registros; los contactos de datos de módulos, informativo) y **respaldo Odoo 19** (.zip: `dump.sql` +
+  `manifest.json` + el `filestore` subido) que se restaura desde el gestor de bases de Odoo.
+- **Pruebas** (`.github/workflows/odoo-e2e.yml`, Odoo y OpenUpgrade reales, datos sintéticos, por las funciones del worker):
+  demo12 (demo de Odoo 12 → 19, conciliación igual), lab12 (los 5 módulos de `examples/odoo-legacy-modules` desinstalados, tabla
+  externa conservada), **lab12code** (los mismos módulos con su código: 7 saltos, instalados en 19 y sus datos iguales: facturas
+  con `x_external_invoice_id` en `account.move`, lote aprobado en `stock.lot`, pedidos, límite de crédito, auditoría, tabla
+  externa), oca12 (`partner_firstname` con su código de cada rama), demo16 (desde 16) y code (los 5 módulos portados instalan en
+  Odoo 19). **Verificado en el VPS por la plataforma** con un ZIP de base + código + filestore del laboratorio: análisis (5 a la
+  medida con código, 2 correcciones aprobadas), port (5/5 instalan), migración 12 → 19 sin fallos, conciliación igual y respaldo
+  con `dump.sql`, `manifest.json` (módulos a la medida en 19.0.1.0.0) y el archivo del filestore.
+- Hallazgos corregidos en el camino: módulos del fork 13 ocultos por el Odoo de la imagen; `openupgradelib` de PyPI sin las
+  funciones de los scripts de 18 (se usa un commit fijado); Odoo 19 es paquete de espacio de nombres (el ejecutor se caía y el
+  salto 19 esperaba para siempre; ahora un fallo del ejecutor termina la tarea con su traceback); el uid de `odoo` en la imagen 19
+  no es 101; la cola cortaba los trabajos Odoo a los 30 min.
+- **Pendiente / límites**: Odoo 20 (sin scripts de OpenUpgrade); los hallazgos «a revisar» (SQL directo, vistas SQL, tablas
+  externas, `@api.one`) siguen siendo de una persona; el filestore no se monta en los ejecutores (Odoo registra como INFO los
+  adjuntos que no encuentra en disco durante la migración; no cambia el resultado); otras reglas de port se agregan en
+  `mf/odoo/code.py` según aparezcan.
