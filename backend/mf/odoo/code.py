@@ -222,7 +222,50 @@ def data_scripts(prev: Path, d: Path, version: str) -> list[str]:
     return notes
 
 
-def port_steps(src: Path, out: Path, run, ctx, log, start='12.0', target='19.0') -> dict:
+def fix_external_tables(d: Path, ext: list[dict]) -> list[str]:
+    """A model on an external table (_auto = False, _table = 'x') whose table the project's SQL creates in another schema: Odoo looks
+    for it in public and fails ("has no table"). The model gets an init() that exposes it there as a view (simple views are
+    updatable in PostgreSQL, so the ORM reads and writes the real table). Models that already define init() are left to a person."""
+    tables = {}
+    for o in ext or []:
+        if o['kind'] == 'table':
+            tables.setdefault(o['name'], set()).add(o['schema'])
+    notes = []
+    for f in sorted(d.rglob('*.py')):
+        text = f.read_text(encoding='utf-8', errors='replace')
+        if '_auto' not in text or 'MF_EXTERNAL_TABLE' in text:
+            continue
+        out, changed = text, False
+        for m in re.finditer(r'''(?m)^(\s+)_table\s*=\s*['"](\w+)['"]\s*$''', text):
+            indent, name = m[1], m[2]
+            schemas = tables.get(name.lower(), set())
+            if not schemas or 'public' in schemas or len(schemas) != 1:
+                continue
+            schema = next(iter(schemas))
+            cls = text[:m.start()].rfind('class ')
+            body = text[cls: text.find('\nclass ', m.end()) if text.find('\nclass ', m.end()) != -1 else len(text)]
+            if not re.search(r'_auto\s*=\s*False', body):
+                continue
+            if re.search(r'\bdef init\(', body):
+                notes.append(f'[revisar] {f.relative_to(d)}: _table {name} está en {schema} y el modelo ya tiene init(): exponerla en public a mano')
+                continue
+            method = (f"\n\n{indent}def init(self):  # MF_EXTERNAL_TABLE: Migration Factory\n"
+                      f"{indent}    # the table lives in {schema}: Odoo reads public, so it is exposed there as an (updatable) view\n"
+                      f"{indent}    self.env.cr.execute(\"SELECT to_regclass('{schema}.{name}') IS NOT NULL AND to_regclass('public.{name}') IS NULL\")\n"
+                      f"{indent}    if self.env.cr.fetchone()[0]:\n"
+                      f"{indent}        self.env.cr.execute('CREATE VIEW public.{name} AS SELECT * FROM {schema}.{name}')\n")
+            end = text.find('\nclass ', m.end())
+            end = len(text.rstrip('\n')) if end == -1 else end
+            out = out.replace(text[cls:end].rstrip('\n'), text[cls:end].rstrip('\n') + method, 1)
+            changed = True
+            notes.append(f'regla de la plataforma: {f.relative_to(d)} · _table {name} está en el esquema {schema}: init() la expone en '
+                         f'public como vista')
+        if changed:
+            f.write_text(out, encoding='utf-8')
+    return notes
+
+
+def port_steps(src: Path, out: Path, run, ctx, log, start='12.0', target='19.0', ext=None) -> dict:
     """The code version by version (each hop of a database migration needs its modules' code for that release): the OCA tool's
     step, then the platform's rules and the generated data scripts of that version. Returns {'snapshots': {version: dir},
     'notes': [...]}; snapshots[target] is the final code."""
@@ -235,6 +278,7 @@ def port_steps(src: Path, out: Path, run, ctx, log, start='12.0', target='19.0')
         notes += _tool(d, prev_v, v, run, ctx, log)
         notes += apply_rules(d, v)
         notes += data_scripts(prev, d, v)
+        notes += [f'[{v}] {n}' for n in fix_external_tables(d, ext)]
         snaps[v], prev, prev_v = d, d, v
     log(f"código portado versión por versión: {', '.join(snaps)}")
     return {'snapshots': snaps, 'notes': notes}

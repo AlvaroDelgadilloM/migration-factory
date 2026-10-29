@@ -26,8 +26,13 @@ REF = re.compile(r'\b(?:from|join|into|update|table)\s+(?:only\s+)?([\w."]+)', r
 NOT_NAMES = {'each', 'row', 'update', 'delete', 'insert', 'set', 'select', 'on', 'only', 'lateral'}
 
 
+SKIP = re.compile(r'^\s*(create|drop)\s+database\b', re.I)   # another database: not run inside the one being checked
+
+
 def statements(sql: str) -> list[tuple[int, str]]:
-    """(first line, text) of each statement, splitting on ; outside dollar-quoted bodies and comments."""
+    """(first line, text) of each statement, splitting on ; outside dollar-quoted bodies and comments. psql meta-commands
+    (\\connect, \\set…) are not SQL: their lines are left out (line numbers kept)."""
+    sql = re.sub(r'(?m)^[ \t]*\\.*$', '', sql)
     out, buf, line, start, dollar = [], [], 1, 1, None
     i = 0
     while i < len(sql):

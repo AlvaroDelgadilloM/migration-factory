@@ -119,7 +119,7 @@ jobs:
         run: python backend/tests/e2e/odoo_chain.py scenario demo16 /tmp/dumps/demo16.sql --start 16.0
       - name: Escenario code (port 12 → 19 e instalación en Odoo 19)
         if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',code,'))
-        run: python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules
+        run: python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules --sql db/init/01-create-lab.sql --expect-sql legacy_migration_audit=KEEP
       - name: Escenario codecomplex (8 módulos con dependencias + SQL externo clasificado y probado en Odoo 19)
         if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',codecomplex,'))
         run: |

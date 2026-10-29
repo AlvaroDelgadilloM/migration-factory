@@ -187,7 +187,7 @@ def backup(ctx, run, database: str, source_zip: Path | None = None) -> Path:
     return out
 
 
-def ported_addons(ctx, run, src: Path, om_id, log, start: str = '12.0') -> dict:
+def ported_addons(ctx, run, src: Path, om_id, log, start: str = '12.0', ext=None) -> dict:
     """The uploaded custom modules ported version by version (mf.odoo.code.port_steps), each version's code on the shared
     read-only volume of the runners: {'paths': {version: addons path}, 'final': ported dir of 19.0, 'notes': [...]}."""
     from ..config import get_settings
@@ -197,7 +197,7 @@ def ported_addons(ctx, run, src: Path, om_id, log, start: str = '12.0') -> dict:
         raise OdooJobError('UNSAFE_NAMES', f"Nombres de archivo no admitidos (solo letras, números, _ . - /): {', '.join(bad[:5])}")
     if not oc.modules(src):
         raise OdooJobError('NO_MODULES', 'El ZIP no trae módulos de Odoo (carpetas con __manifest__.py)')
-    res = oc.port_steps(src, ctx.workdir / 'ported', run, ctx, log, start=start)
+    res = oc.port_steps(src, ctx.workdir / 'ported', run, ctx, log, start=start, ext=ext)
     root = Path(get_settings().odoo_addons_dir) / 'custom' / str(om_id).replace('-', '')[:12]
     shutil.rmtree(root, ignore_errors=True)
     paths = {}
@@ -225,7 +225,7 @@ def external_sql(src: Path, sql_files, database: str | None, log) -> list[dict]:
         failed = 0
         for f, text in texts.items():
             for line, st in extsql.statements(text):
-                if st.lower().rstrip(';').strip() in ('begin', 'commit', 'end', 'rollback'):
+                if st.lower().rstrip(';').strip() in ('begin', 'commit', 'end', 'rollback') or extsql.SKIP.match(st):
                     continue
                 o = at.get((f, line))
                 try:
@@ -250,7 +250,7 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
     the worker: it is only read and rewritten; it runs inside the isolated runner."""
     import json
     from . import code as oc
-    p = ported_addons(ctx, run, src, om_id, log)
+    p = ported_addons(ctx, run, src, om_id, log, ext=external_sql(src, sql_files, None, lambda m: None))
     ported, warnings, addons = p['final'], p['notes'], p['paths']['19.0']
     rows = oc.inventory(src, ported)
     log(f"{len(rows)} módulo(s): " + ', '.join(f"{r['name']} ({r['counts']['AUTO']} automáticos, {r['counts']['MANUAL']} manuales, "
