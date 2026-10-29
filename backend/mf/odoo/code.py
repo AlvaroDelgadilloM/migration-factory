@@ -222,6 +222,32 @@ def data_scripts(prev: Path, d: Path, version: str) -> list[str]:
     return notes
 
 
+FLUSH = 'self.env.flush_all()  # Migration Factory: since 13.0 the ORM delays writes; raw SQL must see them'
+
+
+def flush_before_sql(d: Path) -> list[str]:
+    """Raw SQL in a method after ORM changes: Odoo 12 wrote at once, 13.0+ keeps writes pending until a flush, so the query does not
+    see them (found by the business-flow test: a search by SQL missed the order just created). Every cr.execute in a method gets
+    self.env.flush_all() before it (16.0+ API); init() runs at install time, before any record, and is left alone."""
+    notes = []
+    for f in sorted(d.rglob('*.py')):
+        lines = f.read_text(encoding='utf-8', errors='replace').splitlines(keepends=True)
+        out, n = [], 0
+        for i, line in enumerate(lines):
+            m = re.match(r'^(\s+)(?:self\.env\.cr|self\._cr|cr)\.execute\(', line)
+            if m:
+                prev = next((x for x in reversed(out) if x.strip()), '')
+                owner = next((re.match(r'\s*def (\w+)', x)[1] for x in reversed(lines[:i]) if re.match(r'\s*def \w+', x)), '')
+                if 'flush' not in prev and owner != 'init' and 'self' in line.split('.execute')[0] + prev + 'self':
+                    out.append(f'{m[1]}{FLUSH}\n')
+                    n += 1
+            out.append(line)
+        if n:
+            f.write_text(''.join(out), encoding='utf-8')
+            notes.append(f'regla de la plataforma: {f.relative_to(d)} · flush_all() antes de {n} SQL directo(s) (13.0+ difiere las escrituras del ORM)')
+    return notes
+
+
 def fix_external_tables(d: Path, ext: list[dict]) -> list[str]:
     """A model on an external table (_auto = False, _table = 'x') whose table the project's SQL creates in another schema: Odoo looks
     for it in public and fails ("has no table"). The model gets an init() that exposes it there as a view (simple views are
@@ -279,6 +305,7 @@ def port_steps(src: Path, out: Path, run, ctx, log, start='12.0', target='19.0',
         notes += apply_rules(d, v)
         notes += data_scripts(prev, d, v)
         notes += [f'[{v}] {n}' for n in fix_external_tables(d, ext)]
+        notes += [f'[{v}] {n}' for n in flush_before_sql(d)] if v == '16.0' else []
         snaps[v], prev, prev_v = d, d, v
     log(f"código portado versión por versión: {', '.join(snaps)}")
     return {'snapshots': snaps, 'notes': notes}
@@ -399,6 +426,10 @@ if __name__ == '__main__':  # self-check on a tiny module
         assert install_order([{'name': 'b', 'depends': ['a']}, {'name': 'a', 'depends': ['sale']}]) == ['a', 'b']
         assert custom_deps([{'name': 'b', 'depends': ['a']}, {'name': 'a', 'depends': []}], 'b') == ['b', 'a']
         assert safe_tree(src.parent) == []
+        flush_before_sql(ported.parent)
+        body = (ported / 'm.py').read_text()
+        assert body.count('flush_all()') == 1 and body.index('flush_all()') < body.index('execute('), body
+        assert flush_before_sql(ported.parent) == []   # idempotent
     x = re.sub(r'<[^<>]*\sstates="[^"]*"[^<>]*>', _states_to_invisible, '<button name="a" states="draft"/><button states="a,b" invisible="1"/>')
     assert x == '<button name="a" invisible="state not in (\'draft\',)"/><button states="a,b" invisible="1"/>', x
     print('ok')
