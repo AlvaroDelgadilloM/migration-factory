@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
@@ -11,14 +11,23 @@ import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
 import { ActionButton, PageHeader, StateView, StatusTag, TrafficLight, short } from '../../shared/ui';
 import { VersionPicker, profileFor } from '../../shared/version-picker';
+import { isMultiProject } from '../../shared/flow-progress';
 
 @Component({
   selector: 'mf-plan',
-  imports: [FormsModule, MessageModule, SelectModule, TableModule, ActionButton, PageHeader, StateView, StatusTag, TrafficLight, VersionPicker],
+  imports: [FormsModule, RouterLink, MessageModule, SelectModule, TableModule, ActionButton, PageHeader, StateView, StatusTag, TrafficLight, VersionPicker],
   template: `
     <mf-page-header title="Plan" crumb="PLAN" subtitle="Perfil objetivo versionado, pasos, precondiciones y bloqueos" />
     <mf-state [loading]="scans.loading()" [error]="scans.error()" [hasData]="!!scans.data()" [empty]="!scanId()"
               emptyText="Se necesita un análisis correcto antes de planificar." (retry)="scans.reload()">
+      @if (multiProject()) {
+        <p-message severity="warn">
+          <span>Este análisis es de un <strong>workspace con varios proyectos</strong>: no lleva plan. Se migra completo en
+            <a [routerLink]="['/p', ctx.projectId(), 'inventory']">Inventario → «Migración por oleadas»</a> (Tomcat WAR, Spring Boot o Quarkus)
+            y luego se prueba en <a [routerLink]="['/p', ctx.projectId(), 'pruebas', 'automaticas']">Pruebas → Automáticas</a>.
+            Para un plan de un solo proyecto, analícelo por separado desde Inventario.</span>
+        </p-message>
+      }
       <div class="toolbar">
         <label for="sc">Análisis</label>
         <p-select inputId="sc" [options]="succeeded()" optionValue="id" [ngModel]="scanId()" (ngModelChange)="scanId.set($event)">
@@ -139,7 +148,9 @@ export class PlanPage {
   expanded: Record<string, boolean> = {};
   succeeded = computed(() => (this.scans.data()?.items ?? []).filter(s => s.status === 'succeeded'));
   steps = computed(() => (this.plan.data()?.steps ?? []) as unknown as PlanStep[]);
-  createReason = computed(() => !this.ctx.perms() ? 'Cargando permisos…' : !this.ctx.can('plan') ? `Su rol (${this.ctx.role()}) no permite crear planes` : null);
+  multiProject = computed(() => { const s = this.succeeded().find(x => x.id === this.scanId()); return !!s && isMultiProject(s); });
+  createReason = computed(() => !this.ctx.perms() ? 'Cargando permisos…' : !this.ctx.can('plan') ? `Su rol (${this.ctx.role()}) no permite crear planes`
+    : this.multiProject() ? 'Workspace con varios proyectos: se migra en Inventario → «Migración por oleadas»' : null);
   approveReason = computed(() => {
     const p = this.plan.data();
     if (!this.ctx.can('plan')) return `Su rol (${this.ctx.role()}) no permite aprobar`;
