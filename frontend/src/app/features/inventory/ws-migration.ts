@@ -33,7 +33,7 @@ import { VersionPicker, profileFor } from '../../shared/version-picker';
       <p class="muted">Tomcat WAR convierte todos los bundles OSGi/Blueprint del workspace en <strong>un solo WAR</strong> con Camel 4.18: las rutas no
         se rediseñan; Blueprint pasa a Spring XML y una capa de compatibilidad cubre direct-vm, xmljson y servicios OSGi. Compilar prueba los
         POM y la API; la estructura de las rutas se compara sola contra el original (G4) y las respuestas con <code>migrate.py verify responses</code>.</p>
-      <label for="wsc">Configuración del cliente (JSON opcional: groupId, version, containers, patches, extraWarDependencies)</label>
+      <label for="wsc">Configuración del cliente (JSON opcional: groupId, version, containers, patches, extraWarDependencies, waves)</label>
       <textarea pTextarea id="wsc" rows="3" [(ngModel)]="configText" placeholder='{"groupId": "com.cliente.migrated", "version": "1.0.0"}'></textarea>
       <label class="check"><input type="checkbox" [(ngModel)]="verifyRoutes" /> Comparar la estructura de las rutas con el original (G4, tarda más)</label>
     }

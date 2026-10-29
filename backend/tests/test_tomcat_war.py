@@ -272,3 +272,11 @@ def test_cli_migrate_and_plan(tmp_path, capsys):
     plan = tmp_path / 'plan'
     assert cli_tool.main(['plan', str(FIXTURE), '--target', 'tomcat-war', '--output', str(plan)]) == cli_tool.EXIT_OK
     assert (plan / 'reports/tomcat-war-report.md').exists() and not (plan / 'migrated-workspace').exists()
+
+
+def test_the_platform_accepts_waves_in_the_client_config_but_not_an_overlay():
+    from mf.schemas import WorkspaceMigrationIn
+    waves = [{'name': '1', 'modules': ['orders-api']}]
+    assert WorkspaceMigrationIn(target='tomcat-war', config={'waves': waves}).config['waves'] == waves
+    with pytest.raises(ValueError, match='overlay'):
+        WorkspaceMigrationIn(target='tomcat-war', config={'overlay': 'x'})

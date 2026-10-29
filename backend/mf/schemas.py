@@ -584,7 +584,7 @@ class WorkspaceMigrationIn(Dto):
         if self.config is not None:
             if self.target != 'tomcat-war':
                 raise ValueError('config solo aplica a target tomcat-war')
-            extra = set(self.config) - {'groupId', 'version', 'containers', 'patches', 'extraWarDependencies'}
+            extra = set(self.config) - {'groupId', 'version', 'containers', 'patches', 'extraWarDependencies', 'waves'}
             if extra:
                 raise ValueError(f"config: claves no permitidas desde la plataforma: {', '.join(sorted(extra))}")
             if len(json.dumps(self.config)) > 200_000:
