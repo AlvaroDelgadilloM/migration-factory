@@ -1055,7 +1055,7 @@ def _action(plan, key):
 
 
 def write_json(path: Path, data):
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
 
 
 # --- workspace (17-CORRECCION-MULTI-PROJECT-ROOT-AMBIGUOUS) ----------------------------------------
