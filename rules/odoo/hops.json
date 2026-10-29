@@ -1,5 +1,5 @@
 {
- "description": "Saltos de Odoo 12 a 19: imagen oficial odoo:<versi\u00f3n> + OCA/OpenUpgrade en el commit fijado (docker/odoo-hop.Dockerfile).",
+ "description": "Saltos de Odoo 12 a 19: imagen oficial odoo:<versión> + OCA/OpenUpgrade en el commit fijado (docker/odoo-hop.Dockerfile). openupgradelib: la versión PyPI (13.0, Python 3.7) y, desde 14.0, el paquete del commit fijado encima (los scripts de 18.0 usan funciones aún no publicadas en PyPI).",
  "postgres": "postgres:13",
  "openupgradelib": "3.13.7",
  "hops": [
@@ -31,5 +31,6 @@
    "version": "19.0",
    "openupgrade": "bf12c3cee6097145e53efa589b0d99a7e64d6a87"
   }
- ]
+ ],
+ "openupgradelibCommit": "5dfe3b485da5cfaa1f8c528c183cbdd0bc8248b0"
 }

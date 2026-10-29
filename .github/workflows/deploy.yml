@@ -56,9 +56,9 @@ jobs:
           REG: ${{ steps.reg.outputs.registry }}
         run: |
           for row in $(jq -r '.hops[] | "\(.version)=\(.openupgrade)"' rules/odoo/hops.json); do
-            v="${row%%=*}"; c="${row##*=}"; tag="$REG/mf-odoo-hop:$v-${c:0:8}"
+            v="${row%%=*}"; c="${row##*=}"; l=$(jq -r .openupgradelibCommit rules/odoo/hops.json); tag="$REG/mf-odoo-hop:$v-${c:0:8}-${l:0:8}"
             docker manifest inspect "$tag" > /dev/null 2>&1 && { echo "$tag ya existe"; continue; }
-            docker buildx build --push --platform linux/amd64 -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" \
+            docker buildx build --push --platform linux/amd64 -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" --build-arg OUL_COMMIT="$(jq -r .openupgradelibCommit rules/odoo/hops.json)" \
               -t "$tag" --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" .
           done
 

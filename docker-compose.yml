@@ -166,37 +166,37 @@ services:
   odoo-hop-13:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "13.0", OU_COMMIT: "55fc878925e090a9f715893a5a5e3dd4ce057bf3"}}
-    image: migration-factory/odoo-hop:13.0-55fc8789
+    image: migration-factory/odoo-hop:13.0-55fc8789-5dfe3b48
 
   odoo-hop-14:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "14.0", OU_COMMIT: "9c93464291e74eb1e24723ef84bee62cbd88e5f6"}}
-    image: migration-factory/odoo-hop:14.0-9c934642
+    image: migration-factory/odoo-hop:14.0-9c934642-5dfe3b48
 
   odoo-hop-15:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "15.0", OU_COMMIT: "913e7d32c7dafb1ec7131e74929053af7f7a23a6"}}
-    image: migration-factory/odoo-hop:15.0-913e7d32
+    image: migration-factory/odoo-hop:15.0-913e7d32-5dfe3b48
 
   odoo-hop-16:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "16.0", OU_COMMIT: "afa31b1df1a4dd1f5f5c8cc47d938685fa255d1d"}}
-    image: migration-factory/odoo-hop:16.0-afa31b1d
+    image: migration-factory/odoo-hop:16.0-afa31b1d-5dfe3b48
 
   odoo-hop-17:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "17.0", OU_COMMIT: "61daab09ab6c0d21234b96374d9291d3e02ee9e4"}}
-    image: migration-factory/odoo-hop:17.0-61daab09
+    image: migration-factory/odoo-hop:17.0-61daab09-5dfe3b48
 
   odoo-hop-18:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "18.0", OU_COMMIT: "a393ddbe56b6913eea1e77b42be93152ac00b16d"}}
-    image: migration-factory/odoo-hop:18.0-a393ddbe
+    image: migration-factory/odoo-hop:18.0-a393ddbe-5dfe3b48
 
   odoo-hop-19:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "19.0", OU_COMMIT: "bf12c3cee6097145e53efa589b0d99a7e64d6a87"}}
-    image: migration-factory/odoo-hop:19.0-bf12c3ce
+    image: migration-factory/odoo-hop:19.0-bf12c3ce-5dfe3b48
 
   frontend:
     build: {context: ., dockerfile: docker/frontend.Dockerfile}
