@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { TableModule } from 'primeng/table';
@@ -15,7 +16,7 @@ const OUTCOME: Record<string, string> = { OK: 'Migra', WARN: 'Revisar', BLOCK: '
  *  architect's decision for the ones that block (third party / custom, or OCA not ported). */
 @Component({
   selector: 'mf-odoo-modules',
-  imports: [FormsModule, InputTextModule, SelectButtonModule, TableModule, PageHeader, StateView],
+  imports: [FormsModule, RouterLink, InputTextModule, SelectButtonModule, TableModule, PageHeader, StateView],
   styles: [`
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; } .t-OK { background: #e7f6ec; color: #067647; }
     .t-WARN { background: #fff4e5; color: #b54708; } .t-BLOCK { background: #fdecea; color: #b42318; }
@@ -27,7 +28,19 @@ const OUTCOME: Record<string, string> = { OK: 'Migra', WARN: 'Revisar', BLOCK: '
   template: `
     <mf-page-header title="Módulos" crumb="ODOO 12 → 19" subtitle="Cada módulo instalado: de dónde viene y si existe en cada versión hasta 19." />
     @if (os.error(); as e) { <p class="err">{{ e.code }}: {{ e.message }}</p> }
-    <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.analysis()" [empty]="!os.analysis()"
+    @if (!os.analysis() && os.code(); as c) {
+      <p class="small muted">Sin respaldo de la base: estos son los módulos del código subido, portados a Odoo 19 (detalle en
+        <a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'codigo']">Código</a>).</p>
+      <p-table [value]="c.modules" [tableStyle]="{ 'min-width': '44rem' }">
+        <ng-template #header><tr><th scope="col">Módulo</th><th scope="col">Versión 12</th><th scope="col">Depende de</th><th scope="col">Odoo 19</th><th scope="col">Cambios</th></tr></ng-template>
+        <ng-template #body let-m>
+          <tr><td><code>{{ m.name }}</code></td><td class="small">{{ m.version }}</td><td class="small">{{ m.depends?.join(', ') }}</td>
+            <td><span [class]="'tag t-' + (m.install?.state === 'succeeded' ? 'OK' : 'BLOCK')">{{ m.install?.state === 'succeeded' ? 'Instala' : 'No instala' }}</span></td>
+            <td class="small">{{ m.counts?.AUTO }} automáticos · {{ m.counts?.MANUAL }} manuales · {{ m.counts?.REVIEW }} a revisar</td></tr>
+        </ng-template>
+      </p-table>
+    }
+    <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.analysis()" [empty]="!os.analysis() && !os.code()"
               emptyText="Primero analice la base en Resumen." (retry)="os.reload()">
       <p class="small muted">Núcleo: según la cobertura publicada de OpenUpgrade por salto. OCA: si el módulo existe en la rama de cada versión
         (su código hace falta en todos los saltos para migrar sus datos). Terceros o a la medida: no hay versión 19 conocida.

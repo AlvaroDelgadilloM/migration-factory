@@ -32,7 +32,31 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
       <mf-action label="Migrar a Odoo 19" icon="pi pi-play" [busy]="os.busy()" [disabledReason]="migrateReason()" (run)="os.start('migrate')" />
     </mf-page-header>
     @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
-    <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.list.data()" [empty]="os.list.data()?.length === 0"
+    @if (os.codeOnly()) {
+      <section class="card">
+        <h2>Proyecto de solo código</h2>
+        <p class="small">El ZIP trae el código de {{ os.uploaded()['odooModules']?.length }} módulo(s) a la medida y no el respaldo de la base: no hay datos
+          que analizar ni migrar. El resultado es el código portado a Odoo 19, listo para instalar en un Odoo 19
+          (<a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'codigo']">pantalla Código</a>). Para migrar también los datos, registre un proyecto con un
+          ZIP que traiga el respaldo de Odoo 12 (dump.sql) junto a los módulos.</p>
+        @if (os.code(); as c) {
+          <div class="cards">
+            <article><b>{{ c.summary['counts']?.modules }}</b>módulos</article>
+            <article><b [class.ok]="c.summary['counts']?.installed === c.summary['counts']?.modules">{{ c.summary['counts']?.installed }}</b>instalan en Odoo 19</article>
+            <article><b>{{ c.summary['counts']?.AUTO }}</b>cambios automáticos</article>
+            <article><b [class.bad]="c.summary['counts']?.MANUAL">{{ c.summary['counts']?.MANUAL }}</b>manuales pendientes</article>
+            <article><b>{{ c.summary['counts']?.REVIEW }}</b>a revisar</article>
+          </div>
+          <p>
+            @if (c.summary['artifacts']?.['ported']; as a) { <mf-action label="Código portado (.zip)" icon="pi pi-download" (run)="api.download(a, 'modulos-odoo19.zip')" /> }
+            <a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'codigo']" style="margin-left:12px">Ver el detalle por archivo y línea →</a>
+          </p>
+        } @else if (!os.running()) {
+          <p><a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'codigo']">Ir a Código y pulsar «Portar código a 19» →</a></p>
+        }
+      </section>
+    }
+    <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.list.data()" [empty]="os.list.data()?.length === 0 && !os.codeOnly()"
               emptyText="Aún no se analiza la base. «Analizar la base» la restaura en un servidor aislado y revisa cada módulo instalado." (retry)="os.reload()">
       @if (os.running(); as r) {
         <section class="card"><h2>{{ r.mode === 'analyze' ? 'Análisis en curso' : r.mode === 'code' ? 'Port de código en curso' : 'Migración en curso' }}</h2>
@@ -121,11 +145,13 @@ export class OdooOverview {
   hopState(s: string) { return HOP_STATE[s] ?? s; }
   analyzeReason() {
     if (!this.os.ctx.can('execute')) return `Su rol (${this.os.ctx.role()}) no permite ejecutar`;
+    if (this.os.codeOnly()) return 'El ZIP trae solo código de módulos, sin respaldo de la base: el resultado está en Código';
     return this.os.running() ? 'Hay un análisis o una migración en curso' : null;
   }
   migrateReason() {
     if (!this.os.ctx.can('execute')) return `Su rol (${this.os.ctx.role()}) no permite ejecutar`;
     if (this.os.running()) return 'Hay un análisis o una migración en curso';
+    if (this.os.codeOnly()) return 'Sin respaldo de la base no hay datos que migrar: el código portado está en Código';
     if (!this.os.analysis()) return 'Primero analice la base';
     const n = this.os.pending().length;
     if (n) return `${n} módulo(s) bloquean sin decisión: revise Módulos`;

@@ -16,6 +16,10 @@ export class OdooStore {
   readonly running = computed(() => (this.list.data() ?? []).find(r => ['queued', 'running'].includes(r.state)) ?? null);
   readonly analysis = computed(() => (this.list.data() ?? []).find(r => r.mode === 'analyze' && r.state === 'succeeded') ?? null);
   readonly migration = computed(() => (this.list.data() ?? []).find(r => r.mode === 'migrate') ?? null);
+  /** what the project's ZIP brought: odooDump (database) and/or odooModules (custom module code) */
+  readonly uploaded = computed(() => ((this.ctx.project()?.upload as Record<string, any> | null | undefined)?.['structure'] ?? {}) as Record<string, any>);
+  /** a ZIP with module code and no database: no analysis or migration, the result is the ported code (Código) */
+  readonly codeOnly = computed(() => !this.uploaded()['odooDump'] && !!(this.uploaded()['odooModules'] ?? []).length);
   /** latest custom module code run (inventory, port to 19, install check) */
   readonly code = computed(() => (this.list.data() ?? []).find(r => r.mode === 'code' && !['queued', 'running'].includes(r.state)) ?? null);
   /** blocking modules of the latest analysis still without the architect's decision */
