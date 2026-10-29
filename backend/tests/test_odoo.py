@@ -130,7 +130,7 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     c = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert seen['src'] == ['addons/my_sale/__manifest__.py', 'addons/my_sale/models/sale.py'], seen
     assert seen['sql'] == ['backups/custom.sql']
-    assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0, 'modules': 1, 'installed': 0}
+    assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0, 'modules': 1, 'installed': 0, 'testsPassed': 0, 'tested': 0}
     dl = client.get(f"{API}/artifacts/{c['summary']['artifacts']['ported']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content[:2] == b'PK'
 

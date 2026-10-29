@@ -11,7 +11,7 @@ const INSTALL: Record<string, string> = { succeeded: 'Instala en 19', failed: 'N
 
 interface Finding { pattern: string; file: string; line: number; text: string; since: string; target: string; note: string; status: string }
 interface CodeModule { name: string; version: string; depends: string[]; findings: Finding[]; counts: Record<string, number>;
-  install?: { state: string; errors: number; logTail: string } }
+  install?: { state: string; errors: number; logTail: string; tests?: { total: number; failed: number; errors: number; failures?: string[]; smoke?: string[] } } }
 
 /** Odoo 12 -> 19 · Código: custom module code uploaded with the project. What changes (file and line), what the automatic port
  *  (OCA odoo-module-migrator) did, what is left for a person, and whether each ported module installs on a new Odoo 19. */
@@ -39,7 +39,7 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
     </mf-page-header>
     @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
     <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.code() || !!running()" [empty]="!os.code() && !running()"
-              emptyText="Suba el ZIP con los módulos (carpetas con __manifest__.py) y pulse «Portar código a 19»: se inventarían, se portan con la herramienta de OCA y se instala cada uno en un Odoo 19 nuevo y aislado." (retry)="os.reload()">
+              emptyText="Suba el ZIP con los módulos (carpetas con __manifest__.py) y pulse «Portar código a 19»: se inventarían, se portan con la herramienta de OCA y cada uno se instala y se prueba (sus pruebas y una prueba funcional generada) en un Odoo 19 nuevo y aislado con datos demo." (retry)="os.reload()">
       @if (running(); as r) {
         <section class="card"><h2>Portando código</h2>@if (r.jobId) { <mf-job-log [jobId]="r.jobId" (finished)="os.reload()" /> }</section>
       }
@@ -49,6 +49,7 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
           <div class="cards">
             <article><b>{{ c.summary['counts']?.modules }}</b>módulos</article>
             <article><b>{{ c.summary['counts']?.installed }}</b>instalan en Odoo 19</article>
+            @if (c.summary['counts']?.tested) { <article><b>{{ c.summary['counts']?.testsPassed }}/{{ c.summary['counts']?.tested }}</b>pasan sus pruebas</article> }
             <article><b>{{ c.summary['counts']?.AUTO }}</b>cambios automáticos</article>
             <article><b>{{ c.summary['counts']?.MANUAL }}</b>manuales pendientes</article>
             <article><b>{{ c.summary['counts']?.REVIEW }}</b>a revisar</article>
@@ -70,7 +71,12 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
         @for (m of modules(); track m.name) {
           <section class="card">
             <h2><code>{{ m.name }}</code> <span class="small muted">{{ m.version }} · depende de {{ m.depends.join(', ') || '—' }}</span>
-              @if (m.install; as i) { <span [class]="'tag t-' + i.state">{{ install(i.state) }}</span> }</h2>
+              @if (m.install; as i) { <span [class]="'tag t-' + i.state">{{ install(i.state) }}</span>
+                @if (i.tests; as t) { <span [class]="'tag t-' + (t.failed || t.errors ? 'failed' : 'succeeded')">pruebas {{ t.total - t.failed - t.errors }}/{{ t.total }} bien</span> } }</h2>
+            @if (m.install?.tests; as t) {
+              @if (t.failures?.length) { <pre>{{ t.failures?.join('\n') }}</pre> }
+              @if (t.smoke?.length) { <p class="small muted">Prueba funcional generada (leer todos los campos y abrir vistas, con datos demo): {{ t.smoke?.join(' · ') }}</p> }
+            }
             <div class="scroll"><table>
               <tr><th scope="col">Estado</th><th scope="col">Dónde</th><th scope="col">Qué</th><th scope="col">En 19</th></tr>
               @for (f of shown(m); track f.file + f.line + f.pattern) {

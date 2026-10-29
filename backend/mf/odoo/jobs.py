@@ -266,16 +266,24 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
     installs = {'base': {'modules': core, 'state': res['state'], 'errors': res['errors'], 'logTail': res['logTail'][-6000:]}}
     # the external SQL goes into the base before the modules (they read its tables); what Odoo 19 rejects is recorded per object
     ext = external_sql(src, sql_files, base if res['state'] == 'succeeded' else None, log)
+    # the check runs on a copy of the ported code with a generated functional test per module (not in the code you download)
+    check = Path(addons).parent / 'check19'
+    shutil.rmtree(check, ignore_errors=True)
+    for name, m in oc.modules(Path(addons)).items():
+        shutil.copytree(m['path'], check / name)
+        oc.add_smoke_test(check / name, name)
     for i, name in enumerate(oc.install_order(rows)):
         if res['state'] != 'succeeded' or cancelled():
             installs[name] = {'state': 'skipped', 'errors': 0, 'logTail': ''}
             continue
         db = f'mf_{tag}_i{i}'
         chain.copy_db(base, db)
-        r = chain.wait(chain.enqueue('19.0', db, [addons], install=[name]), timeout, cancelled)
+        r = chain.wait(chain.enqueue('19.0', db, [str(check)], install=[name], tests=[name]), timeout, cancelled)
         chain.drop_db(db)
-        installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:]}
-        log(f"instalar {name} en Odoo 19: {r['state']}")
+        tests = oc.test_results(r['logTail'])
+        installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:], 'tests': tests}
+        log(f"instalar {name} en Odoo 19: {r['state']}" + (f" · pruebas: {tests['total'] - tests['failed'] - tests['errors']}/{tests['total']} bien"
+                                                           if tests else ''))
     chain.drop_db(base)
     for r in rows:
         r['install'] = installs.get(r['name'])

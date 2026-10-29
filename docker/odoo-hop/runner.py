@@ -20,16 +20,18 @@ TAIL = 20000
 FATAL = (' CRITICAL ', 'Failed to load registry')
 
 
-def command(database, extra_paths, install=None):
+def command(database, extra_paths, install=None, test_tags=None):
     """OpenUpgrade for this version: 13.0 is a full fork of Odoo; 14.0+ is the official Odoo with openupgrade_framework and the
     migration scripts of OCA/OpenUpgrade (--upgrade-path). install: the plain Odoo of the image installing those modules on a
     new database (checks that ported module code installs on this version)."""
     common = ['-d', database, '--db_host', DB['host'], '--db_port', str(DB['port']), '--db_user', DB['user'],
               '--db_password', DB['password'], '--stop-after-init', '--without-demo', 'all',
               '--data-dir', '/var/lib/odoo', '--log-level', 'info', '--workers', '0', '--max-cron-threads', '0']
-    if install:
+    if install:   # a throwaway database to check modules: with demo data (records for their code to run on) and their tests
         core = core_addons()
-        return ['odoo', '--addons-path', ','.join([core] + list(extra_paths)), '--init', install] + common
+        cmd = ['odoo', '--addons-path', ','.join([core] + list(extra_paths)), '--init', install] + common
+        cmd = [x for x in cmd if x not in ('--without-demo', 'all')] + (['--with-demo'] if float(VERSION) >= 18 else [])
+        return cmd + (['--test-enable', '--test-tags', test_tags] if test_tags else [])
     common += ['--update', 'all']
     if VERSION == '13.0':
         paths = [OU + '/addons', OU + '/odoo/addons'] + list(extra_paths)
@@ -54,7 +56,7 @@ def take(conn):
         cur.execute("""update mf_hop_task set state = 'running', started_at = now(), runner = %s
                        where id = (select id from mf_hop_task where version = %s and state = 'queued' order by id
                                    for update skip locked limit 1)
-                       returning id, database, extra_paths, install""", (os.uname()[1], VERSION))
+                       returning id, database, extra_paths, install, test_tags""", (os.uname()[1], VERSION))
         return cur.fetchone()
 
 
@@ -65,10 +67,10 @@ def cancelled(conn, task_id):
         return bool(row and row[0])
 
 
-def run(conn, task_id, database, extra_paths, install=None):
+def run(conn, task_id, database, extra_paths, install=None, test_tags=None):
     """Any failure of the runner itself ends the task as failed with its traceback (it never stays 'running')."""
     try:
-        execute(conn, task_id, database, extra_paths, install)
+        execute(conn, task_id, database, extra_paths, install, test_tags)
     except Exception:  # noqa: BLE001
         import traceback
         with conn, conn.cursor() as cur:
@@ -76,10 +78,10 @@ def run(conn, task_id, database, extra_paths, install=None):
                         ('El ejecutor del salto falló antes de terminar:\n' + traceback.format_exc()[-TAIL:], task_id))
 
 
-def execute(conn, task_id, database, extra_paths, install=None):
+def execute(conn, task_id, database, extra_paths, install=None, test_tags=None):
     log_path = os.path.join(LOGS, 'hop-%s.log' % task_id)
     with open(log_path, 'wb') as out:
-        proc = subprocess.Popen(command(database, extra_paths or [], install), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        proc = subprocess.Popen(command(database, extra_paths or [], install, test_tags), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         while proc.poll() is None:
             time.sleep(3)
             if cancelled(conn, task_id):

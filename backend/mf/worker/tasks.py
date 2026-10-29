@@ -1513,18 +1513,23 @@ def do_odoo_code(job: Job, ctx: Context):
                 'report': _store(db, om.project_id, 'report-json', f'inventario-odoo19-{tag}.json', res['report'], 'application/json', ctx, commit=False)}
         rows = res['rows']
         failed = [r['name'] for r in rows if (r.get('install') or {}).get('state') != 'succeeded']
+        tested = [(r.get('install') or {}).get('tests') for r in rows]
+        broken = [r['name'] for r, t in zip(rows, tested) if t and (t['failed'] or t['errors'])]
         om.modules = rows
         ext = res.get('externalSql') or []
         om.summary = {'from': '12.0', 'to': '19.0', 'portWarnings': res['portWarnings'], 'base': res['base'], 'externalSql': ext,
                       'externalSqlCounts': {c: sum(1 for o in ext if o['category'] == c) for c in
                                             ('KEEP', 'MIGRATE', 'REWRITE', 'MOVE_TO_ORM', 'DEPRECATE', 'MANUAL_REVIEW')},
                       'counts': {k: sum(r['counts'][k] for r in rows) for k in ('AUTO', 'MANUAL', 'REVIEW')} | {'modules': len(rows),
-                                 'installed': len(rows) - len(failed)},
+                                 'installed': len(rows) - len(failed), 'testsPassed': sum(1 for t in tested if t and not t['failed'] and not t['errors']),
+                                 'tested': sum(1 for t in tested if t)},
                       'artifacts': {k: str(v.id) for k, v in arts.items()}}
         db.commit()
     if res['base']['state'] != 'succeeded':
         return ('partial_success', 'BASE_INSTALL_FAILED', 'No se pudo crear el Odoo 19 base con las dependencias estándar; ver su log')
-    return None if not failed else ('partial_success', 'MODULES_NOT_INSTALLABLE', f"No instalan en Odoo 19: {', '.join(failed)}")
+    if failed:
+        return ('partial_success', 'MODULES_NOT_INSTALLABLE', f"No instalan en Odoo 19: {', '.join(failed)}")
+    return None if not broken else ('partial_success', 'MODULE_TESTS_FAILED', f"Instalan pero fallan sus pruebas en Odoo 19: {', '.join(broken)}")
 
 
 def do_datastage_migrate(job: Job, ctx: Context):

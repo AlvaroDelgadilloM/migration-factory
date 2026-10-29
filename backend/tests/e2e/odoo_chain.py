@@ -87,7 +87,10 @@ def code(a):
     res = oj.port_code(ctx(), run, Path(a.addons), uuid.uuid4(), print, lambda: False, 3 * 3600, a.sql or [])
     print('base:', res['base']['state'], res['base']['modules'])
     for r in res['rows']:
-        print(f"{r['name']}: {r['counts']} · instalar en 19: {r['install']['state']}")
+        t = r['install'].get('tests') or {}
+        print(f"{r['name']}: {r['counts']} · instalar en 19: {r['install']['state']} · pruebas: {t.get('total', 0) - t.get('failed', 0) - t.get('errors', 0)}/{t.get('total', 0)}")
+        for line in (t.get('failures') or []) + [f'funcional: {x}' for x in t.get('smoke') or []]:
+            print('    ' + line)
         for f in r['findings']:
             if f['status'] != 'AUTO':
                 print(f"    {f['status']:6} {f['pattern']} {f['file']}:{f['line']}")
@@ -100,6 +103,8 @@ def code(a):
     assert res['base']['state'] == 'succeeded', res['base']['logTail'][-3000:]
     assert all(v == 'succeeded' for v in state.values()), state   # the OCA tool + the platform's rules: every module installs
     assert not [r['name'] for r in res['rows'] if r['counts']['MANUAL']], [(r['name'], r['counts']) for r in res['rows']]
+    tests = {r['name']: r['install'].get('tests') for r in res['rows']}
+    assert all(t and t['total'] and not t['failed'] and not t['errors'] for t in tests.values()), tests   # and they work: their tests
     assert all((o.get('in19') or {}).get('state') == 'ok' for o in res['externalSql']), [o for o in res['externalSql'] if o.get('in19', {}).get('state') != 'ok']
     got = {o['name'] or o['schema']: o['category'] for o in res['externalSql']}
     for spec in a.expect_sql or []:
