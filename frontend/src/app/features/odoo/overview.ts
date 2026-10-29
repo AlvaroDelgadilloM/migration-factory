@@ -106,6 +106,7 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
               <span class="small"> dump.sql + manifest.json{{ m.summary['filestore'] ? ' + filestore' : '' }}: se restaura desde el gestor de bases de datos de Odoo 19.</span></p>
           }
           @if (m.summary['fixesApplied']?.length) { <p class="small">Correcciones de datos aplicadas a la copia (aprobadas): {{ m.summary['fixesApplied'].join(', ') }}.</p> }
+          @if (m.summary['technicalFixes']?.length) { <p class="small">Correcciones técnicas entre saltos (fallos conocidos de OpenUpgrade, sin cambio de significado): {{ m.summary['technicalFixes'].join(' · ') }}.</p> }
           @if (m.summary['customModules']?.length) { <p class="small">Módulos a la medida migrados con su código portado: {{ m.summary['customModules'].join(', ') }}.</p> }
           @if (m.summary['uninstalled']?.length) { <p class="small">Desinstalados antes de migrar (decisión registrada): {{ m.summary['uninstalled'].join(', ') }}.</p> }
         </section>

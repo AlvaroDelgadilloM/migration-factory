@@ -129,12 +129,15 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
     chain.mark_uninstall(mig, drop)
     if drop:
         log(f"se desinstalan antes del primer salto (decisión del arquitecto): {', '.join(drop)}")
-    hops, root = [], Path(get_settings().odoo_addons_dir)
+    hops, root, technical = [], Path(get_settings().odoo_addons_dir), []
     for i, version in enumerate(analysis['hops']):
         extra = oca_addons(analysis['rows'], decisions, version, root, fetch)
         log(f"salto a {version}" + (f" con {len(extra)} repositorio(s) OCA" if extra else '') + (' y los módulos a la medida portados'
                                                                                               if custom and version in custom else ''))
         extra += [custom[version]] if custom and version in custom else []
+        for note in fixes.before_hop(version, chain.query_all(mig), chain.execute(mig)):
+            log(f'corrección técnica antes del salto a {version}: {note}')
+            technical.append(f'{version}: {note}')
         task = chain.enqueue(version, mig, extra)
         res = chain.wait(task, timeout, cancelled, on_progress=lambda row: None)
         base = chain.base_version(mig) if res['state'] == 'succeeded' else None
@@ -147,9 +150,10 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
                     | {'logTail': t if len(t) <= 9000 else t[:3000] + '\n[…]\n' + t[-6000:]})
         progress(i + 1, len(analysis['hops']))
         if res['state'] != 'succeeded':
-            return {'state': 'failed', 'hops': hops, 'database': mig}
+            return {'state': 'failed', 'hops': hops, 'database': mig, 'technicalFixes': technical}
     rows = reconcile.run(chain.query(src), chain.query(mig))
-    return {'state': 'succeeded', 'hops': hops, 'database': mig, 'reconciliation': rows, 'reconciliationStatus': reconcile.status(rows)}
+    return {'state': 'succeeded', 'hops': hops, 'database': mig, 'reconciliation': rows, 'reconciliationStatus': reconcile.status(rows),
+            'technicalFixes': technical}
 
 
 def backup(ctx, run, database: str, source_zip: Path | None = None) -> Path:

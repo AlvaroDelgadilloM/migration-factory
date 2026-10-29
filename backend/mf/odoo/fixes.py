@@ -49,6 +49,30 @@ def apply(execute, approved: list[str]) -> list[str]:
     return done
 
 
+
+def before_hop(version: str, query_all, execute) -> list[str]:
+    """Technical conversions between hops, for gaps of OpenUpgrade itself (no business meaning changes; logged and recorded).
+    Before 19.0: the 18.0 migration stores company-dependent booleans in their jsonb column as numbers (1/0, from
+    ir.property.value_integer) and Odoo 19 cannot cast them ("cannot cast jsonb numeric to type boolean")."""
+    if version != '19.0':
+        return []
+    done = []
+    for model, field in query_all("select m.model, f.name from ir_model_fields f join ir_model m on m.id = f.model_id "
+                                  "where f.ttype = 'boolean' and f.company_dependent and f.store") or []:
+        table = model.replace('.', '_')
+        if not query_all(f"select 1 from information_schema.columns where table_name = '{table}' and column_name = '{field}' "
+                         "and data_type = 'jsonb'"):
+            continue
+        numeric = f"""exists (select 1 from jsonb_each("{field}") e(k, v) where jsonb_typeof(v) = 'number')"""
+        n = query_all(f'select count(*) from "{table}" where jsonb_typeof("{field}") = \'object\' and {numeric}')
+        if n and n[0][0] not in ('0', 0):
+            execute(f'''update "{table}" set "{field}" = (select jsonb_object_agg(k, case when jsonb_typeof(v) = 'number'
+                       then to_jsonb((v::text)::numeric <> 0) else v end) from jsonb_each("{field}") e(k, v))
+                       where jsonb_typeof("{field}") = 'object' and {numeric}''')
+            done.append(f'{table}.{field}: {n[0][0]} registro(s) con booleanos guardados como número (1/0) por OpenUpgrade 18 → true/false')
+    return done
+
+
 if __name__ == '__main__':  # self-check: the order and the filtering
     seen = []
     assert apply(seen.append, ['warehouse_partner_company']) == ['warehouse_partner_company'] and 'stock_warehouse' in seen[0]

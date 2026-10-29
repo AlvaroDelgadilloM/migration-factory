@@ -6,6 +6,11 @@ from __future__ import annotations
 USERS = "select count(*) from res_users where login not in ('default', 'portaltemplate')"
 POSTED = ('select round(coalesce(sum(l.debit), 0), 2), round(coalesce(sum(l.credit), 0), 2) from account_move_line l '
           "join account_move m on m.id = l.move_id where m.state = 'posted'")
+# 12.0: bank statement lines not yet reconciled had no entry; since 14.0 every statement line is a posted entry (liquidity and
+# suspense lines for its amount), so the 12.0 side adds them to be comparable
+POSTED12 = ('select round(coalesce(sum(l.debit), 0) + b.s, 2), round(coalesce(sum(l.credit), 0) + b.s, 2) from account_move_line l '
+            "join account_move m on m.id = l.move_id, (select coalesce(sum(abs(amount)), 0) s from account_bank_statement_line x "
+            "where not exists (select 1 from account_move_line y where y.statement_line_id = x.id)) b where m.state = 'posted' group by b.s")
 ATTACHMENTS = ("select count(*) from ir_attachment where res_model is not null and res_field is null and res_model not like 'ir.%' "
                "and coalesce(url, '') not like '/web/%'")
 
@@ -24,7 +29,7 @@ CHECKS = {
                           "select count(*), round(coalesce(sum(amount_total), 0), 2) from account_move "
                           "where move_type in ('out_invoice', 'out_refund', 'in_invoice', 'in_refund')"),
     # posted entries only: since 13.0 a draft invoice is a draft account.move with lines (in 12.0 it had none)
-    'journal_items': ('Apuntes contables publicados: débito y crédito', POSTED, POSTED),
+    'journal_items': ('Apuntes contables publicados: débito y crédito', POSTED12, POSTED),
     'stock_moves': ('Movimientos de inventario', 'select count(*) from stock_move', 'select count(*) from stock_move'),
     'leads': ('Oportunidades CRM', 'select count(*) from crm_lead', 'select count(*) from crm_lead'),
     # files attached to business records: not field images (res_field) nor the web assets/views Odoo regenerates per version

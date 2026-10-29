@@ -1468,6 +1468,7 @@ def do_odoo_migrate(job: Job, ctx: Context):
                           'uninstalled': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'uninstall'),
                           'fixesApplied': sorted(k[4:] for k, v in (om.decisions or {}).items() if v.get('action') == 'apply'),
                           'artifacts': {'dump': str(art.id)}, 'migratedDb': res['database'], 'filestore': filestore,
+                          'technicalFixes': res.get('technicalFixes') or [],
                           'customModules': sorted(r['name'] for r in summary['rows'] if r.get('origin') == 'CUSTOM'
                                                   and (om.decisions or {}).get(r['name'], {}).get('action') != 'uninstall')}
             db.commit()
