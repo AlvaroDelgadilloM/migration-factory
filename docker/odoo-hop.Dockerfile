@@ -13,7 +13,7 @@ RUN (pip3 install --no-cache-dir --no-deps --break-system-packages openupgradeli
     && if [ "${ODOO}" != "13.0" ]; then \
          d=$(python3 -c "import openupgradelib, os; print(os.path.dirname(openupgradelib.__file__))") \
          && curl -fsSL --retry 4 "https://codeload.github.com/OCA/openupgradelib/tar.gz/${OUL_COMMIT}" | tar -xz -C "$d" --strip-components=2 "openupgradelib-${OUL_COMMIT}/openupgradelib"; fi \
-    && python3 -c "import openupgradelib.openupgrade" \
+    && python3 -c "import odoo.fields, openupgradelib.openupgrade" \
     && mkdir -p /opt/openupgrade /opt/mf /hop-logs \
     && curl -fsSL --retry 4 "https://codeload.github.com/OCA/OpenUpgrade/tar.gz/${OU_COMMIT}" | tar -xz -C /opt/openupgrade --strip-components=1 \
     && chown odoo /hop-logs \
