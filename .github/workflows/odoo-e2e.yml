@@ -124,6 +124,7 @@ jobs:
         if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',codecomplex,'))
         run: |
           python backend/tests/e2e/odoo_chain.py code examples/odoo-complex-lab --sql backups/odoo12_complex_custom_backup.sql \
+            --sql database/init/01-create-db.sql --sql database/init/02-legacy-ext.sql \
             --expect-sql invoice_audit=REWRITE --expect-sql quality_event=MOVE_TO_ORM --expect-sql credit_snapshot=DEPRECATE \
             --expect-sql integration_message=KEEP --expect-sql commission_ledger=KEEP --expect-sql mv_commission_monthly=KEEP \
             --expect-sql trg_message_processed=KEEP --expect-sql v_pending_messages=DEPRECATE

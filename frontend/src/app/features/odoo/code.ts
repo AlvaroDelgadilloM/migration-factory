@@ -98,7 +98,7 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
             <div class="scroll"><table>
               <tr><th scope="col">Objeto</th><th scope="col">Clasificación</th><th scope="col">Motivo</th><th scope="col">Lo usan</th><th scope="col">En Odoo 19</th></tr>
               @for (o of c.summary['externalSql']; track o.file + o.line) {
-                <tr><td><code>{{ o.schema }}{{ o.name ? '.' + o.name : '' }}</code><br /><span class="small muted">{{ o.kind }}@if (o.rows) { · {{ o.rows }} fila(s) de datos } · {{ o.file }}:{{ o.line }}</span></td>
+                <tr><td><code>{{ o.schema }}{{ o.name ? '.' + o.name : '' }}</code><br /><span class="small muted">{{ o.kind }}@if (o.rows) { · {{ o.rows }} fila(s) de datos } · {{ o.file }}:{{ o.line }}@if (o.alsoIn?.length) { · también en {{ o.alsoIn.join(', ') }} }</span></td>
                   <td><span [class]="'tag c-' + o.category">{{ o.category }}</span></td>
                   <td class="small">{{ o.reason }}</td>
                   <td class="small">{{ usedBy(o) }}</td>

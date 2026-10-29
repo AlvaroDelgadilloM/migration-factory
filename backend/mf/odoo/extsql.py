@@ -96,7 +96,10 @@ def parse(files: dict[str, str]) -> list[dict]:
                     cols = [c.split()[0].strip('"').lower() for c in re.split(r',(?![^()]*\))', inner)
                             if c.strip() and c.split()[0].lower().split('(')[0] not in ('primary', 'unique', 'constraint', 'foreign', 'check')]
                 key = (kind, schema, name)
-                objects[key] = {'kind': kind, 'schema': schema, 'name': name, 'file': path, 'line': line, 'columns': cols,
+                if key in objects:   # the same object in another file (an init script and a backup): analysed once
+                    objects[key]['alsoIn'].append(f'{path}:{line}')
+                    continue
+                objects[key] = {'alsoIn': [], 'kind': kind, 'schema': schema, 'name': name, 'file': path, 'line': line, 'columns': cols,
                                 'references': [r for r in refs if r != f'{schema}.{name}'], 'rows': 0,
                                 'body': st[:4000]}
             elif low.startswith('insert into'):

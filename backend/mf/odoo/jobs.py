@@ -222,6 +222,7 @@ def external_sql(src: Path, sql_files, database: str | None, log) -> list[dict]:
     objs = extsql.classify(extsql.parse(texts), extsql.module_code(src))
     if database:
         at = {(o['file'], o['line']): o for o in objs}
+        at |= {tuple(a.rsplit(':', 1)[:1]) + (int(a.rsplit(':', 1)[1]),): o for o in objs for a in o.get('alsoIn') or []}
         failed = 0
         for f, text in texts.items():
             for line, st in extsql.statements(text):
@@ -233,8 +234,10 @@ def external_sql(src: Path, sql_files, database: str | None, log) -> list[dict]:
                     if o:
                         o['in19'] = {'state': 'ok'}
                 except Exception as e:  # noqa: BLE001 — the evidence is the error itself
-                    failed += 1
                     msg = str(e).splitlines()[0][:300]
+                    if 'already exists' in msg and o and (o.get('in19') or {}).get('state') == 'ok':
+                        continue   # its other definition (another file) already created it
+                    failed += 1
                     target = o or next((x for x in objs if x['kind'] == 'table' and f"{x['schema']}.{x['name']}" in st.lower()[:300]), None)
                     if target:
                         target['in19'] = {'state': 'error', 'error': msg, 'line': line}
