@@ -112,6 +112,20 @@ def code(a):
         assert got.get(name) == cat, (name, got.get(name), cat)
 
 
+def port(a):
+    """The example's modules ported to 19 (with its external SQL, like the platform) into a folder, for the business flows."""
+    import shutil
+    from mf.odoo import code as oc
+    from mf.worker.runner import run
+    src = Path(a.addons)
+    ext = oj.external_sql(src, a.sql or [], None, print)
+    res = oc.port_steps(src, ctx().workdir / 'ported', run, ctx(), print, ext=ext)
+    shutil.rmtree(a.out, ignore_errors=True)
+    for name, m in oc.modules(res['snapshots']['19.0']).items():
+        shutil.copytree(m['path'], Path(a.out) / name)
+    print('\n'.join(n for n in res['notes'] if 'regla' in n or 'script' in n))
+
+
 def main(argv):
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -128,7 +142,13 @@ def main(argv):
     k.add_argument('addons')
     k.add_argument('--sql', action='append')
     k.add_argument('--expect-sql', action='append')
+    q = sub.add_parser('port')
+    q.add_argument('addons')
+    q.add_argument('out')
+    q.add_argument('--sql', action='append')
     a = p.parse_args(argv)
+    if a.cmd == 'port':
+        return port(a)
     chain.ensure_control()
     scenario(a) if a.cmd == 'scenario' else code(a)
 
