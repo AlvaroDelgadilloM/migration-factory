@@ -46,7 +46,8 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
             <article><b>{{ a.summary['counts']?.modules }}</b>módulos instalados</article>
             <article><b>{{ a.summary['counts']?.core }}</b>del núcleo de Odoo</article>
             <article><b>{{ a.summary['counts']?.oca }}</b>OCA</article>
-            <article><b>{{ a.summary['counts']?.thirdParty }}</b>de terceros / a la medida</article>
+            <article><b>{{ a.summary['counts']?.thirdParty }}</b>de terceros sin código</article>
+            <article><b>{{ a.summary['counts']?.custom ?? 0 }}</b>a la medida con código</article>
             <article><b [class.bad]="os.pending().length">{{ os.pending().length }}</b>bloquean sin decisión</article>
             <article><b>{{ a.summary['counts']?.warn }}</b>con advertencia</article>
           </div>
@@ -101,9 +102,11 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
             </p-table>
           }
           @if (m.summary['artifacts']?.['dump']; as d) {
-            <p style="margin-top:12px"><mf-action label="Descargar la base en Odoo 19 (pg_dump)" icon="pi pi-download" (run)="api.download(d, 'odoo19.dump')" /></p>
+            <p style="margin-top:12px"><mf-action label="Descargar respaldo Odoo 19 (.zip)" icon="pi pi-download" (run)="api.download(d, 'odoo19.zip')" />
+              <span class="small"> dump.sql + manifest.json{{ m.summary['filestore'] ? ' + filestore' : '' }}: se restaura desde el gestor de bases de datos de Odoo 19.</span></p>
           }
           @if (m.summary['fixesApplied']?.length) { <p class="small">Correcciones de datos aplicadas a la copia (aprobadas): {{ m.summary['fixesApplied'].join(', ') }}.</p> }
+          @if (m.summary['customModules']?.length) { <p class="small">Módulos a la medida migrados con su código portado: {{ m.summary['customModules'].join(', ') }}.</p> }
           @if (m.summary['uninstalled']?.length) { <p class="small">Desinstalados antes de migrar (decisión registrada): {{ m.summary['uninstalled'].join(', ') }}.</p> }
         </section>
       }

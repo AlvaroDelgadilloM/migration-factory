@@ -1362,19 +1362,35 @@ DS_STATE = {'SUCCEEDED': 'succeeded', 'PARTIAL_SUCCESS': 'partial_success', 'BLO
 
 
 def _odoo_dump(db, project, ctx) -> Path:
-    import hashlib
     from ..models import Upload
     from ..odoo import jobs as oj
     repo = db.get(Repository, project.repository_id)
     up = db.get(Upload, repo.upload_id) if repo and repo.upload_id else None
     if up is None or not (up.structure or {}).get('odooDump'):
         raise StepFailure('UPLOAD_MISSING', 'El proyecto no tiene el respaldo de la base')
+    return oj.extract_dump(_odoo_zip(db, project, ctx), up.structure['odooDump'], ctx.workdir)
+
+
+def _odoo_zip(db, project, ctx) -> Path:
+    """The project's uploaded ZIP in the job workspace (once), checked against its hash."""
+    import hashlib
+    from ..models import Upload
     zp = ctx.workdir / 'backup.zip'
-    data = blobs().read(up.object_key)
-    if hashlib.sha256(data).hexdigest() != up.sha256:
-        raise StepFailure('UPLOAD_CORRUPT', 'El respaldo almacenado no coincide con su hash')
-    zp.write_bytes(data)
-    return oj.extract_dump(zp, up.structure['odooDump'], ctx.workdir)
+    if not zp.exists():
+        repo = db.get(Repository, project.repository_id)
+        up = db.get(Upload, repo.upload_id)
+        data = blobs().read(up.object_key)
+        if hashlib.sha256(data).hexdigest() != up.sha256:
+            raise StepFailure('UPLOAD_CORRUPT', 'El respaldo almacenado no coincide con su hash')
+        zp.write_bytes(data)
+    return zp
+
+
+def _odoo_upload(db, project) -> dict:
+    from ..models import Upload
+    repo = db.get(Repository, project.repository_id)
+    up = db.get(Upload, repo.upload_id) if repo and repo.upload_id else None
+    return (up.structure or {}) if up else {}
 
 
 def do_odoo_analyze(job: Job, ctx: Context):
@@ -1389,7 +1405,8 @@ def do_odoo_analyze(job: Job, ctx: Context):
         set_phase(ctx, 'restore', 10)
         try:
             dump = _odoo_dump(db, project, ctx)
-            res = oj.analyze(ctx, runner.run, dump, om.id, lambda m: ctx.emit('info', 'odoo', m))
+            custom = frozenset(_odoo_upload(db, project).get('odooModules') or [])
+            res = oj.analyze(ctx, runner.run, dump, om.id, lambda m: ctx.emit('info', 'odoo', m), custom)
         except oj.OdooJobError as e:
             raise StepFailure(e.code, str(e)) from None
         set_phase(ctx, 'classify', 80)
@@ -1427,9 +1444,14 @@ def do_odoo_migrate(job: Job, ctx: Context):
                 r = httpx.get(url, timeout=300, follow_redirects=True)
                 r.raise_for_status()
                 return r.content
+            custom = None
+            if any(r.get('origin') == 'CUSTOM' for r in summary['rows']):   # the project's custom modules, ported to every version
+                set_phase(ctx, 'port', 8)
+                src, *_ = _materialize(db, db.get(Repository, project.repository_id), None, ctx.workdir / 'source', ctx, require_maven=False)
+                custom = oj.ported_addons(ctx, runner.run, Path(src), om.id, lambda m: ctx.emit('info', 'odoo', m), summary['from'])['paths']
             res = oj.migrate(ctx, summary, dict(om.decisions or {}), om.id, lambda m: ctx.emit('info', 'odoo', m),
                              lambda i, n: set_phase(ctx, f'hop {i}/{n}', 10 + int(75 * i / n)), fetch, ctx.cancel.is_set,
-                             get_settings().odoo_hop_timeout_seconds)
+                             get_settings().odoo_hop_timeout_seconds, custom)
             om.hops = res['hops']
             for h in res['hops']:
                 ctx.emit('info' if h['state'] == 'succeeded' else 'error', 'odoo', f"{h['version']}: {h['state']} ({h['errors'] or 0} error(es) en el log)")
@@ -1438,13 +1460,16 @@ def do_odoo_migrate(job: Job, ctx: Context):
                 last = res['hops'][-1]
                 raise StepFailure('HOP_FAILED', f"El salto a {last['version']} falló; ver su log en la pantalla")
             set_phase(ctx, 'package', 90)
-            out = oj.dump(ctx, runner.run, res['database'])
-            art = _store(db, om.project_id, 'candidate-zip', f"odoo19-{str(om.id)[:8]}.dump", out.read_bytes(), 'application/octet-stream', commit=False)
+            filestore = bool(_odoo_upload(db, project).get('filestore'))
+            out = oj.backup(ctx, runner.run, res['database'], _odoo_zip(db, project, ctx) if filestore else None)
+            art = _store(db, om.project_id, 'candidate-zip', f"odoo19-{str(om.id)[:8]}.zip", out.read_bytes(), 'application/zip', commit=False)
             om.reconciliation = res['reconciliation']
             om.summary = {'from': summary['from'], 'to': summary['to'], 'reconciliationStatus': res['reconciliationStatus'],
                           'uninstalled': sorted(k for k, v in (om.decisions or {}).items() if v.get('action') == 'uninstall'),
                           'fixesApplied': sorted(k[4:] for k, v in (om.decisions or {}).items() if v.get('action') == 'apply'),
-                          'artifacts': {'dump': str(art.id)}, 'migratedDb': res['database']}
+                          'artifacts': {'dump': str(art.id)}, 'migratedDb': res['database'], 'filestore': filestore,
+                          'customModules': sorted(r['name'] for r in summary['rows'] if r.get('origin') == 'CUSTOM'
+                                                  and (om.decisions or {}).get(r['name'], {}).get('action') != 'uninstall')}
             db.commit()
             chain.drop_db(res['database'])
         except oj.OdooJobError as e:

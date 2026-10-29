@@ -1,6 +1,7 @@
 """Odoo 12 -> 19 scenarios on real Odoo + OpenUpgrade (workflow odoo-e2e.yml), through the same functions the worker runs
 (mf.odoo.jobs: analyze, migrate, port_code). Synthetic data only: Odoo's demo data and the synthetic modules in examples/.
     python odoo_chain.py scenario <name> <dump.sql> [--start 12.0] [--third-party N] [--oca module] [--table name=rows]
+                         [--code addons_dir] [--same 'query on source::query on 19']
     python odoo_chain.py code <addons dir>
 The database server and the seven odoo-hop-<version> runners are started by the workflow."""
 import argparse
@@ -29,8 +30,10 @@ def scenario(a):
     """Analysis -> the decisions an architect would take (uninstall what blocks, apply the detected data fixes) -> the hops ->
     reconciliation, with the checks of the scenario."""
     from mf.worker.runner import run
+    from mf.odoo import code as oc
     c, om = ctx(), uuid.uuid4()
-    res = oj.analyze(c, run, Path(a.dump), om, print)
+    names = frozenset(oc.modules(Path(a.code))) if a.code else frozenset()
+    res = oj.analyze(c, run, Path(a.dump), om, print, names)
     rows, counts = res['rows'], res['counts']
     print(f"[{a.name}] Odoo {res['sourceVersion']} · {counts} · saltos {res['hops']} · correcciones {[f['id'] for f in res['fixes']]}")
     assert res['from'] == a.start, res['from']
@@ -43,7 +46,11 @@ def scenario(a):
     decisions = {n: {'action': 'uninstall', 'reason': 'e2e: sin versión 19'} for n in block}
     decisions |= {f"fix:{f['id']}": {'action': 'apply', 'reason': 'e2e'} for f in res['fixes']}
     print(f"[{a.name}] desinstalar: {block}")
-    m = oj.migrate(c, res, decisions, om, print, lambda i, n: None, fetch, lambda: False, 3 * 3600)
+    custom = oj.ported_addons(c, run, Path(a.code), om, print, res['from'])['paths'] if a.code else None
+    if a.code:
+        assert {r['name'] for r in rows if r['origin'] == 'CUSTOM'} == set(names), [(r['name'], r['origin']) for r in rows]
+    before = {q: chain.query(res['sourceDb'])(q.split('::')[0]) for q in a.same or []}
+    m = oj.migrate(c, res, decisions, om, print, lambda i, n: None, fetch, lambda: False, 3 * 3600, custom)
     for h in m['hops']:
         print(f"[{a.name}] {h['version']}: {h['state']} errors={h['errors']} base={h['baseVersion']}")
     if m['state'] != 'succeeded':
@@ -59,6 +66,12 @@ def scenario(a):
     assert not set(block) & installed, set(block) & installed
     if a.oca:
         assert a.oca in installed, f'{a.oca} no quedó instalado en 19'
+    for n in names:
+        assert n in installed, f'{n} no quedó instalado en 19'
+    for q in a.same or []:
+        after = chain.query(db)(q.split('::')[1])
+        print(f"[{a.name}] datos: {q.split('::')[0]} → {before[q]} · en 19: {after}")
+        assert before[q] and before[q] != ('0',) and before[q] == after, (q, before[q], after)
     for spec in a.table or []:
         name, rows_expected = spec.split('=')
         got = chain.query(db)(f'select count(*) from {name}')
@@ -83,7 +96,7 @@ def code(addons):
     print('\n'.join(res['portWarnings'][:20]))
     state = {r['name']: r['install']['state'] for r in res['rows']}
     assert res['base']['state'] == 'succeeded', res['base']['logTail'][-3000:]
-    assert state['legacy_sales_custom'] == 'succeeded' and state['legacy_account_bridge'] == 'failed', state
+    assert all(v == 'succeeded' for v in state.values()), state   # the OCA tool + the platform's rules: every module installs
     assert 'tracking=True' in (res['ported'] / 'legacy_sales_custom' / 'models' / 'sale_order.py').read_text()
 
 
@@ -97,6 +110,8 @@ def main(argv):
     s.add_argument('--third-party', type=int, default=0)
     s.add_argument('--oca')
     s.add_argument('--table', action='append')
+    s.add_argument('--code')
+    s.add_argument('--same', action='append')
     k = sub.add_parser('code')
     k.add_argument('addons')
     a = p.parse_args(argv)

@@ -5,6 +5,8 @@ name: Odoo e2e
 #   demo12   Odoo 12 with its demo data (sales, purchases, invoicing, stock, CRM): seven hops, reconciliation equal
 #   lab12    Odoo 12 + the five synthetic custom modules of examples/odoo-legacy-modules and an external table: the analysis must
 #            block the modules, the architect uninstalls them, the chain reaches 19 and the external table survives
+#   lab12code  the same database with the modules' code: ported version by version, every hop updates them, they stay installed
+#            in 19 and their data (invoice fields moved to account.move, lots, orders, partners) is the same
 #   oca12    Odoo 12 + an OCA module (partner_firstname): its code is fetched branch by branch and it stays installed in 19
 #   demo16   an Odoo 16 database: only the hops 17 -> 19
 #   code     the custom modules' code: inventory, automatic port, install check of each module on a new Odoo 19
@@ -30,6 +32,7 @@ jobs:
       MF_ODOO_ADDONS_DIR: /tmp/odoo-addons
       OCA_PARTNER_CONTACT_12: f7de324d99f515d55921ef9b341b2d2fd8aa768a
       PYTHONPATH: backend
+      MF_TOOL_PATH: /tmp/omm/bin:/usr/local/bin:/usr/bin:/bin   # odoo-module-migrate (installed below, as in the worker image)
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -54,11 +57,23 @@ jobs:
           docker exec odoo-db createdb -U odoo lab12
           docker exec -i odoo-db psql -q -U odoo -d lab12 < examples/odoo-legacy-modules-db/external-table.sql
           odoo -v "$PWD/examples/odoo-legacy-modules:/mnt/extra-addons:ro" odoo:12.0 odoo -d lab12 --stop-after-init \
-            -i sale_management,legacy_sales_custom,legacy_partner_credit,legacy_account_bridge,legacy_stock_lot,legacy_reporting && dump lab12
+            -i sale_management,legacy_sales_custom,legacy_partner_credit,legacy_account_bridge,legacy_stock_lot,legacy_reporting
+          docker exec -i odoo-db psql -q -v ON_ERROR_STOP=1 -U odoo -d lab12 <<'SQL'
+          update account_invoice set x_external_invoice_id = 'EXT-' || id, x_legacy_exported = true where id in (select id from account_invoice order by id limit 3);
+          update stock_production_lot set x_quality_state = 'approved' where id in (select id from stock_production_lot order by id limit 2);
+          update sale_order set x_legacy_reference = 'LEG-' || id, x_priority_code = '2' where id in (select id from sale_order order by id limit 3);
+          SQL
+          dump lab12
           odoo -v /tmp/oca12:/mnt/extra-addons:ro odoo:12.0 odoo -d oca12 -i contacts,partner_firstname --stop-after-init && dump oca12
           docker rmi odoo:12.0
           odoo odoo:16.0 odoo -d demo16 -i sale_management,purchase,account,stock,crm,contacts --stop-after-init && dump demo16
           docker rmi odoo:16.0
+      - name: Herramienta de port de código (como en la imagen del worker)
+        run: |
+          OMM=$(grep -o 'OMM_COMMIT=[0-9a-f]*' docker/worker.Dockerfile | cut -d= -f2)
+          python -m venv /tmp/omm && /tmp/omm/bin/pip install -q "argcomplete==3.7.2" "colorama==0.4.6" "lxml==6.1.3" "PyYAML==6.0.3" \
+            "requests==2.34.2" "urllib3==2.8.0" "idna==3.20" "certifi==2026.10.23" "charset-normalizer==3.5.2"
+          /tmp/omm/bin/pip install -q --no-deps "https://codeload.github.com/OCA/odoo-module-migrator/tar.gz/$OMM"
       - name: Siete ejecutores de saltos
         run: |
           mkdir -p /tmp/hop-logs /tmp/odoo-addons && chmod 777 /tmp/hop-logs && chmod 755 /tmp/odoo-addons
@@ -77,6 +92,16 @@ jobs:
       - name: Escenario lab12 (módulos a la medida desinstalados, tabla externa conservada)
         if: success() || failure()
         run: python backend/tests/e2e/odoo_chain.py scenario lab12 /tmp/dumps/lab12.sql --third-party 5 --table legacy_migration_audit=2
+      - name: Escenario lab12code (módulos a la medida migrados con su código portado y sus datos)
+        if: success() || failure()
+        run: |
+          python backend/tests/e2e/odoo_chain.py scenario lab12code /tmp/dumps/lab12.sql --code examples/odoo-legacy-modules \
+            --table legacy_migration_audit=2 \
+            --same "select count(*) from account_invoice where x_external_invoice_id like 'EXT-%' and x_legacy_exported::select count(*) from account_move where x_external_invoice_id like 'EXT-%' and x_legacy_exported" \
+            --same "select count(*) from stock_production_lot where x_quality_state = 'approved'::select count(*) from stock_lot where x_quality_state = 'approved'" \
+            --same "select count(*), coalesce(sum(x_priority_code::int), 0) from sale_order where x_legacy_reference like 'LEG-%'::select count(*), coalesce(sum(x_priority_code::int), 0) from sale_order where x_legacy_reference like 'LEG-%'" \
+            --same "select round(coalesce(sum(x_credit_limit), 0)::numeric, 2) from res_partner::select round(coalesce(sum(x_credit_limit), 0)::numeric, 2) from res_partner" \
+            --same "select count(*) from legacy_sale_audit::select count(*) from legacy_sale_audit"
       - name: Escenario oca12 (módulo OCA migrado con su código de cada versión)
         if: success() || failure()
         run: python backend/tests/e2e/odoo_chain.py scenario oca12 /tmp/dumps/oca12.sql --oca partner_firstname
@@ -85,12 +110,7 @@ jobs:
         run: python backend/tests/e2e/odoo_chain.py scenario demo16 /tmp/dumps/demo16.sql --start 16.0
       - name: Escenario code (port 12 → 19 e instalación en Odoo 19)
         if: success() || failure()
-        run: |
-          OMM=$(grep -o 'OMM_COMMIT=[0-9a-f]*' docker/worker.Dockerfile | cut -d= -f2)
-          python -m venv /tmp/omm && /tmp/omm/bin/pip install -q "argcomplete==3.7.2" "colorama==0.4.6" "lxml==6.1.3" "PyYAML==6.0.3" \
-            "requests==2.34.2" "urllib3==2.8.0" "idna==3.20" "certifi==2026.10.23" "charset-normalizer==3.5.2"
-          /tmp/omm/bin/pip install -q --no-deps "https://codeload.github.com/OCA/odoo-module-migrator/tar.gz/$OMM"
-          MF_TOOL_PATH="/tmp/omm/bin:/usr/local/bin:/usr/bin:/bin" python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules
+        run: python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules
       - name: Logs de los ejecutores
         if: failure()
         run: for v in 13.0 14.0 15.0 16.0 17.0 18.0 19.0; do echo "== hop-$v"; docker logs --tail 20 "hop-$v" 2>&1; done

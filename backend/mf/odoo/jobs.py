@@ -66,14 +66,14 @@ def start_version(base_version: str) -> str:
     return major
 
 
-def analyze(ctx, run, dump: Path, om_id, log) -> dict:
+def analyze(ctx, run, dump: Path, om_id, log, custom: frozenset = frozenset()) -> dict:
     src, _ = db_names(om_id)
     chain.ensure_control()
     _, version = restore(ctx, run, dump, src)
     first = start_version(version)
     log(f'base Odoo {version} restaurada como {src}')
     installed = chain.installed_modules(src)
-    rows = modules.classify(installed, first)
+    rows = modules.classify(installed, first, custom)
     before = [{'check': k, 'label': lbl, 'value': chain.query(src)(q12 if first == '12.0' else q19)}
               for k, (lbl, q12, q19) in reconcile.CHECKS.items()]
     found = fixes.detect(chain.query_all(src))
@@ -114,8 +114,9 @@ def oca_addons(rows: list[dict], decisions: dict, version: str, root: Path, fetc
     return paths
 
 
-def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, cancelled, timeout: int) -> dict:
-    """The hops on a copy of the analysed database. Stops at the first failed hop (its log tail is kept)."""
+def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, cancelled, timeout: int, custom: dict | None = None) -> dict:
+    """The hops on a copy of the analysed database. Stops at the first failed hop (its log tail is kept). custom: {version: addons
+    path} of the uploaded custom modules ported to each version (ported_addons): each hop updates them with that code."""
     from ..config import get_settings
     src = analysis['sourceDb']
     _, mig = db_names(om_id)
@@ -131,7 +132,9 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
     hops, root = [], Path(get_settings().odoo_addons_dir)
     for i, version in enumerate(analysis['hops']):
         extra = oca_addons(analysis['rows'], decisions, version, root, fetch)
-        log(f"salto a {version}" + (f" con {len(extra)} repositorio(s) OCA" if extra else ''))
+        log(f"salto a {version}" + (f" con {len(extra)} repositorio(s) OCA" if extra else '') + (' y los módulos a la medida portados'
+                                                                                              if custom and version in custom else ''))
+        extra += [custom[version]] if custom and version in custom else []
         task = chain.enqueue(version, mig, extra)
         res = chain.wait(task, timeout, cancelled, on_progress=lambda row: None)
         base = chain.base_version(mig) if res['state'] == 'succeeded' else None
@@ -149,22 +152,40 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
     return {'state': 'succeeded', 'hops': hops, 'database': mig, 'reconciliation': rows, 'reconciliationStatus': reconcile.status(rows)}
 
 
-def dump(ctx, run, database: str) -> Path:
+def backup(ctx, run, database: str, source_zip: Path | None = None) -> Path:
+    """The migrated database as an Odoo backup ZIP (dump.sql + manifest.json + filestore/), the format Odoo's database manager
+    restores. The filestore is the uploaded one, copied as is: attachments are stored by content hash and a migration does not
+    rewrite them (the files Odoo regenerates, like web assets, are rebuilt on first use)."""
+    import json
+    import zipfile
     from ..config import get_settings
     s = get_settings()
-    out = ctx.workdir / f'{database}.dump'
-    res = run(['pg_dump', '-h', s.odoo_db_host, '-p', str(s.odoo_db_port), '-U', s.odoo_db_user, '-Fc', '--no-owner', '-f', str(out), database],
+    sql = ctx.workdir / f'{database}.sql'
+    res = run(['pg_dump', '-h', s.odoo_db_host, '-p', str(s.odoo_db_port), '-U', s.odoo_db_user, '--no-owner', '-f', str(sql), database],
               ctx.workdir, ctx, name='odoo-dump', timeout=4 * 3600, env={'PGPASSWORD': s.odoo_db_password})
-    if res.exit_code != 0 or not out.exists():
+    if res.exit_code != 0 or not sql.exists():
         raise OdooJobError('DUMP_FAILED', 'No se pudo generar el respaldo de la base migrada')
+    version = chain.base_version(database) or VERSIONS[-1]
+    manifest = {'odoo_dump': '1', 'db_name': database, 'version': VERSIONS[-1], 'major_version': VERSIONS[-1],
+                'version_info': [int(VERSIONS[-1].split('.')[0]), 0, 0, 'final', 0, ''], 'pg_version': chain.server_version(),
+                'modules': {m['name']: m['version'] for m in chain.installed_modules(database)}, 'base_version': version}
+    out = ctx.workdir / f'{database}.zip'
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        z.write(sql, 'dump.sql')
+        z.writestr('manifest.json', json.dumps(manifest, indent=2))
+        if source_zip is not None:
+            with zipfile.ZipFile(source_zip) as src:
+                for i in src.infolist():
+                    if i.filename.startswith('filestore/') and not i.is_dir() and '..' not in i.filename.split('/'):
+                        with src.open(i) as fin, z.open(i.filename, 'w', force_zip64=True) as fout:
+                            shutil.copyfileobj(fin, fout, 1 << 20)
+    sql.unlink()
     return out
 
 
-def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
-    """Custom module code: inventory, automatic port to 19 (OCA odoo-module-migrator) and an install check of every ported module
-    on a new Odoo 19 database (odoo-hop-19 runner, the code on the shared read-only volume). Nothing of the uploaded code runs in
-    the worker: it is only read and rewritten; it runs inside the isolated runner."""
-    import json
+def ported_addons(ctx, run, src: Path, om_id, log, start: str = '12.0') -> dict:
+    """The uploaded custom modules ported version by version (mf.odoo.code.port_steps), each version's code on the shared
+    read-only volume of the runners: {'paths': {version: addons path}, 'final': ported dir of 19.0, 'notes': [...]}."""
     from ..config import get_settings
     from . import code as oc
     bad = oc.safe_tree(src)
@@ -172,16 +193,29 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
         raise OdooJobError('UNSAFE_NAMES', f"Nombres de archivo no admitidos (solo letras, números, _ . - /): {', '.join(bad[:5])}")
     if not oc.modules(src):
         raise OdooJobError('NO_MODULES', 'El ZIP no trae módulos de Odoo (carpetas con __manifest__.py)')
-    ported = ctx.workdir / 'ported'
-    warnings = oc.port(src, ported, run, ctx, log)
+    res = oc.port_steps(src, ctx.workdir / 'ported', run, ctx, log, start=start)
+    root = Path(get_settings().odoo_addons_dir) / 'custom' / str(om_id).replace('-', '')[:12]
+    shutil.rmtree(root, ignore_errors=True)
+    paths = {}
+    for v, d in res['snapshots'].items():
+        for name, m in oc.modules(d).items():
+            shutil.copytree(m['path'], root / v / name)
+        paths[v] = str(root / v)
+    return {'paths': paths, 'final': res['snapshots'][VERSIONS[-1]], 'notes': res['notes']}
+
+
+def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
+    """Custom module code: inventory, automatic port to 19 (OCA odoo-module-migrator) and an install check of every ported module
+    on a new Odoo 19 database (odoo-hop-19 runner, the code on the shared read-only volume). Nothing of the uploaded code runs in
+    the worker: it is only read and rewritten; it runs inside the isolated runner."""
+    import json
+    from . import code as oc
+    p = ported_addons(ctx, run, src, om_id, log)
+    ported, warnings, addons = p['final'], p['notes'], p['paths']['19.0']
     rows = oc.inventory(src, ported)
     log(f"{len(rows)} módulo(s): " + ', '.join(f"{r['name']} ({r['counts']['AUTO']} automáticos, {r['counts']['MANUAL']} manuales, "
                                               f"{r['counts']['REVIEW']} a revisar)" for r in rows))
     tag = str(om_id).replace('-', '')[:12]
-    addons = Path(get_settings().odoo_addons_dir) / 'custom' / tag
-    shutil.rmtree(addons, ignore_errors=True)
-    for name, m in oc.modules(ported).items():
-        shutil.copytree(m['path'], addons / name)
     names = {r['name'] for r in rows}
     core = sorted({d for r in rows for d in r['depends'] if d not in names}) or ['base']
     base = f'mf_{tag}_base'
@@ -196,7 +230,7 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
             continue
         db = f'mf_{tag}_i{i}'
         chain.copy_db(base, db)
-        r = chain.wait(chain.enqueue('19.0', db, [str(addons)], install=[name]), timeout, cancelled)
+        r = chain.wait(chain.enqueue('19.0', db, [addons], install=[name]), timeout, cancelled)
         chain.drop_db(db)
         installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:]}
         log(f"instalar {name} en Odoo 19: {r['state']}")

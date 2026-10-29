@@ -49,7 +49,7 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     rows = modules.classify([{'name': 'sale', 'author': 'Odoo S.A.'}, {'name': 'x_acme_custom', 'author': 'ACME'}])
     seen = {}
 
-    def analyze(ctx, run, dump, om_id, log):
+    def analyze(ctx, run, dump, om_id, log, custom=frozenset()):
         seen['dump'] = dump.read_text()
         return {'sourceDb': 'mf_x_src', 'sourceVersion': '12.0.1.3', 'from': '12.0', 'to': '19.0', 'hops': list(modules.VERSIONS[1:]),
                 'counts': modules.summary(rows), 'before': [], 'rows': rows,
@@ -78,7 +78,7 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     monkeypatch.setattr(chain, 'drop_db', lambda db: None)
     got = {}
 
-    def migrate(ctx, analysis, decisions, om_id, log, progress, fetch, cancelled, timeout):
+    def migrate(ctx, analysis, decisions, om_id, log, progress, fetch, cancelled, timeout, custom=None):
         got['uninstall'] = sorted(decisions)
         hops = [{'version': v, 'state': 'succeeded', 'exitCode': 0, 'errors': 0, 'baseVersion': f'{v}.1', 'logTail': ''} for v in analysis['hops']]
         return {'state': 'succeeded', 'hops': hops, 'database': 'mf_x_mig', 'reconciliationStatus': 'EQUAL',
@@ -86,11 +86,12 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     monkeypatch.setattr(oj, 'migrate', migrate)
     dump = tmp_path / 'mig.dump'
     dump.write_bytes(b'PGDMP-19')
-    monkeypatch.setattr(oj, 'dump', lambda ctx, run, database: dump)
+    monkeypatch.setattr(oj, 'backup', lambda ctx, run, database, source_zip=None: (seen.__setitem__('filestore', source_zip is not None), dump)[1])
     m = client.post(f'{API}/projects/{pid}/odoo-migrations', headers=token('ana.arquitecta')).json()
     run_job(m['jobId'])
     mig = client.get(f"{API}/odoo-migrations/{m['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert mig['state'] == 'succeeded' and got['uninstall'] == ['fix:company_partner_company', 'x_acme_custom'] and [h['version'] for h in mig['hops']][-1] == '19.0'
+    assert seen['filestore'] and mig['summary']['filestore']
     assert mig['summary']['reconciliationStatus'] == 'EQUAL' and mig['summary']['uninstalled'] == ['x_acme_custom'] and mig['summary']['fixesApplied'] == ['company_partner_company']
     dl = client.get(f"{API}/artifacts/{mig['summary']['artifacts']['dump']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content == b'PGDMP-19'
@@ -130,3 +131,22 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
 def test_odoo_jobs_get_their_own_time_limit():
     from mf.jobs import timeout_for   # a whole chain outlives the 30 min of short jobs (RQ killed a real migration at 32 min)
     assert timeout_for('odoo_migrate') == timeout_for('odoo_code') == 12 * 3600 and timeout_for('scan') == 1800
+
+
+def test_odoo_backup_zip_has_dump_manifest_and_the_uploaded_filestore(monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+    from mf.odoo import chain, jobs as oj
+    monkeypatch.setattr(chain, 'base_version', lambda db: '19.0.1.3')
+    monkeypatch.setattr(chain, 'server_version', lambda: '13.23')
+    monkeypatch.setattr(chain, 'installed_modules', lambda db: [{'name': 'base', 'author': '', 'version': '19.0.1.3'}])
+
+    def run(cmd, cwd, ctx, **kw):
+        open(cmd[cmd.index('-f') + 1], 'w').write('-- PostgreSQL database dump\n')
+        return SimpleNamespace(exit_code=0)
+    src = tmp_path / 'up.zip'
+    src.write_bytes(backup_zip())
+    out = oj.backup(SimpleNamespace(workdir=tmp_path), run, 'mf_x_mig', src)
+    with zipfile.ZipFile(out) as z:
+        assert sorted(z.namelist()) == ['dump.sql', 'filestore/ab/abcdef', 'manifest.json']
+        assert json.loads(z.read('manifest.json'))['version'] == '19.0' and z.read('filestore/ab/abcdef') == b'x'

@@ -8,7 +8,7 @@ import { PageHeader, StateView } from '../../shared/ui';
 import { OdooStore } from './store';
 
 const VERSIONS = ['13.0', '14.0', '15.0', '16.0', '17.0', '18.0', '19.0'];
-const ORIGIN: Record<string, string> = { CORE: 'Núcleo Odoo', OCA: 'OCA', THIRD_PARTY: 'Terceros / a la medida' };
+const ORIGIN: Record<string, string> = { CORE: 'Núcleo Odoo', OCA: 'OCA', THIRD_PARTY: 'Terceros / a la medida (sin código)', CUSTOM: 'A la medida (código en el proyecto)' };
 const OUTCOME: Record<string, string> = { OK: 'Migra', WARN: 'Revisar', BLOCK: 'Bloquea' };
 
 /** Odoo 12 -> 19 · Módulos: every installed module, where it comes from, whether it exists in each version up to 19, and the
@@ -31,7 +31,8 @@ const OUTCOME: Record<string, string> = { OK: 'Migra', WARN: 'Revisar', BLOCK: '
               emptyText="Primero analice la base en Resumen." (retry)="os.reload()">
       <p class="small muted">Núcleo: según la cobertura publicada de OpenUpgrade por salto. OCA: si el módulo existe en la rama de cada versión
         (su código hace falta en todos los saltos para migrar sus datos). Terceros o a la medida: no hay versión 19 conocida.
-        Un módulo que bloquea solo deja migrar si un arquitecto decide desinstalarlo, con motivo (sus datos no se migran).</p>
+        Un módulo que bloquea solo deja migrar si un arquitecto decide desinstalarlo, con motivo (sus datos no se migran). Si el ZIP
+        trae el código de los módulos a la medida, no bloquean: se portan versión por versión y se migran con sus datos.</p>
       <div class="toolbar">
         <p-selectbutton [options]="filters" optionLabel="label" optionValue="value" [ngModel]="filter()" (ngModelChange)="filter.set($event)" aria-label="Filtrar módulos" />
         <input pInputText placeholder="Buscar módulo…" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Buscar módulo" />

@@ -74,6 +74,11 @@ def base_version(database: str) -> str | None:
     return row[0] if row else None
 
 
+def server_version() -> str:
+    with connect() as c:
+        return c.execute('show server_version').fetchone()[0].split()[0]
+
+
 def mark_uninstall(database: str, modules: list[str]):
     """Modules the architect decided to drop: Odoo removes them (and their data) at the start of the first hop."""
     if modules:

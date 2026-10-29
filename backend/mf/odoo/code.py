@@ -103,21 +103,129 @@ def inventory(src: Path, ported: Path | None) -> list[dict]:
     return rows
 
 
-def port(src: Path, out: Path, run, ctx, log, init='12.0', target='19.0') -> list[str]:
-    """odoo-module-migrate on a copy (no git); returns its WARNING/ERROR lines without the absolute paths."""
-    if out.exists():
-        shutil.rmtree(out)
-    shutil.copytree(src, out)
+# What OCA odoo-module-migrator leaves (it warns but does not rewrite): the platform's own rules, per version where the change
+# happened. (since, scope: the file must mention it, files, regex, replacement). Applied right after the tool's step to that version.
+INVOICE = r'account\.invoice\b'
+RULES = [
+    ('13.0', INVOICE, 'py', r"""(_inherit\s*=\s*)(['"])account\.invoice\2""", r"\1\2account.move\2"),
+    ('13.0', INVOICE, 'py', r"""(env\[\s*)(['"])account\.invoice\2""", r"\1\2account.move\2"),
+    ('13.0', INVOICE, 'py', r'\baction_invoice_open\b', 'action_post'),
+    ('13.0', INVOICE, 'py', r'\.date_invoice\b', '.invoice_date'),
+    ('13.0', INVOICE, 'py', r'\.number\b', '.name'),
+    ('13.0', INVOICE, 'xml', r'(<field name="model">)account\.invoice(</field>)', r'\1account.move\2'),
+    ('13.0', INVOICE, 'xml', r'ref="account\.invoice_form"', 'ref="account.view_move_form"'),
+    ('13.0', INVOICE, 'xml', r'(<field name="name">)account\.invoice\.', r'\1account.move.'),
+    ('13.0', INVOICE, 'xml', r'ref="account\.invoice_tree"', 'ref="account.view_invoice_tree"'),
+    ('13.0', INVOICE, 'xml', r"""@name=(['"])reference\1""", r"@name=\1ref\1"),
+    ('13.0', INVOICE, 'xml', r"""@name=(['"])date_invoice\1""", r"@name=\1invoice_date\1"),
+    ('13.0', INVOICE, 'xml', r"""\(\s*'state'\s*,\s*'in'\s*,\s*\[\s*'open'\s*,\s*'paid'\s*\]\s*\)""", "('state', '=', 'posted')"),
+    ('13.0', r'name="(customer|supplier)"', 'xml', r'<field name="customer">\s*(True|1)\s*</field>', '<field name="customer_rank">1</field>'),
+    ('13.0', r'name="(customer|supplier)"', 'xml', r'<field name="supplier">\s*(True|1)\s*</field>', '<field name="supplier_rank">1</field>'),
+    ('13.0', r'name="(customer|supplier)"', 'xml', r'<field name="(customer|supplier)">\s*(False|0)\s*</field>\n?', ''),
+    ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="model">)stock\.production\.lot(</field>)', r'\1stock.lot\2'),
+    ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="name">)stock\.production\.lot\.', r'\1stock.lot.'),
+    ('16.0', r'stock\.production\.lot', 'py', r"""(['"])stock\.production\.lot\1""", r"\1stock.lot\1"),
+]
+FIELD = re.compile(r'^(\s+)(\w+)\s*=\s*fields\.(\w+)\(')
+
+
+def _tool(d: Path, init: str, target: str, run, ctx, log) -> list[str]:
+    """One step of odoo-module-migrate on d (no git); its WARNING/ERROR lines without the absolute paths."""
     text = ''
-    for i, root in enumerate(sorted({m['path'].parent for m in modules(out).values()})):
-        res = run([MIGRATOR, '-d', str(root), '-i', init, '-t', target, '-nc', '-ll', 'WARNING'], root, ctx, name=f'odoo-port-{i}', timeout=1800)
+    for i, root in enumerate(sorted({m['path'].parent for m in modules(d).values()})):
+        name = f'odoo-port-{target}-{i}'
+        res = run([MIGRATOR, '-d', str(root), '-i', init, '-t', target, '-nc', '-ll', 'WARNING'], root, ctx, name=name, timeout=1800)
         if res.exit_code != 0:
-            log(f'la herramienta de port terminó con código {res.exit_code} en {root.name}')
-        f = ctx.workdir / 'logs' / f'odoo-port-{i}.log'
+            log(f'la herramienta de port a {target} terminó con código {res.exit_code} en {root.name}')
+        f = ctx.workdir / 'logs' / f'{name}.log'
         text += f.read_text(encoding='utf-8', errors='replace') if f.exists() else ''
     clean = re.compile(r'\x1b\[[0-9;]*m')
-    return sorted({clean.sub('', line).replace(str(out) + '/', '').strip()[:400] for line in text.splitlines()
-                   if 'WARNING' in line or 'ERROR' in line})
+    return [f'[{target}] ' + re.sub(r'^\d\d:\d\d:\d\d\s+', '', clean.sub('', line).replace(str(d) + '/', '').strip())[:400]
+            for line in text.splitlines() if 'WARNING' in line or 'ERROR' in line]
+
+
+def apply_rules(d: Path, version: str) -> list[str]:
+    """The platform's rules of that version on every module file; returns what it changed (file and rule)."""
+    done = []
+    for f in sorted(d.rglob('*')):
+        ext = f.suffix.lstrip('.')
+        if not f.is_file() or ext not in ('py', 'xml'):
+            continue
+        text = original = f.read_text(encoding='utf-8', errors='replace')
+        for since, scope, kind, rx, repl in RULES:
+            if since == version and kind == ext and re.search(scope, original):
+                text, n = re.subn(rx, repl, text)
+                if n:
+                    done.append(f'[{version}] regla de la plataforma: {f.relative_to(d)} · {rx[:60]} → {repl[:40]} ({n})')
+        if text != original:
+            f.write_text(text, encoding='utf-8')
+    return done
+
+
+def _stored_fields(py: Path) -> list[str]:
+    """Fields with a column declared in the file (not One2many/Many2many, not computed without store=True)."""
+    lines, out = py.read_text(encoding='utf-8', errors='replace').splitlines(), []
+    for i, line in enumerate(lines):
+        m = FIELD.match(line)
+        if not m or m[3] in ('One2many', 'Many2many'):
+            continue
+        stmt = ' '.join(lines[i:i + 8])
+        stmt = stmt[:stmt.find(')', stmt.find('fields.')) + 1] if ')' in stmt else stmt
+        if 'compute=' in stmt and 'store=True' not in stmt or 'related=' in stmt and 'store=True' not in stmt:
+            continue
+        out.append(m[2])
+    return out
+
+
+def data_scripts(prev: Path, d: Path, version: str) -> list[str]:
+    """Migration scripts for the custom data of models Odoo merged into another one at this version: at 13.0 account.invoice →
+    account.move (OpenUpgrade keeps the mapping in account_move.old_invoice_id). Written into the module of this version, so the
+    hop runs them after updating the module (its columns exist by then)."""
+    if version != '13.0':
+        return []
+    notes = []
+    before, now = modules(prev), modules(d)
+    for name, m in before.items():
+        cols = []
+        for py in m['path'].rglob('*.py'):
+            if re.search(r"""_inherit\s*=\s*(['"])account\.invoice\1""", py.read_text(encoding='utf-8', errors='replace')):
+                cols += _stored_fields(py)
+        if not cols or name not in now:
+            continue
+        ver = str(now[name]['manifest'].get('version') or '13.0.1.0.0')
+        target = now[name]['path'] / 'migrations' / ver / 'post-migration.py'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        sets = ', '.join(f'"{c}" = ai."{c}"' for c in cols)
+        target.write_text(
+            '# Generated by Migration Factory: custom fields of account.invoice copied to account.move. OpenUpgrade 13.0 merged the\n'
+            '# models and keeps the mapping in account_move.old_invoice_id; account_invoice still holds the old values.\n\n\n'
+            'def migrate(cr, version):\n'
+            "    cr.execute(\"select 1 from information_schema.columns where table_name = 'account_move' and column_name = 'old_invoice_id'\")\n"
+            '    if not cr.fetchone():\n'
+            '        return\n'
+            f'    cr.execute(\'UPDATE account_move am SET {sets} FROM account_invoice ai WHERE am.old_invoice_id = ai.id\')\n',
+            encoding='utf-8')
+        notes.append(f'[13.0] script de datos generado: {name}/migrations/{ver}/post-migration.py copia {", ".join(cols)} de '
+                     'account_invoice a account_move')
+    return notes
+
+
+def port_steps(src: Path, out: Path, run, ctx, log, start='12.0', target='19.0') -> dict:
+    """The code version by version (each hop of a database migration needs its modules' code for that release): the OCA tool's
+    step, then the platform's rules and the generated data scripts of that version. Returns {'snapshots': {version: dir},
+    'notes': [...]}; snapshots[target] is the final code."""
+    from .modules import VERSIONS
+    shutil.rmtree(out, ignore_errors=True)
+    prev, prev_v, snaps, notes = src, start, {}, []
+    for v in [v for v in VERSIONS if float(start) < float(v) <= float(target)]:
+        d = out / v
+        shutil.copytree(prev, d)
+        notes += _tool(d, prev_v, v, run, ctx, log)
+        notes += apply_rules(d, v)
+        notes += data_scripts(prev, d, v)
+        snaps[v], prev, prev_v = d, d, v
+    log(f"código portado versión por versión: {', '.join(snaps)}")
+    return {'snapshots': snaps, 'notes': notes}
 
 
 def diff(src: Path, ported: Path) -> str:

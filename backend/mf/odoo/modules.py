@@ -48,9 +48,10 @@ def _core_path(name: str, hops: list) -> dict:
     return {'steps': steps, 'final': current, 'gaps': gaps, 'removedIn': None, 'adopted': None}
 
 
-def classify(installed: list[dict], start: str = '12.0') -> list[dict]:
+def classify(installed: list[dict], start: str = '12.0', custom=frozenset()) -> list[dict]:
     """installed: [{name, author, version}] from ir_module_module (state installed) of a database at start. One row per module
-    with origin, availability per version, outcome (OK | WARN | BLOCK) and the reason in plain language."""
+    with origin, availability per version, outcome (OK | WARN | BLOCK) and the reason in plain language. custom: modules whose code
+    came with the project (ported version by version, mf.odoo.code): they migrate with their data instead of blocking."""
     cov, oca = data()
     hops = [h for h in cov['hops'] if float(h['from']) >= float(start)]
     core = {n for n, i in hops[0]['modules'].items() if i['flag'] != 'new'}
@@ -88,6 +89,10 @@ def classify(installed: list[dict], start: str = '12.0') -> list[dict]:
             else:
                 row |= {'outcome': 'BLOCK', 'reason': f"OCA ({repo or 'repositorio desconocido'}): no está portado a 19"
                         + (f" (falta en {', '.join(missing)})" if missing else '')}
+        elif name in custom:
+            row |= {'origin': 'CUSTOM', 'outcome': 'WARN',
+                    'reason': 'A la medida, con su código en el proyecto: se porta versión por versión y se migra con sus datos en cada '
+                              'salto; revisar el inventario de la pantalla Código (cambios manuales y a revisar)'}
         else:
             row |= {'origin': 'THIRD_PARTY', 'outcome': 'BLOCK',
                     'reason': 'Módulo de terceros o a la medida: no hay versión 19 conocida; hay que aportar su código portado o '
@@ -99,6 +104,7 @@ def classify(installed: list[dict], start: str = '12.0') -> list[dict]:
 def summary(rows: list[dict]) -> dict:
     by = lambda k, v: sum(1 for r in rows if r.get(k) == v)  # noqa: E731
     return {'modules': len(rows), 'core': by('origin', 'CORE'), 'oca': by('origin', 'OCA'), 'thirdParty': by('origin', 'THIRD_PARTY'),
+            'custom': by('origin', 'CUSTOM'),
             'ok': by('outcome', 'OK'), 'warn': by('outcome', 'WARN'), 'block': by('outcome', 'BLOCK')}
 
 
@@ -110,6 +116,7 @@ if __name__ == '__main__':  # self-check against the generated data
     assert rows['sale']['origin'] == 'CORE' and rows['sale']['final'] == 'sale', rows['sale']
     assert rows['partner_firstname']['origin'] == 'OCA' and rows['partner_firstname']['availability']['19.0']
     assert rows['x_acme_custom']['outcome'] == 'BLOCK' and rows['legacy_sales_custom']['origin'] == 'THIRD_PARTY'
+    assert classify([{'name': 'legacy_sales_custom', 'author': ''}], custom={'legacy_sales_custom'})[0]['origin'] == 'CUSTOM'
     r16 = {r['name']: r for r in classify([{'name': 'sale', 'author': ''}, {'name': 'partner_firstname', 'author': ''}], start='16.0')}
     assert [s['hop'] for s in r16['sale']['path']] == ['16.0→17.0', '17.0→18.0', '18.0→19.0'], r16['sale']['path']
     assert list(r16['partner_firstname']['availability']) == ['16.0', '17.0', '18.0', '19.0']
