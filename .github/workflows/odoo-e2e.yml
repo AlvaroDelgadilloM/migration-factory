@@ -1,24 +1,34 @@
 name: Odoo e2e
 
-# Odoo Community 12 -> 19 on real Odoo and OpenUpgrade: a 12.0 database with Odoo's own demo data (sales, purchases, invoicing,
-# stock, CRM) goes through the seven hops with the same runner image the platform uses (docker/odoo-hop.Dockerfile, commits in
-# rules/odoo/hops.json), then the before/after reconciliation must match. Synthetic data only; the password is per run.
+# Odoo Community 12 -> 19 on real Odoo and OpenUpgrade, through the functions the worker runs (mf.odoo.jobs) and the same runner
+# image the platform uses (docker/odoo-hop.Dockerfile, commits in rules/odoo/hops.json). Scenarios, synthetic data only:
+#   demo12   Odoo 12 with its demo data (sales, purchases, invoicing, stock, CRM): seven hops, reconciliation equal
+#   lab12    Odoo 12 + the five synthetic custom modules of examples/odoo-legacy-modules and an external table: the analysis must
+#            block the modules, the architect uninstalls them, the chain reaches 19 and the external table survives
+#   oca12    Odoo 12 + an OCA module (partner_firstname): its code is fetched branch by branch and it stays installed in 19
+#   demo16   an Odoo 16 database: only the hops 17 -> 19
+#   code     the custom modules' code: inventory, automatic port, install check of each module on a new Odoo 19
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['backend/mf/odoo/**', 'examples/odoo-legacy-modules/**', 'docker/odoo-hop*', 'docker/odoo-hop/**', 'rules/odoo/**', 'backend/tests/e2e/odoo_chain.py', '.github/workflows/odoo-e2e.yml']
+    paths: ['backend/mf/odoo/**', 'examples/odoo-legacy-modules/**', 'examples/odoo-legacy-modules-db/**', 'docker/odoo-hop*',
+            'docker/odoo-hop/**', 'rules/odoo/**', 'backend/tests/e2e/odoo_chain.py', '.github/workflows/odoo-e2e.yml']
 
 permissions:
   contents: read
 
+concurrency: {group: odoo-e2e, cancel-in-progress: true}
+
 jobs:
-  chain:
+  scenarios:
     runs-on: ubuntu-24.04
-    timeout-minutes: 330
+    timeout-minutes: 340
     env:
       MF_ODOO_DB_HOST: 127.0.0.1
       MF_ODOO_DB_USER: odoo
+      MF_ODOO_ADDONS_DIR: /tmp/odoo-addons
+      OCA_PARTNER_CONTACT_12: f7de324d99f515d55921ef9b341b2d2fd8aa768a
       PYTHONPATH: backend
     steps:
       - uses: actions/checkout@v5
@@ -30,47 +40,60 @@ jobs:
           echo "MF_ODOO_DB_PASSWORD=$PW" >> "$GITHUB_ENV"
           JWT="$(openssl rand -hex 32)"; echo "::add-mask::$JWT"
           echo "MF_DEV_JWT_SECRET=$JWT" >> "$GITHUB_ENV"
-          docker run -d --name odoo-db --network host -e POSTGRES_USER=odoo -e POSTGRES_PASSWORD="$PW" postgres:13
+          docker run -d --name odoo-db --network host -e POSTGRES_USER=odoo -e POSTGRES_PASSWORD="$PW" postgres:13.23
           for i in $(seq 1 30); do docker exec odoo-db pg_isready -U odoo && break; sleep 2; done
-      - name: Base Odoo 12 con datos demo
-        run: |
-          docker run --rm --network host -e HOST=127.0.0.1 -e USER=odoo -e PASSWORD="$MF_ODOO_DB_PASSWORD" odoo:12.0 \
-            odoo -d demo12 -i sale_management,purchase,account,stock,crm,contacts --stop-after-init
-          docker rmi odoo:12.0
-      - name: Preparar (copia, módulos y control)
-        run: |
+          sudo apt-get install -y -q postgresql-client > /dev/null
           pip install -q -r backend/requirements.lock
-          python backend/tests/e2e/odoo_chain.py prepare
-      - name: Siete saltos con OpenUpgrade
+      - name: Bases de ejemplo (Odoo 12 y 16)
         run: |
-          mkdir -p /tmp/hop-logs && chmod 777 /tmp/hop-logs
+          mkdir -p /tmp/dumps /tmp/oca12
+          curl -fsSL "https://codeload.github.com/OCA/partner-contact/tar.gz/$OCA_PARTNER_CONTACT_12" | tar -xz -C /tmp/oca12 --strip-components=1
+          odoo() { docker run --rm --network host -e HOST=127.0.0.1 -e USER=odoo -e PASSWORD="$MF_ODOO_DB_PASSWORD" "$@"; }
+          dump() { docker exec odoo-db pg_dump -U odoo --no-owner "$1" > "/tmp/dumps/$1.sql"; ls -la "/tmp/dumps/$1.sql"; }
+          odoo odoo:12.0 odoo -d demo12 -i sale_management,purchase,account,stock,crm,contacts --stop-after-init && dump demo12
+          docker exec odoo-db createdb -U odoo lab12
+          docker exec -i odoo-db psql -q -U odoo -d lab12 < examples/odoo-legacy-modules-db/external-table.sql
+          odoo -v "$PWD/examples/odoo-legacy-modules:/mnt/extra-addons:ro" odoo:12.0 odoo -d lab12 --stop-after-init \
+            -i sale_management,legacy_sales_custom,legacy_partner_credit,legacy_account_bridge,legacy_stock_lot,legacy_reporting && dump lab12
+          odoo -v /tmp/oca12:/mnt/extra-addons:ro odoo:12.0 odoo -d oca12 -i contacts,partner_firstname --stop-after-init && dump oca12
+          docker rmi odoo:12.0
+          odoo odoo:16.0 odoo -d demo16 -i sale_management,purchase,account,stock,crm,contacts --stop-after-init && dump demo16
+          docker rmi odoo:16.0
+      - name: Siete ejecutores de saltos
+        run: |
+          mkdir -p /tmp/hop-logs /tmp/odoo-addons && chmod 777 /tmp/hop-logs && chmod 755 /tmp/odoo-addons
+          L="$(jq -r .openupgradelibCommit rules/odoo/hops.json)"
           for row in $(jq -r '.hops[] | "\(.version)=\(.openupgrade)"' rules/odoo/hops.json); do
             v="${row%%=*}"; c="${row##*=}"
-            echo "::group::Salto a $v"
-            docker build --progress=plain -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" --build-arg OUL_COMMIT="$(jq -r .openupgradelibCommit rules/odoo/hops.json)" -t "mf-odoo-hop:$v" .
+            echo "::group::Imagen $v"
+            docker build --progress=plain -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" --build-arg OUL_COMMIT="$L" -t "mf-odoo-hop:$v" .
             docker run -d --name "hop-$v" --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
-              -v /tmp/hop-logs:/hop-logs "mf-odoo-hop:$v"
-            python backend/tests/e2e/odoo_chain.py hop "$v" || { docker logs "hop-$v" | tail -50; exit 1; }
-            docker rm -f "hop-$v"
-            [ "$v" = 19.0 ] || { docker rmi "mf-odoo-hop:$v" > /dev/null && docker image prune -af > /dev/null; }   # 19 stays for the module code step
-            df -h / | tail -1
+              -v /tmp/hop-logs:/hop-logs -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:$v"
             echo "::endgroup::"
           done
-      - name: Conciliación antes / después
-        run: python backend/tests/e2e/odoo_chain.py reconcile
-      - name: Código de módulos a la medida (port 12 → 19 e instalación en Odoo 19)
-        env:
-          MF_ODOO_ADDONS_DIR: /tmp/odoo-addons
+          docker image prune -f > /dev/null; df -h / | tail -1
+      - name: Escenario demo12 (base demo de Odoo 12)
+        run: python backend/tests/e2e/odoo_chain.py scenario demo12 /tmp/dumps/demo12.sql
+      - name: Escenario lab12 (módulos a la medida desinstalados, tabla externa conservada)
+        if: success() || failure()
+        run: python backend/tests/e2e/odoo_chain.py scenario lab12 /tmp/dumps/lab12.sql --third-party 5 --table legacy_migration_audit=2
+      - name: Escenario oca12 (módulo OCA migrado con su código de cada versión)
+        if: success() || failure()
+        run: python backend/tests/e2e/odoo_chain.py scenario oca12 /tmp/dumps/oca12.sql --oca partner_firstname
+      - name: Escenario demo16 (desde una versión intermedia)
+        if: success() || failure()
+        run: python backend/tests/e2e/odoo_chain.py scenario demo16 /tmp/dumps/demo16.sql --start 16.0
+      - name: Escenario code (port 12 → 19 e instalación en Odoo 19)
+        if: success() || failure()
         run: |
           OMM=$(grep -o 'OMM_COMMIT=[0-9a-f]*' docker/worker.Dockerfile | cut -d= -f2)
           python -m venv /tmp/omm && /tmp/omm/bin/pip install -q "argcomplete==3.7.2" "colorama==0.4.6" "lxml==6.1.3" "PyYAML==6.0.3" \
             "requests==2.34.2" "urllib3==2.8.0" "idna==3.20" "certifi==2026.10.23" "charset-normalizer==3.5.2"
           /tmp/omm/bin/pip install -q --no-deps "https://codeload.github.com/OCA/odoo-module-migrator/tar.gz/$OMM"
-          mkdir -p /tmp/odoo-addons && chmod 755 /tmp/odoo-addons
-          docker run -d --name hop-code --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
-            -v /tmp/hop-logs:/hop-logs -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:19.0"
-          MF_TOOL_PATH="/tmp/omm/bin:/usr/local/bin:/usr/bin:/bin" python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules \
-            || { docker logs hop-code | tail -30; exit 1; }
+          MF_TOOL_PATH="/tmp/omm/bin:/usr/local/bin:/usr/bin:/bin" python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules
+      - name: Logs de los ejecutores
+        if: failure()
+        run: for v in 13.0 14.0 15.0 16.0 17.0 18.0 19.0; do echo "== hop-$v"; docker logs --tail 20 "hop-$v" 2>&1; done
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: odoo-hop-logs, path: /tmp/hop-logs, retention-days: 7}
