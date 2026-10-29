@@ -43,6 +43,8 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     body = {'name': f'Odoo {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': up.json()['id'], 'migrationType': 'ODOO', 'targetRuntime': 'odoo19'}
     assert client.post(f'{API}/projects', headers=token('ana.arquitecta'), json=body | {'targetRuntime': 'spring'}).status_code == 422
     pid = client.post(f'{API}/projects', headers=token('ana.arquitecta'), json=body).json()['id']
+    phase = lambda: client.get(f'{API}/projects/{pid}', headers=token('ana.arquitecta')).json()['progress']  # Cartera: its stage
+    assert phase()['phase'] == 'pending'
     assert client.post(f'{API}/projects/{pid}/scans', headers=token('ana.arquitecta'), json={}).json()['code'] == 'WRONG_MIGRATION_TYPE'
     assert client.post(f'{API}/projects/{pid}/odoo-migrations', headers=token('ana.arquitecta')).json()['code'] == 'ANALYSIS_REQUIRED'
 
@@ -59,6 +61,7 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     run_job(r['jobId'])
     a = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert a['state'] == 'succeeded' and seen['dump'].startswith('-- PostgreSQL') and a['summary']['counts']['block'] == 1
+    assert phase()['phase'] == 'analyzed' and phase()['step'] == 'Análisis de la base'
     blocked = client.post(f'{API}/projects/{pid}/odoo-migrations', headers=token('ana.arquitecta'))
     assert blocked.status_code == 409 and blocked.json()['details']['modules'] == ['x_acme_custom', 'fix:company_partner_company']   # shown, and they block
 
@@ -92,6 +95,7 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     mig = client.get(f"{API}/odoo-migrations/{m['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert mig['state'] == 'succeeded' and got['uninstall'] == ['fix:company_partner_company', 'x_acme_custom'] and [h['version'] for h in mig['hops']][-1] == '19.0'
     assert seen['filestore'] and mig['summary']['filestore']
+    assert phase()['phase'] == 'migrated' and phase()['step'] == 'Migración a Odoo 19'
     assert mig['summary']['reconciliationStatus'] == 'EQUAL' and mig['summary']['uninstalled'] == ['x_acme_custom'] and mig['summary']['fixesApplied'] == ['company_partner_company']
     dl = client.get(f"{API}/artifacts/{mig['summary']['artifacts']['dump']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content == b'PGDMP-19'

@@ -18,6 +18,50 @@ from .common import limit_param, paginate
 router = APIRouter(tags=['projects'])
 
 
+_BUSY, _FAILED = ('queued', 'running'), ('failed', 'timed_out', 'cancelled')
+
+
+def progress(db, p: Project, last_scan) -> dict:
+    """Where the project is, for Cartera, from its latest run of any kind: phase (pending | running | analyzed | migrated |
+    tested | failed), the step it is in and that run's state. A Java project's latest scan, migration (by waves or Tomcat
+    WAR, or a plan's execution) or automatic test; an Odoo project's analysis, code port or migration; a DataStage run."""
+    from ..models import DataStageMigration, Execution, HttpTestRun, OdooMigration, WorkspaceMigration
+
+    def latest(model):
+        return db.scalar(select(model).where(model.project_id == p.id).order_by(model.created_at.desc()).limit(1))
+    runs = []  # (created_at, step, state, phase when it ends well)
+    if p.migration_type == 'ODOO':
+        om = latest(OdooMigration)
+        if om:
+            step, done = {'analyze': ('Análisis de la base', 'analyzed'), 'code': ('Port de código a 19', 'migrated'),
+                          'migrate': ('Migración a Odoo 19', 'migrated')}.get(om.mode, (om.mode, 'analyzed'))
+            runs.append((om.created_at, step, om.state, done))
+    elif p.migration_type == 'DATASTAGE_AIRFLOW':
+        dm = latest(DataStageMigration)
+        if dm:
+            runs.append((dm.created_at, 'Conversión a Airflow', dm.state, 'migrated'))
+    else:
+        if last_scan:
+            runs.append((last_scan.created_at, 'Análisis', last_scan.status, 'analyzed'))
+        wm = latest(WorkspaceMigration)
+        if wm:
+            runs.append((wm.created_at, 'Migración Tomcat WAR' if wm.target == 'tomcat-war' else 'Migración por oleadas', wm.state, 'migrated'))
+        ex = latest(Execution)
+        if ex:
+            runs.append((ex.created_at, 'Ejecución del plan' if ex.mode == 'apply' else 'Previsualización del plan', ex.state,
+                         'migrated' if ex.mode == 'apply' else 'analyzed'))
+        run = latest(HttpTestRun)
+        if run:
+            runs.append((run.created_at, 'Pruebas automáticas', run.state, 'tested'))
+    if not runs:
+        return {'phase': 'pending', 'step': None, 'state': None, 'at': None}
+    at, step, state, done = max(runs, key=lambda r: r[0])
+    phase = 'running' if state in _BUSY else 'failed' if state in _FAILED else done
+    if phase == 'failed' and step == 'Pruebas automáticas':
+        phase = 'migrated'  # a failed test run does not undo the migration it tested
+    return {'phase': phase, 'step': step, 'state': state, 'at': at.isoformat()}
+
+
 def project_out(db, p: Project, principal: Principal) -> dict:
     repo = db.get(Repository, p.repository_id)
     last = db.scalar(select(Scan).where(Scan.project_id == p.id).order_by(Scan.created_at.desc()).limit(1))
@@ -43,6 +87,7 @@ def project_out(db, p: Project, principal: Principal) -> dict:
                          'createdAt': last.created_at.isoformat(),
                          'findings': (last.summary or {}).get('findings'),
                          'lastSucceededId': str(last_ok.id) if last_ok else None}
+    d['progress'] = progress(db, p, last)
     return d
 
 

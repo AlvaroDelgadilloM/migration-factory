@@ -2822,6 +2822,10 @@ export interface components {
             lastDataStage?: {
                 [key: string]: unknown;
             } | null;
+            /** Progress */
+            progress?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ProjectUpdate */
         ProjectUpdate: {

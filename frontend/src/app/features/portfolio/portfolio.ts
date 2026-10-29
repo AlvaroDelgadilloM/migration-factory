@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -8,6 +9,7 @@ import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { TableModule } from 'primeng/table';
+import { TagModule } from 'primeng/tag';
 import { TextareaModule } from 'primeng/textarea';
 import { Api } from '../../core/api';
 import { UiError } from '../../core/errors';
@@ -19,11 +21,13 @@ import { AuthService } from '../../core/auth';
 import { CursorPager, Loader } from '../../shared/state';
 import { PageHeader, StateView, StatusTag, short } from '../../shared/ui';
 
+type Phase = 'pending' | 'running' | 'analyzed' | 'migrated' | 'tested' | 'failed';
+
 const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
 
 @Component({
   selector: 'mf-portfolio',
-  imports: [FormsModule, RouterLink, ButtonModule, DialogModule, InputTextModule, MessageModule, SelectModule, SelectButtonModule, TableModule, TextareaModule,
+  imports: [DatePipe, FormsModule, RouterLink, ButtonModule, DialogModule, InputTextModule, MessageModule, SelectModule, SelectButtonModule, TableModule, TagModule, TextareaModule,
             PageHeader, StateView, StatusTag, FolderBrowser],
   template: `
     <mf-page-header [title]="greeting()" crumb="CARTERA" subtitle="Sus proyectos de migración: abra uno para continuar donde lo dejó o registre uno nuevo.">
@@ -35,7 +39,16 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       <article><i class="pi pi-sync" aria-hidden="true"></i><b>{{ countType('JAVA_CAMEL') }}</b> Java / Camel</article>
       <article><i class="pi pi-share-alt" aria-hidden="true"></i><b>{{ countType('DATASTAGE_AIRFLOW') }}</b> DataStage → Airflow</article>
       <article><i class="pi pi-database" aria-hidden="true"></i><b>{{ countType('ODOO') }}</b> Odoo 12 → 19</article>
-      <article><i class="pi pi-check-circle" aria-hidden="true"></i><b>{{ analyzed() }}</b> con análisis o migración lista</article>
+    </div>
+    <div class="phases" role="group" aria-label="Proyectos por etapa">
+      @for (ph of phaseOrder; track ph) {
+        <button type="button" class="phase" [class.on]="phaseFilter() === ph" (click)="phaseFilter.set(phaseFilter() === ph ? null : ph)"
+                [attr.aria-pressed]="phaseFilter() === ph">
+          <p-tag [severity]="PHASE[ph].s" [value]="PHASE[ph].label"><i [class]="'pi ' + PHASE[ph].icon" aria-hidden="true" style="margin-right:.35rem"></i></p-tag>
+          <b>{{ countPhase(ph) }}</b>
+        </button>
+      }
+      @if (phaseFilter()) { <button type="button" class="link" (click)="phaseFilter.set(null)">Ver todos</button> }
     </div>
 
     <div class="toolbar">
@@ -51,7 +64,7 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
     <mf-state [loading]="list.loading()" [error]="list.error()" [hasData]="!!list.data()" [empty]="list.data()?.items?.length === 0"
               emptyText="No hay proyectos que coincidan. Registre uno nuevo o pida acceso al responsable de un proyecto." (retry)="list.reload()">
       <div class="panel">
-        <p-table [value]="list.data()?.items ?? []" [loading]="list.loading()" dataKey="id" [tableStyle]="{ 'min-width': '48rem', 'table-layout': 'fixed' }" [rowHover]="true">
+        <p-table [value]="shown()" [loading]="list.loading()" dataKey="id" [tableStyle]="{ 'min-width': '48rem', 'table-layout': 'fixed' }" [rowHover]="true">
           <ng-template #header>
             <tr><th scope="col" style="width:34%">Proyecto</th><th scope="col" style="width:22%">Origen</th><th scope="col" style="width:12%">Destino</th>
                 <th scope="col" style="width:18%">Estado</th><th scope="col" style="width:10%">Su rol</th><th scope="col" style="width:4%"></th></tr>
@@ -72,13 +85,13 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
                 <span class="mono small" [title]="p.repositoryUrl ?? p.localPath ?? p.upload?.['filename'] ?? ''">{{ sourceText(p) }}</span></span></td>
               <td class="nowrap">{{ runtimeLabel[p.targetRuntime ?? ''] ?? '—' }}</td>
               <td>
-                @if (p.lastDataStage; as d) {
-                  <mf-status [value]="d.state === 'queued' || d.state === 'running' ? d.state : d.status" />
-                  @if (d.manualJobs) { <small class="muted block">{{ d.manualJobs }} job(s) con trabajo manual</small> }
-                } @else if (p.lastScan) {
-                  <mf-status [value]="p.lastScan.status" />
-                  @if (p.lastScan.findings) { <small class="muted block">{{ p.lastScan.findings }} hallazgo(s)</small> }
-                } @else { <span class="muted">Sin empezar</span> }
+                @let ph = phaseOf(p);
+                <p-tag [severity]="PHASE[ph].s" [value]="PHASE[ph].label"><i [class]="'pi ' + PHASE[ph].icon" aria-hidden="true" style="margin-right:.35rem"></i></p-tag>
+                @if (p.progress?.['step']; as st) {
+                  <small class="muted block">{{ st }}@if (p.progress?.['at']; as at) { · {{ at | date: 'd/M/yy HH:mm' }} }</small>
+                }
+                @if (p.lastDataStage?.['manualJobs']; as mj) { <small class="muted block">{{ mj }} job(s) con trabajo manual</small> }
+                @else if (ph === 'analyzed' && p.lastScan?.['findings']) { <small class="muted block">{{ p.lastScan?.['findings'] }} hallazgo(s)</small> }
               </td>
               <td><span class="muted">{{ roleLabel(p.myRole) }}</span></td>
               <td class="go"><i class="pi pi-chevron-right" aria-hidden="true"></i></td>
@@ -201,7 +214,11 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       </form>
     </p-dialog>
     <mf-folder-browser [visible]="browsing()" [start]="form.localPath || null" (selected)="form.localPath = $event; browsing.set(false)" (closed)="browsing.set(false)" />`,
-  styles: [`.wsteps{display:flex;gap:8px;list-style:none;padding:0;margin:0 0 14px}.wsteps li{flex:1;display:flex;gap:8px;align-items:center;color:var(--mf-muted);
+  styles: [`.phases{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-8px 0 18px}
+    .phase{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 6px;border:1px solid var(--mf-line);border-radius:10px;background:var(--mf-surface);cursor:pointer;font:inherit}
+    .phase.on{border-color:var(--mf-teal);box-shadow:0 0 0 3px var(--mf-teal-soft)}.phase b{font-size:15px}
+    .link{background:none;border:0;color:var(--mf-teal);cursor:pointer;font:inherit;text-decoration:underline}.block{display:block}
+    .wsteps{display:flex;gap:8px;list-style:none;padding:0;margin:0 0 14px}.wsteps li{flex:1;display:flex;gap:8px;align-items:center;color:var(--mf-muted);
     padding:8px 10px;border-radius:8px;background:#f3f6fa;font-size:13px}.wsteps li span{width:22px;height:22px;border-radius:50%;display:inline-grid;
     place-items:center;background:#dfe7ee;font-weight:600;font-size:12px}.wsteps li.on{background:#e6f2f3;color:var(--mf-ink);font-weight:600}
     .wsteps li.on span{background:var(--mf-teal);color:#fff}.wsteps li.done span{background:#12b76a;color:#fff}.grow{flex:1}
@@ -261,8 +278,20 @@ export class Portfolio {
   ];
   short = short;
   sourceLabel: Record<string, string> = { local: 'Carpeta local', zip: 'ZIP', git: 'Git', agent: 'Agente local' };
-  analyzed = computed(() => (this.list.data()?.items ?? []).filter(p => p.lastScan?.['status'] === 'succeeded'
-    || ['succeeded', 'partial_success'].includes(String(p.lastDataStage?.['state'] ?? ''))).length);
+  /** Etapa de cada proyecto (api.projects.progress): de su última corrida de cualquier tipo. */
+  readonly PHASE: Record<Phase, { label: string; s: 'secondary' | 'info' | 'warn' | 'success' | 'danger' | 'contrast'; icon: string }> = {
+    pending: { label: 'Sin empezar', s: 'secondary', icon: 'pi-circle' },
+    running: { label: 'En curso', s: 'info', icon: 'pi-spin pi-spinner' },
+    analyzed: { label: 'Analizado', s: 'warn', icon: 'pi-search' },
+    migrated: { label: 'Migrado', s: 'success', icon: 'pi-check' },
+    tested: { label: 'Migrado y probado', s: 'success', icon: 'pi-check-circle' },
+    failed: { label: 'Con error', s: 'danger', icon: 'pi-times' },
+  };
+  phaseOrder: Phase[] = ['running', 'analyzed', 'migrated', 'tested', 'failed', 'pending'];
+  phaseFilter = signal<Phase | null>(null);
+  phaseOf(p: Project): Phase { return ((p.progress?.['phase'] as Phase | undefined) ?? 'pending'); }
+  countPhase(ph: Phase) { return (this.list.data()?.items ?? []).filter(p => this.phaseOf(p) === ph).length; }
+  shown = computed(() => (this.list.data()?.items ?? []).filter(p => !this.phaseFilter() || this.phaseOf(p) === this.phaseFilter()));
   countType(t: string) { return (this.list.data()?.items ?? []).filter(p => (p.migrationType ?? 'JAVA_CAMEL') === t).length; }
   sourceIcon: Record<string, string> = { local: 'pi-folder', zip: 'pi-file-arrow-up', git: 'pi-github', agent: 'pi-desktop' };
   sourceText(p: Project) {

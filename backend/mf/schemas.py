@@ -116,6 +116,7 @@ class ProjectOut(Dto):
     created_at: datetime
     last_scan: dict | None = None
     last_data_stage: dict | None = None
+    progress: dict | None = None  # Cartera: {phase, step, state, at} of the project's latest run (api.projects.progress)
 
 
 class MemberIn(Dto):
