@@ -26,18 +26,21 @@ def command(database, extra_paths, install=None):
               '--db_password', DB['password'], '--stop-after-init', '--without-demo', 'all',
               '--data-dir', '/var/lib/odoo', '--log-level', 'info', '--workers', '0', '--max-cron-threads', '0']
     if install:
-        import odoo
-        core = os.path.join(os.path.dirname(odoo.__file__), 'addons')
+        core = core_addons()
         return ['odoo', '--addons-path', ','.join([core] + list(extra_paths)), '--init', install] + common
     common += ['--update', 'all']
     if VERSION == '13.0':
         paths = [OU + '/addons', OU + '/odoo/addons'] + list(extra_paths)
         return ['python3', OU + '/odoo-bin', '--addons-path', ','.join(paths)] + common
-    import odoo  # the image's own Odoo
-    core = os.path.join(os.path.dirname(odoo.__file__), 'addons')
-    paths = [OU, core] + list(extra_paths)
+    paths = [OU, core_addons()] + list(extra_paths)
     return ['odoo', '--addons-path', ','.join(paths), '--upgrade-path', OU + '/openupgrade_scripts/scripts',
             '--load', 'base,web,openupgrade_framework'] + common
+
+
+def core_addons():
+    """The image's own Odoo addons. odoo.__path__, not __file__: since 19.0 odoo is a namespace package (no __init__.py)."""
+    import odoo
+    return os.path.join(list(odoo.__path__)[0], 'addons')
 
 
 def connect():
@@ -61,6 +64,17 @@ def cancelled(conn, task_id):
 
 
 def run(conn, task_id, database, extra_paths, install=None):
+    """Any failure of the runner itself ends the task as failed with its traceback (it never stays 'running')."""
+    try:
+        execute(conn, task_id, database, extra_paths, install)
+    except Exception:  # noqa: BLE001
+        import traceback
+        with conn, conn.cursor() as cur:
+            cur.execute("update mf_hop_task set state = 'failed', errors = 1, log_tail = %s, finished_at = now() where id = %s",
+                        ('El ejecutor del salto falló antes de terminar:\n' + traceback.format_exc()[-TAIL:], task_id))
+
+
+def execute(conn, task_id, database, extra_paths, install=None):
     log_path = os.path.join(LOGS, 'hop-%s.log' % task_id)
     with open(log_path, 'wb') as out:
         proc = subprocess.Popen(command(database, extra_paths or [], install), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
