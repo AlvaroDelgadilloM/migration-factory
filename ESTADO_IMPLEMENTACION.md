@@ -680,6 +680,19 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   (`account.invoice` → `account.move` con campos y métodos, `customer`/`supplier` → `*_rank`, `stock.production.lot` en vistas) y
   **scripts de datos generados** (campos propios de la factura copiados a `account.move` en el salto 13 vía `old_invoice_id`).
   Cada módulo portado se instala en un Odoo 19 nuevo para saber si instala. Nombres de archivo restringidos a `[A-Za-z0-9_./-]`.
+- **Validación del código portado**: cada módulo se instala en un Odoo 19 nuevo con datos demo y corre sus propias pruebas
+  más una prueba funcional generada (lee todos los registros con todos los campos de cada modelo que define o extiende —corren
+  sus cálculos— y construye sus vistas de formulario y lista). Encontró dos defectos reales de los laboratorios del usuario, ya
+  resueltos por la plataforma: tabla externa no creada (ahora se carga su SQL) y `_table` de un modelo en otro esquema (regla: el
+  modelo recibe un `init()` que la expone en `public` como vista actualizable). Regla nueva: `states=` → `invisible=` (17.0).
+- **SQL externo** (`mf/odoo/extsql.py`): los `.sql`/`.dump` del ZIP, en cualquier carpeta, se distinguen por contenido (base de
+  Odoo completa vs objetos fuera del ORM). Cada objeto (esquema, tabla, secuencia, función, trigger, vista, vista materializada,
+  filas semilla) se clasifica contra el código de los módulos —KEEP, MIGRATE, REWRITE, MOVE_TO_ORM, DEPRECATE, MANUAL_REVIEW, con
+  el motivo; p. ej. REWRITE si guarda IDs de `account.invoice`— y se ejecuta sentencia por sentencia en el Odoo 19 nuevo antes de
+  instalar los módulos (sin `CREATE DATABASE` ni metacomandos de psql; un objeto repetido en varios archivos cuenta una vez).
+- **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
+  SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
+  8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
 - **Migración**: copia de la base, correcciones aprobadas, desinstalaciones decididas y **7 saltos** en los ejecutores
   `odoo-hop-<versión>` (imagen oficial + OpenUpgrade fijado; el tag de la imagen incluye la huella de su receta). Cada salto usa el
   código OCA y el código a la medida portado **de esa versión**. Un salto falla por código de salida, CRITICAL, registro que no
