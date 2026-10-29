@@ -304,7 +304,9 @@ export class Portfolio {
     if (st['migrationType'] === 'ODOO') {
       const mods = (st['odooModules'] ?? []) as string[];
       const db = st['odooDump'] ? `respaldo ${st['odooDump']}${st['filestore'] ? ' con filestore' : ' (sin filestore: los adjuntos en disco no viajan)'}` : 'sin respaldo de base';
-      return `Odoo · ${db}` + (mods.length ? ` · código de ${mods.length} módulo(s): ${mods.slice(0, 5).join(', ')}${mods.length > 5 ? '…' : ''}` : '');
+      const sql = (st['odooSql'] ?? []) as string[];
+      return `Odoo · ${db}` + (mods.length ? ` · código de ${mods.length} módulo(s): ${mods.slice(0, 5).join(', ')}${mods.length > 5 ? '…' : ''}` : '')
+        + (sql.length ? ` · SQL externo (no es la base de Odoo): ${sql.join(', ')}` : '');
     }
     return st['dsxFiles'] ? `DataStage → Airflow · ${st['dsxFiles'].length} exportación(es) DSX`
       : `Java / Camel · raíz Maven ${st['root']} · ${(st['modules'] ?? []).length} módulo(s)`;

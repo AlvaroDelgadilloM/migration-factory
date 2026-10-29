@@ -1,0 +1,13 @@
+<odoo>
+  <record id="commission_tree" model="ir.ui.view">
+    <field name="name">legacy.commission.tree</field>
+    <field name="model">legacy.commission</field>
+    <field name="arch" type="xml">
+      <tree>
+        <field name="user_id"/><field name="sale_order_id"/>
+        <field name="period"/><field name="base_amount"/>
+        <field name="rate"/><field name="amount"/>
+      </tree>
+    </field>
+  </record>
+</odoo>

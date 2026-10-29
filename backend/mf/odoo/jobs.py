@@ -208,7 +208,43 @@ def ported_addons(ctx, run, src: Path, om_id, log, start: str = '12.0') -> dict:
     return {'paths': paths, 'final': res['snapshots'][VERSIONS[-1]], 'notes': res['notes']}
 
 
-def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
+def external_sql(src: Path, sql_files, database: str | None, log) -> list[dict]:
+    """The project's external SQL (mf.odoo.extsql): objects classified against the modules' code and, with database (a new Odoo 19
+    with the standard dependencies), each statement run there one by one to see what Odoo 19 accepts."""
+    from . import extsql
+    texts = {}
+    for f in sql_files or []:
+        p = (src / f).resolve()
+        if p.is_file() and p.is_relative_to(src.resolve()):
+            texts[f] = p.read_text(encoding='utf-8', errors='replace')
+    if not texts:
+        return []
+    objs = extsql.classify(extsql.parse(texts), extsql.module_code(src))
+    if database:
+        at = {(o['file'], o['line']): o for o in objs}
+        failed = 0
+        for f, text in texts.items():
+            for line, st in extsql.statements(text):
+                if st.lower().rstrip(';').strip() in ('begin', 'commit', 'end', 'rollback'):
+                    continue
+                o = at.get((f, line))
+                try:
+                    chain.execute(database)(st)
+                    if o:
+                        o['in19'] = {'state': 'ok'}
+                except Exception as e:  # noqa: BLE001 — the evidence is the error itself
+                    failed += 1
+                    msg = str(e).splitlines()[0][:300]
+                    target = o or next((x for x in objs if x['kind'] == 'table' and f"{x['schema']}.{x['name']}" in st.lower()[:300]), None)
+                    if target:
+                        target['in19'] = {'state': 'error', 'error': msg, 'line': line}
+        log(f"SQL externo en Odoo 19: {len(objs)} objeto(s), {failed} sentencia(s) con error")
+    for o in objs:
+        o.pop('body', None)
+    return objs
+
+
+def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_files=()) -> dict:
     """Custom module code: inventory, automatic port to 19 (OCA odoo-module-migrator) and an install check of every ported module
     on a new Odoo 19 database (odoo-hop-19 runner, the code on the shared read-only volume). Nothing of the uploaded code runs in
     the worker: it is only read and rewritten; it runs inside the isolated runner."""
@@ -228,6 +264,8 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
     log(f"Odoo 19 nuevo con las dependencias estándar: {', '.join(core)}")
     res = chain.wait(chain.enqueue('19.0', base, install=core), timeout, cancelled)
     installs = {'base': {'modules': core, 'state': res['state'], 'errors': res['errors'], 'logTail': res['logTail'][-6000:]}}
+    # the external SQL goes into the base before the modules (they read its tables); what Odoo 19 rejects is recorded per object
+    ext = external_sql(src, sql_files, base if res['state'] == 'succeeded' else None, log)
     for i, name in enumerate(oc.install_order(rows)):
         if res['state'] != 'succeeded' or cancelled():
             installs[name] = {'state': 'skipped', 'errors': 0, 'logTail': ''}
@@ -242,4 +280,5 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
     for r in rows:
         r['install'] = installs.get(r['name'])
     return {'rows': rows, 'portWarnings': warnings, 'base': installs['base'], 'ported': ported, 'diff': oc.diff(src, ported),
-            'report': json.dumps({'modules': rows, 'portWarnings': warnings}, ensure_ascii=False, indent=2)}
+            'externalSql': ext,
+            'report': json.dumps({'modules': rows, 'portWarnings': warnings, 'externalSql': ext}, ensure_ascii=False, indent=2)}

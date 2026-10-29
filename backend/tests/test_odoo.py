@@ -101,16 +101,22 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     from pathlib import Path
     from mf.odoo import jobs as oj
     code = upload(client, token, backup_zip({'addons/my_sale/__manifest__.py': "{'version': '12.0.1.0.0', 'depends': ['sale']}",
-                                             'addons/my_sale/models/sale.py': "@api.multi\ndef x(self):\n    pass\n"}))
+                                             'addons/my_sale/models/sale.py': "@api.multi\ndef x(self):\n    pass\n",
+                                             'backups/custom.sql': 'CREATE SCHEMA legacy_ext;',
+                                             'addons/my_sale/data/init.sql': 'select 1;'}))
     assert code.status_code == 201, code.text
     st = code.json()['structure']
     assert st['migrationType'] == 'ODOO' and st['odooModules'] == ['my_sale'] and not st['odooDump']
+    assert st['odooSql'] == ['backups/custom.sql']          # external SQL, not a database; a module's own .sql is not counted
+    full = upload(client, token, backup_zip({'lab/backups/full.sql': '-- dump\nCREATE TABLE public.ir_module_module (id int);'}))
+    assert full.json()['structure']['odooDump'] == 'lab/backups/full.sql'   # a full Odoo database at any depth, by its content
     body = {'name': f'Odoo code {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': code.json()['id'], 'migrationType': 'ODOO', 'targetRuntime': 'odoo19'}
     pid = client.post(f'{API}/projects', headers=token('ana.arquitecta'), json=body).json()['id']
     assert client.post(f'{API}/projects/{pid}/odoo-analyses', headers=token('ana.arquitecta')).json()['code'] == 'NO_DUMP'
     seen = {}
 
-    def port_code(ctx, run, src, om_id, log, cancelled, timeout):
+    def port_code(ctx, run, src, om_id, log, cancelled, timeout, sql_files=()):
+        seen['sql'] = list(sql_files)
         seen['src'] = sorted(str(p.relative_to(src)) for p in Path(src).rglob('*.py'))
         ported = ctx.workdir / 'ported'
         (ported / 'my_sale').mkdir(parents=True)
@@ -123,6 +129,7 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     run_job(r['jobId'])
     c = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert seen['src'] == ['addons/my_sale/__manifest__.py', 'addons/my_sale/models/sale.py'], seen
+    assert seen['sql'] == ['backups/custom.sql']
     assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0, 'modules': 1, 'installed': 0}
     dl = client.get(f"{API}/artifacts/{c['summary']['artifacts']['ported']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content[:2] == b'PK'

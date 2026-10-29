@@ -1,0 +1,13 @@
+<odoo>
+  <record id="sales_report_tree" model="ir.ui.view">
+    <field name="name">legacy.sales.report.tree</field>
+    <field name="model">legacy.sales.report</field>
+    <field name="arch" type="xml">
+      <tree>
+        <field name="order_id"/><field name="partner_id"/>
+        <field name="amount_total"/><field name="legacy_reference"/>
+        <field name="customer_tier"/>
+      </tree>
+    </field>
+  </record>
+</odoo>

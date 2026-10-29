@@ -1498,7 +1498,7 @@ def do_odoo_code(job: Job, ctx: Context):
         set_phase(ctx, 'port', 20)
         try:
             res = oj.port_code(ctx, runner.run, Path(src), om.id, lambda m: ctx.emit('info', 'odoo', m), ctx.cancel.is_set,
-                               get_settings().odoo_hop_timeout_seconds)
+                               get_settings().odoo_hop_timeout_seconds, _odoo_upload(db, project).get('odooSql') or [])
         except oj.OdooJobError as e:
             raise StepFailure(e.code, str(e)) from None
         set_phase(ctx, 'package', 90)
@@ -1514,7 +1514,10 @@ def do_odoo_code(job: Job, ctx: Context):
         rows = res['rows']
         failed = [r['name'] for r in rows if (r.get('install') or {}).get('state') != 'succeeded']
         om.modules = rows
-        om.summary = {'from': '12.0', 'to': '19.0', 'portWarnings': res['portWarnings'], 'base': res['base'],
+        ext = res.get('externalSql') or []
+        om.summary = {'from': '12.0', 'to': '19.0', 'portWarnings': res['portWarnings'], 'base': res['base'], 'externalSql': ext,
+                      'externalSqlCounts': {c: sum(1 for o in ext if o['category'] == c) for c in
+                                            ('KEEP', 'MIGRATE', 'REWRITE', 'MOVE_TO_ORM', 'DEPRECATE', 'MANUAL_REVIEW')},
                       'counts': {k: sum(r['counts'][k] for r in rows) for k in ('AUTO', 'MANUAL', 'REVIEW')} | {'modules': len(rows),
                                  'installed': len(rows) - len(failed)},
                       'artifacts': {k: str(v.id) for k, v in arts.items()}}

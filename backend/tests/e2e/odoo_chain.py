@@ -2,7 +2,7 @@
 (mf.odoo.jobs: analyze, migrate, port_code). Synthetic data only: Odoo's demo data and the synthetic modules in examples/.
     python odoo_chain.py scenario <name> <dump.sql> [--start 12.0] [--third-party N] [--oca module] [--table name=rows]
                          [--code addons_dir] [--same 'query on source ==> query on 19']
-    python odoo_chain.py code <addons dir>
+    python odoo_chain.py code <addons dir> [--sql file] [--expect-sql object=CATEGORY]
 The database server and the seven odoo-hop-<version> runners are started by the workflow."""
 import argparse
 import sys
@@ -81,10 +81,10 @@ def scenario(a):
     chain.drop_db(res['sourceDb'])
 
 
-def code(addons):
-    """Custom module code: port + install check of each module on a new Odoo 19."""
+def code(a):
+    """Custom module code (and its external SQL): port + install check of each module on a new Odoo 19."""
     from mf.worker.runner import run
-    res = oj.port_code(ctx(), run, Path(addons), uuid.uuid4(), print, lambda: False, 3 * 3600)
+    res = oj.port_code(ctx(), run, Path(a.addons), uuid.uuid4(), print, lambda: False, 3 * 3600, a.sql or [])
     print('base:', res['base']['state'], res['base']['modules'])
     for r in res['rows']:
         print(f"{r['name']}: {r['counts']} · instalar en 19: {r['install']['state']}")
@@ -93,11 +93,18 @@ def code(addons):
                 print(f"    {f['status']:6} {f['pattern']} {f['file']}:{f['line']}")
         if r['install']['state'] == 'failed':
             print('\n'.join(line for line in r['install']['logTail'].splitlines() if ' ERROR ' in line or 'Error' in line)[-1500:])
+    for o in res['externalSql']:
+        print(f"SQL {o['category']:12} {o['kind']:17} {o['schema']}.{o['name']} · en 19: {o.get('in19')}")
     print('\n'.join(res['portWarnings'][:20]))
     state = {r['name']: r['install']['state'] for r in res['rows']}
     assert res['base']['state'] == 'succeeded', res['base']['logTail'][-3000:]
     assert all(v == 'succeeded' for v in state.values()), state   # the OCA tool + the platform's rules: every module installs
-    assert 'tracking=True' in (res['ported'] / 'legacy_sales_custom' / 'models' / 'sale_order.py').read_text()
+    assert not [r['name'] for r in res['rows'] if r['counts']['MANUAL']], [(r['name'], r['counts']) for r in res['rows']]
+    assert all((o.get('in19') or {}).get('state') == 'ok' for o in res['externalSql']), [o for o in res['externalSql'] if o.get('in19', {}).get('state') != 'ok']
+    got = {o['name'] or o['schema']: o['category'] for o in res['externalSql']}
+    for spec in a.expect_sql or []:
+        name, cat = spec.split('=')
+        assert got.get(name) == cat, (name, got.get(name), cat)
 
 
 def main(argv):
@@ -114,9 +121,11 @@ def main(argv):
     s.add_argument('--same', action='append')
     k = sub.add_parser('code')
     k.add_argument('addons')
+    k.add_argument('--sql', action='append')
+    k.add_argument('--expect-sql', action='append')
     a = p.parse_args(argv)
     chain.ensure_control()
-    scenario(a) if a.cmd == 'scenario' else code(a.addons)
+    scenario(a) if a.cmd == 'scenario' else code(a)
 
 
 if __name__ == '__main__':

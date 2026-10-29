@@ -1,0 +1,12 @@
+<odoo>
+  <record id="message_tree" model="ir.ui.view">
+    <field name="name">legacy.integration.message.tree</field>
+    <field name="model">legacy.integration.message</field>
+    <field name="arch" type="xml">
+      <tree>
+        <field name="message_type"/><field name="external_id"/>
+        <field name="status"/><field name="retry_count"/><field name="created_at"/>
+      </tree>
+    </field>
+  </record>
+</odoo>

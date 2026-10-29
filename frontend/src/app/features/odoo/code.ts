@@ -26,6 +26,9 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
     .t-AUTO, .t-succeeded { background: #e7f6ec; color: #067647; } .t-MANUAL, .t-failed { background: #fdecea; color: #b42318; }
     .t-REVIEW, .t-skipped { background: #fff4e5; color: #b54708; }
+    .c-KEEP { background: #e7f6ec; color: #067647; } .c-MIGRATE, .c-MOVE_TO_ORM { background: #eef4ff; color: #3538cd; }
+    .c-REWRITE, .c-MANUAL_REVIEW { background: #fff4e5; color: #b54708; } .c-DEPRECATE { background: #f2f4f7; color: #475467; }
+    .tag + .tag { margin-left: 6px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; } td, th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--mf-line); vertical-align: top; }
     .scroll { overflow-x: auto; } code { font-size: 12px; } .small { font-size: 12.5px; } .muted { color: var(--mf-muted); }
     pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
@@ -80,6 +83,24 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
             @if (m.install?.state === 'failed') { <p class="small">Log de la instalación en Odoo 19 (últimas líneas):</p><pre>{{ m.install?.logTail }}</pre> }
           </section>
         }
+        @if (c.summary['externalSql']?.length) {
+          <section class="card">
+            <h2>SQL externo ({{ c.summary['externalSql'].length }} objetos)</h2>
+            <p class="small muted">Objetos fuera del ORM que vienen en los .sql del ZIP: clasificados contra el código de los módulos (regla y motivo, no
+              puntaje) y ejecutados sentencia por sentencia en el Odoo 19 nuevo antes de instalar los módulos.</p>
+            <p class="small">@for (k of sqlCats; track k) { @if (c.summary['externalSqlCounts']?.[k]) { <span [class]="'tag c-' + k">{{ k }} {{ c.summary['externalSqlCounts'][k] }}</span> } }</p>
+            <div class="scroll"><table>
+              <tr><th scope="col">Objeto</th><th scope="col">Clasificación</th><th scope="col">Motivo</th><th scope="col">Lo usan</th><th scope="col">En Odoo 19</th></tr>
+              @for (o of c.summary['externalSql']; track o.file + o.line) {
+                <tr><td><code>{{ o.schema }}{{ o.name ? '.' + o.name : '' }}</code><br /><span class="small muted">{{ o.kind }}@if (o.rows) { · {{ o.rows }} fila(s) de datos } · {{ o.file }}:{{ o.line }}</span></td>
+                  <td><span [class]="'tag c-' + o.category">{{ o.category }}</span></td>
+                  <td class="small">{{ o.reason }}</td>
+                  <td class="small">{{ usedBy(o) }}</td>
+                  <td class="small">@if (o.in19?.state === 'ok') { <span class="tag t-succeeded">se crea</span> } @else if (o.in19?.state === 'error') { <span class="tag t-failed">error</span> <span class="muted">{{ o.in19.error }}</span> } @else { — }</td></tr>
+              }
+            </table></div>
+          </section>
+        }
         @if (c.summary['portWarnings']?.length) {
           <section class="card"><h2>Avisos de la herramienta de port</h2><pre>{{ c.summary['portWarnings'].join('\\n') }}</pre></section>
         }
@@ -94,6 +115,13 @@ export class OdooCode {
   running = computed(() => { const r = this.os.running(); return r?.mode === 'code' ? r : null; });
   modules = computed(() => (this.os.code()?.modules ?? []) as unknown as CodeModule[]);
   shown(m: CodeModule) { return this.filter() === 'ALL' ? m.findings : m.findings.filter(f => f.status !== 'AUTO'); }
+  sqlCats = ['KEEP', 'MIGRATE', 'REWRITE', 'MOVE_TO_ORM', 'DEPRECATE', 'MANUAL_REVIEW'];
+  usedBy(o: { uses?: { module: string; how: string }[] }) {
+    const how: Record<string, string> = { model: 'modelo', write: 'escribe', read: 'lee', call: 'llama', refresh: 'refresca' };
+    const by = new Map<string, Set<string>>();
+    for (const u of o.uses ?? []) by.set(u.module, (by.get(u.module) ?? new Set()).add(how[u.how] ?? u.how));
+    return [...by].map(([m, h]) => `${m} (${[...h].join(', ')})`).join(' · ') || '—';
+  }
   status(s: string) { return STATUS[s] ?? s; }
   install(s: string) { return INSTALL[s] ?? s; }
   reason() {

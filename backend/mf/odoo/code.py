@@ -103,6 +103,16 @@ def inventory(src: Path, ported: Path | None) -> list[dict]:
     return rows
 
 
+def _states_to_invisible(m: re.Match) -> str:
+    """<tag ... states="a,b" ...> → invisible="state not in ('a', 'b')" (17.0 removed states), unless the tag already has invisible."""
+    tag = m.group(0)
+    st = re.search(r'\sstates="([^"]*)"', tag)
+    if not st or re.search(r'\sinvisible=', tag):
+        return tag
+    values = ', '.join(f"'{v.strip()}'" for v in st[1].split(',') if v.strip())
+    return tag.replace(st.group(0), f' invisible="state not in ({values}{"," if values.count(",") == 0 else ""})"')
+
+
 # What OCA odoo-module-migrator leaves (it warns but does not rewrite): the platform's own rules, per version where the change
 # happened. (since, scope: the file must mention it, files, regex, replacement). Applied right after the tool's step to that version.
 INVOICE = r'account\.invoice\b'
@@ -124,6 +134,7 @@ RULES = [
     ('13.0', r'name="(customer|supplier)"', 'xml', r'<field name="(customer|supplier)">\s*(False|0)\s*</field>\n?', ''),
     ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="model">)stock\.production\.lot(</field>)', r'\1stock.lot\2'),
     ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="name">)stock\.production\.lot\.', r'\1stock.lot.'),
+    ('17.0', r'\sstates="', 'xml', r'<[^<>]*\sstates="[^"]*"[^<>]*>', _states_to_invisible),
     ('16.0', r'stock\.production\.lot', 'py', r"""(['"])stock\.production\.lot\1""", r"\1stock.lot\1"),
 ]
 FIELD = re.compile(r'^(\s+)(\w+)\s*=\s*fields\.(\w+)\(')
@@ -156,7 +167,8 @@ def apply_rules(d: Path, version: str) -> list[str]:
             if since == version and kind == ext and re.search(scope, original):
                 text, n = re.subn(rx, repl, text)
                 if n:
-                    done.append(f'[{version}] regla de la plataforma: {f.relative_to(d)} · {rx[:60]} → {repl[:40]} ({n})')
+                    done.append(f"[{version}] regla de la plataforma: {f.relative_to(d)} · {rx[:60]} → "
+                                f"{repl[:40] if isinstance(repl, str) else repl.__doc__.split(' (')[0][:60]} ({n})")
         if text != original:
             f.write_text(text, encoding='utf-8')
     return done
@@ -284,4 +296,6 @@ if __name__ == '__main__':  # self-check on a tiny module
         assert install_order([{'name': 'b', 'depends': ['a']}, {'name': 'a', 'depends': ['sale']}]) == ['a', 'b']
         assert custom_deps([{'name': 'b', 'depends': ['a']}, {'name': 'a', 'depends': []}], 'b') == ['b', 'a']
         assert safe_tree(src.parent) == []
+    x = re.sub(r'<[^<>]*\sstates="[^"]*"[^<>]*>', _states_to_invisible, '<button name="a" states="draft"/><button states="a,b" invisible="1"/>')
+    assert x == '<button name="a" invisible="state not in (\'draft\',)"/><button states="a,b" invisible="1"/>', x
     print('ok')

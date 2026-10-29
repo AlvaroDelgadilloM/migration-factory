@@ -1,0 +1,14 @@
+<odoo>
+  <record id="partner_customer360_form" model="ir.ui.view">
+    <field name="name">res.partner.customer360.form</field>
+    <field name="model">res.partner</field>
+    <field name="inherit_id" ref="base.view_partner_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='vat']" position="after">
+        <field name="x_external_customer_id"/>
+        <field name="x_customer_tier"/>
+        <field name="x_legacy_status"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

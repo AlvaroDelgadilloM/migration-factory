@@ -1,0 +1,14 @@
+<odoo>
+  <record id="partner_credit_form" model="ir.ui.view">
+    <field name="name">res.partner.credit.form</field>
+    <field name="model">res.partner</field>
+    <field name="inherit_id" ref="legacy_customer360.partner_customer360_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='x_customer_tier']" position="after">
+        <field name="x_credit_limit"/>
+        <field name="x_credit_exposure"/>
+        <field name="x_credit_risk"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

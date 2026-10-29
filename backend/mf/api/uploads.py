@@ -27,13 +27,29 @@ class _Stored(Exception):
         self.structure = structure
 
 
-def odoo_dump(files) -> str | None:
-    """The database dump inside an Odoo backup ZIP (dump.sql + filestore/ + manifest.json) or a pg_dump file (.sql / .dump)."""
+def odoo_db_files(zip_path, files) -> tuple[str | None, list[str]]:
+    """(the Odoo database dump, the other SQL files) of the ZIP, at any depth. dump.sql of an Odoo backup ZIP is the database; any
+    other .sql/.dump/.backup is one only if its content says so (a full Odoo database names ir_module_module; pg_dump custom
+    format starts with PGDMP): otherwise it is external SQL (schemas, tables, functions outside the ORM) analysed with the code.
+    Files inside a module folder are the module's own data, not a database."""
+    import zipfile
+    from ..odoo.extsql import is_odoo_dump
     names = [f for f in files if not f.endswith('/')]
-    if 'dump.sql' in names:
-        return 'dump.sql'
-    dumps = [f for f in names if f.lower().endswith(('.dump', '.backup', '.sql')) and '/' not in f.strip('/')]
-    return dumps[0] if len(dumps) == 1 else None
+    mods = tuple(f.rsplit('/', 1)[0] + '/' for f in names if f.endswith(('/__manifest__.py', '/__openerp__.py')))
+    sql = sorted((f for f in names if f.lower().endswith(('.dump', '.backup', '.sql')) and not f.startswith('filestore/')
+                  and not f.startswith(mods)), key=lambda f: (f.count('/'), f))
+    if 'dump.sql' in sql:
+        return 'dump.sql', [f for f in sql if f != 'dump.sql']
+    dump, extra = None, []
+    with zipfile.ZipFile(zip_path) as z:
+        for f in sql:
+            with z.open(f) as fh:
+                head = fh.read(4 << 20)
+            if dump is None and is_odoo_dump(head):
+                dump = f
+            else:
+                extra.append(f)
+    return dump, extra
 
 
 def odoo_modules(files) -> list[str]:
@@ -125,17 +141,17 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             if mode == 'AUTO':  # the platform decides from the content: .dsx = DataStage, a database dump = Odoo, else Maven
                 probe = inspect_zip(Path(tmp), require_maven=False)
                 mode = 'DATASTAGE_AIRFLOW' if any(f.lower().endswith('.dsx') for f in probe['files']) else \
-                    'ODOO' if odoo_dump(probe['files']) or (odoo_modules(probe['files']) and not any(
+                    'ODOO' if odoo_db_files(Path(tmp), probe['files'])[0] or (odoo_modules(probe['files']) and not any(
                         f == 'pom.xml' or f.endswith('/pom.xml') for f in probe['files'])) else 'JAVA_CAMEL'
             if mode == 'ODOO':
                 structure = probe or inspect_zip(Path(tmp), require_maven=False)
-                dump, mods = odoo_dump(structure['files']), odoo_modules(structure['files'])
+                (dump, extra_sql), mods = odoo_db_files(Path(tmp), structure['files']), odoo_modules(structure['files'])
                 if not dump and not mods:
                     raise UnsafeInput('NO_DUMP', 'El ZIP no trae el respaldo de la base (dump.sql del respaldo de Odoo, un .sql o un .dump '
                                                  'de pg_dump) ni código de módulos (carpetas con __manifest__.py); '
                                                  f'trae: {_kinds(structure["files"])}.')
                 files = structure.pop('files')
-                structure |= {'migrationType': 'ODOO', 'odooDump': dump, 'odooModules': mods[:200], 'filestore': any(f.startswith('filestore/') for f in files),
+                structure |= {'migrationType': 'ODOO', 'odooDump': dump, 'odooModules': mods[:200], 'odooSql': extra_sql[:50], 'filestore': any(f.startswith('filestore/') for f in files),
                               'odooManifest': 'manifest.json' in files}
                 blobs().write_file(key, Path(tmp))
                 raise _Stored(structure)
