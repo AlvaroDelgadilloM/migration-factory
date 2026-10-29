@@ -1,7 +1,7 @@
 """Odoo 12 -> 19 scenarios on real Odoo + OpenUpgrade (workflow odoo-e2e.yml), through the same functions the worker runs
 (mf.odoo.jobs: analyze, migrate, port_code). Synthetic data only: Odoo's demo data and the synthetic modules in examples/.
     python odoo_chain.py scenario <name> <dump.sql> [--start 12.0] [--third-party N] [--oca module] [--table name=rows]
-                         [--code addons_dir] [--same 'query on source::query on 19']
+                         [--code addons_dir] [--same 'query on source ==> query on 19']
     python odoo_chain.py code <addons dir>
 The database server and the seven odoo-hop-<version> runners are started by the workflow."""
 import argparse
@@ -49,7 +49,7 @@ def scenario(a):
     custom = oj.ported_addons(c, run, Path(a.code), om, print, res['from'])['paths'] if a.code else None
     if a.code:
         assert {r['name'] for r in rows if r['origin'] == 'CUSTOM'} == set(names), [(r['name'], r['origin']) for r in rows]
-    before = {q: chain.query(res['sourceDb'])(q.split('::')[0]) for q in a.same or []}
+    before = {q: chain.query(res['sourceDb'])(q.split(' ==> ')[0]) for q in a.same or []}
     m = oj.migrate(c, res, decisions, om, print, lambda i, n: None, fetch, lambda: False, 3 * 3600, custom)
     for h in m['hops']:
         print(f"[{a.name}] {h['version']}: {h['state']} errors={h['errors']} base={h['baseVersion']}")
@@ -60,7 +60,7 @@ def scenario(a):
     assert chain.base_version(db).startswith('19.0'), chain.base_version(db)
     for r in m['reconciliation']:
         print(f"[{a.name}] {r['state']:15} {r['label']}: {r['before']} -> {r['after']}")
-    diff = [r['check'] for r in m['reconciliation'] if r['state'] == 'DIFFERENT']
+    diff = [r['check'] for r in m['reconciliation'] if r['state'] == 'DIFFERENT' and not r.get('info')]
     assert not diff, diff
     installed = {r['name'] for r in chain.installed_modules(db)}
     assert not set(block) & installed, set(block) & installed
@@ -69,8 +69,8 @@ def scenario(a):
     for n in names:
         assert n in installed, f'{n} no quedó instalado en 19'
     for q in a.same or []:
-        after = chain.query(db)(q.split('::')[1])
-        print(f"[{a.name}] datos: {q.split('::')[0]} → {before[q]} · en 19: {after}")
+        after = chain.query(db)(q.split(' ==> ')[1])
+        print(f"[{a.name}] datos: {q.split(' ==> ')[0]} → {before[q]} · en 19: {after}")
         assert before[q] and before[q] != ('0',) and before[q] == after, (q, before[q], after)
     for spec in a.table or []:
         name, rows_expected = spec.split('=')

@@ -98,7 +98,7 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
             <p-table [value]="m.reconciliation">
               <ng-template #header><tr><th scope="col">Dato</th><th scope="col">Odoo {{ os.analysis()?.summary?.['sourceVersion'] ?? '12' }}</th><th scope="col">Odoo 19</th><th scope="col">Resultado</th></tr></ng-template>
               <ng-template #body let-r><tr><td>{{ r.label }}</td><td>{{ r.before?.join(' · ') ?? '—' }}</td><td>{{ r.after?.join(' · ') ?? '—' }}</td>
-                <td [class.ok]="r.state === 'EQUAL'" [class.bad]="r.state === 'DIFFERENT'">{{ r.state === 'EQUAL' ? 'Igual' : r.state === 'DIFFERENT' ? 'Distinto' : 'No aplica' }}</td></tr></ng-template>
+                <td [class.ok]="r.state === 'EQUAL'" [class.bad]="r.state === 'DIFFERENT' && !r.info">{{ r.state === 'EQUAL' ? 'Igual' : r.state === 'DIFFERENT' ? 'Distinto' : 'No aplica' }}</td></tr></ng-template>
             </p-table>
           }
           @if (m.summary['artifacts']?.['dump']; as d) {

@@ -97,11 +97,11 @@ jobs:
         run: |
           python backend/tests/e2e/odoo_chain.py scenario lab12code /tmp/dumps/lab12.sql --code examples/odoo-legacy-modules \
             --table legacy_migration_audit=2 \
-            --same "select count(*) from account_invoice where x_external_invoice_id like 'EXT-%' and x_legacy_exported::select count(*) from account_move where x_external_invoice_id like 'EXT-%' and x_legacy_exported" \
-            --same "select count(*) from stock_production_lot where x_quality_state = 'approved'::select count(*) from stock_lot where x_quality_state = 'approved'" \
-            --same "select count(*), coalesce(sum(x_priority_code::int), 0) from sale_order where x_legacy_reference like 'LEG-%'::select count(*), coalesce(sum(x_priority_code::int), 0) from sale_order where x_legacy_reference like 'LEG-%'" \
-            --same "select round(coalesce(sum(x_credit_limit), 0)::numeric, 2) from res_partner::select round(coalesce(sum(x_credit_limit), 0)::numeric, 2) from res_partner" \
-            --same "select count(*) from legacy_sale_audit::select count(*) from legacy_sale_audit"
+            --same "select count(*) from account_invoice where x_external_invoice_id like 'EXT-%' and x_legacy_exported ==> select count(*) from account_move where x_external_invoice_id like 'EXT-%' and x_legacy_exported" \
+            --same "select count(*) from stock_production_lot where x_quality_state = 'approved' ==> select count(*) from stock_lot where x_quality_state = 'approved'" \
+            --same "select count(*), coalesce(sum(x_priority_code::int), 0) from sale_order where x_legacy_reference like 'LEG-%' ==> select count(*), coalesce(sum(x_priority_code::int), 0) from sale_order where x_legacy_reference like 'LEG-%'" \
+            --same "select round(coalesce(sum(x_credit_limit), 0)::numeric, 2) from res_partner ==> select round(coalesce(sum(x_credit_limit), 0)::numeric, 2) from res_partner" \
+            --same "select count(*) from legacy_sale_audit ==> select count(*) from legacy_sale_audit"
       - name: Escenario oca12 (módulo OCA migrado con su código de cada versión)
         if: success() || failure()
         run: python backend/tests/e2e/odoo_chain.py scenario oca12 /tmp/dumps/oca12.sql --oca partner_firstname
