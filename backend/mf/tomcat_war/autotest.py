@@ -545,7 +545,7 @@ def _fetch(artifact: str, dest: Path, work: Path) -> Path:
     if not mvn:
         raise AutoTestError('mvn no está en el PATH')
     log_file = work / 'logs' / 'fetch.log'
-    if verify._run([mvn, '-B', '-q', 'dependency:copy', f'-Dartifact={artifact}', f'-DoutputDirectory={dest}'], log_file) != 0:
+    if verify._run([mvn, '-B', '-q', f'{verify.DEPENDENCY_PLUGIN}:copy', f'-Dartifact={artifact}', f'-DoutputDirectory={dest}'], log_file) != 0:
         # the job's working folder is gone when the platform shows the error: Maven's own reason goes in the message
         errors = [ln.strip() for ln in log_file.read_text(encoding='utf-8', errors='replace').splitlines() if '[ERROR]' in ln and ln.strip() != '[ERROR]']
         raise AutoTestError(f"No se pudo obtener {artifact}: {' | '.join(errors[:3])[:900] or 'ver ' + str(log_file)}")

@@ -21,6 +21,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import blueprint, pipeline
+from ..runtime_test import DEPENDENCY_PLUGIN  # full coordinates: the worker's Maven does not resolve the 'dependency:' prefix
 
 VERIFY_DIR = pipeline.RULES_DIR / 'verify'
 OPENS = ['java.base/java.lang', 'java.base/java.util', 'java.base/java.lang.reflect', 'java.base/java.net', 'java.base/java.io',
@@ -109,7 +110,7 @@ def baseline_libs(work: Path, version: str, log=lambda m: None, extra: list = ()
     pom.write_text((VERIFY_DIR / 'baseline-pom.xml').read_text(encoding='utf-8').replace('@CAMEL2_VERSION@', version)
                    .replace('\t</dependencies>', deps + '\t</dependencies>', 1), encoding='utf-8')
     log(f'resolviendo las librerías de Camel {version} (línea base)')
-    if _run([mvn, '-B', '-q', '-f', pom, 'dependency:copy-dependencies', '-DoutputDirectory=lib'], work / 'logs' / 'baseline-libs.log') != 0:
+    if _run([mvn, '-B', '-q', '-f', pom, f'{DEPENDENCY_PLUGIN}:copy-dependencies', '-DoutputDirectory=lib'], work / 'logs' / 'baseline-libs.log') != 0:
         raise ToolError(f"No se pudieron resolver las librerías de la línea base; ver {work / 'logs' / 'baseline-libs.log'}")
     marker.write_text('ok')
     return lib
