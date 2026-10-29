@@ -73,7 +73,7 @@ def analyze(ctx, run, dump: Path, om_id, log) -> dict:
     first = start_version(version)
     log(f'base Odoo {version} restaurada como {src}')
     installed = chain.installed_modules(src)
-    rows = modules.classify(installed)
+    rows = modules.classify(installed, first)
     before = [{'check': k, 'label': lbl, 'value': chain.query(src)(q12 if first == '12.0' else q19)}
               for k, (lbl, q12, q19) in reconcile.CHECKS.items()]
     found = fixes.detect(chain.query_all(src))
@@ -134,8 +134,14 @@ def migrate(ctx, analysis: dict, decisions: dict, om_id, log, progress, fetch, c
         log(f"salto a {version}" + (f" con {len(extra)} repositorio(s) OCA" if extra else ''))
         task = chain.enqueue(version, mig, extra)
         res = chain.wait(task, timeout, cancelled, on_progress=lambda row: None)
-        res |= {'version': version, 'baseVersion': chain.base_version(mig) if res['state'] == 'succeeded' else None}
-        hops.append({k: res[k] for k in ('version', 'state', 'exitCode', 'errors', 'baseVersion')} | {'logTail': res['logTail'][-6000:]})
+        base = chain.base_version(mig) if res['state'] == 'succeeded' else None
+        if base is not None and not base.startswith(version):  # Odoo ended without error but the database did not move
+            res['state'] = 'failed'
+            res['logTail'] += f'\nLa base quedó en {base}, no en {version}.'
+        res |= {'version': version, 'baseVersion': base}
+        t = res['logTail']   # the runner puts the ERROR lines first: keep them and the end
+        hops.append({k: res[k] for k in ('version', 'state', 'exitCode', 'errors', 'baseVersion')}
+                    | {'logTail': t if len(t) <= 9000 else t[:3000] + '\n[…]\n' + t[-6000:]})
         progress(i + 1, len(analysis['hops']))
         if res['state'] != 'succeeded':
             return {'state': 'failed', 'hops': hops, 'database': mig}

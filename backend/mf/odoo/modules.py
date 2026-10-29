@@ -1,7 +1,8 @@
 """What happens to each installed module of an Odoo 12 database on the way to 19, from public data only (rules/odoo, generated
 by scripts/gen_odoo_index.py): the OpenUpgrade coverage of every hop for core modules, and the OCA branches for OCA modules.
 
-Origin: core (in the OpenUpgrade 12.0 -> 13.0 table), OCA (author or the OCA 12.0 index) or third party / custom.
+Origin: core (in the OpenUpgrade table of the starting version: the manifest author is not proof, Odoo 12 gives "Odoo S.A." to
+any module without one), OCA (author or the OCA index of the starting branch) or third party / custom.
 A core module is followed through renames and merges hop by hop; a hop without a script for it is reported. An OCA module needs
 its code in every intermediate version (OpenUpgrade migrates each module with the code of each release): the versions where it is
 missing are listed. A third-party or custom module has no known ported code: it blocks until someone decides what to do."""
@@ -14,7 +15,6 @@ from pathlib import Path
 
 VERSIONS = ('12.0', '13.0', '14.0', '15.0', '16.0', '17.0', '18.0', '19.0')
 OCA_AUTHOR = 'Odoo Community Association'
-ODOO_AUTHOR = ('Odoo S.A.', 'OpenERP SA', 'Odoo SA')
 
 
 @lru_cache
@@ -48,18 +48,19 @@ def _core_path(name: str, hops: list) -> dict:
     return {'steps': steps, 'final': current, 'gaps': gaps, 'removedIn': None, 'adopted': None}
 
 
-def classify(installed: list[dict]) -> list[dict]:
-    """installed: [{name, author, version}] from ir_module_module (state installed). One row per module with origin,
-    availability per version, outcome (OK | WARN | BLOCK) and the reason in plain language."""
+def classify(installed: list[dict], start: str = '12.0') -> list[dict]:
+    """installed: [{name, author, version}] from ir_module_module (state installed) of a database at start. One row per module
+    with origin, availability per version, outcome (OK | WARN | BLOCK) and the reason in plain language."""
     cov, oca = data()
-    hops = cov['hops']
-    core12 = {n for n, i in hops[0]['modules'].items() if i['flag'] != 'new'}
+    hops = [h for h in cov['hops'] if float(h['from']) >= float(start)]
+    core = {n for n, i in hops[0]['modules'].items() if i['flag'] != 'new'}
     branches = oca['branches']
+    versions = [v for v in VERSIONS if float(v) >= float(start)]
     rows = []
     for m in sorted(installed, key=lambda x: x['name']):
         name, author = m['name'], (m.get('author') or '')
         row = {'name': name, 'author': author, 'version': m.get('version')}
-        if name in core12 or any(a in author for a in ODOO_AUTHOR):
+        if name in core:
             p = _core_path(name, hops)
             row |= {'origin': 'CORE', 'path': p['steps'], 'final': p['final']}
             if p['removedIn'] and p['adopted']:
@@ -74,10 +75,10 @@ def classify(installed: list[dict]) -> list[dict]:
             else:
                 row |= {'outcome': 'OK', 'reason': 'Núcleo de Odoo con script u «sin cambios» en cada salto'
                         + (f" (en 19 se llama {p['final']})" if p['final'] != name else '')}
-        elif OCA_AUTHOR in author or name in branches.get('12.0', {}):
-            avail = {v: name in branches.get(v, {}) for v in VERSIONS}
-            missing = [v for v in VERSIONS[1:] if not avail[v]]
-            repo = next((branches[v][name] for v in reversed(VERSIONS) if name in branches.get(v, {})), None)
+        elif OCA_AUTHOR in author or name in branches.get(start, {}):
+            avail = {v: name in branches.get(v, {}) for v in versions}
+            missing = [v for v in versions[1:] if not avail[v]]
+            repo = next((branches[v][name] for v in reversed(versions) if name in branches.get(v, {})), None)
             row |= {'origin': 'OCA', 'repository': repo, 'availability': avail}
             if not missing:
                 row |= {'outcome': 'OK', 'reason': f'OCA ({repo}): portado en todas las versiones hasta 19'}
@@ -104,8 +105,12 @@ def summary(rows: list[dict]) -> dict:
 if __name__ == '__main__':  # self-check against the generated data
     rows = {r['name']: r for r in classify([{'name': 'sale', 'author': 'Odoo S.A.'}, {'name': 'account', 'author': 'Odoo S.A.'},
                                             {'name': 'partner_firstname', 'author': 'Camptocamp, Odoo Community Association (OCA)'},
-                                            {'name': 'x_acme_custom', 'author': 'ACME'}])}
+                                            {'name': 'x_acme_custom', 'author': 'ACME'},
+                                            {'name': 'legacy_sales_custom', 'author': 'Odoo S.A.'}])}   # Odoo 12's default author
     assert rows['sale']['origin'] == 'CORE' and rows['sale']['final'] == 'sale', rows['sale']
     assert rows['partner_firstname']['origin'] == 'OCA' and rows['partner_firstname']['availability']['19.0']
-    assert rows['x_acme_custom']['outcome'] == 'BLOCK'
+    assert rows['x_acme_custom']['outcome'] == 'BLOCK' and rows['legacy_sales_custom']['origin'] == 'THIRD_PARTY'
+    r16 = {r['name']: r for r in classify([{'name': 'sale', 'author': ''}, {'name': 'partner_firstname', 'author': ''}], start='16.0')}
+    assert [s['hop'] for s in r16['sale']['path']] == ['16.0→17.0', '17.0→18.0', '18.0→19.0'], r16['sale']['path']
+    assert list(r16['partner_firstname']['availability']) == ['16.0', '17.0', '18.0', '19.0']
     print({k: (v['outcome'], v['reason'][:70]) for k, v in rows.items()})

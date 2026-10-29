@@ -16,6 +16,7 @@ DB = {'host': os.environ.get('MF_ODOO_DB_HOST', 'odoo-db'), 'user': os.environ.g
       'password': os.environ['MF_ODOO_DB_PASSWORD'], 'port': int(os.environ.get('MF_ODOO_DB_PORT', '5432'))}
 OU = '/opt/openupgrade'
 TAIL = 20000
+FATAL = ('Traceback (most recent call last)', ' CRITICAL ', 'Failed to load registry')
 
 
 def command(database, extra_paths, install=None):
@@ -84,12 +85,24 @@ def execute(conn, task_id, database, extra_paths, install=None):
                 os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait()
                 break
-    with open(log_path, 'rb') as f:
+    errors, fatal, error_lines = 0, False, []
+    with open(log_path, 'rb') as f:   # the whole log: an error early in a long hop is not in the tail
+        for raw in f:
+            line = raw.decode('utf-8', 'replace')
+            if ' ERROR ' in line or ' CRITICAL ' in line:
+                errors += 1
+                if len(error_lines) < 30:
+                    error_lines.append(line.rstrip()[:500])
+            if any(m in line for m in FATAL):
+                fatal = True
         f.seek(0, 2)
         f.seek(max(0, f.tell() - TAIL))
         tail = f.read().decode('utf-8', 'replace')
-    errors = sum(1 for line in tail.splitlines() if ' ERROR ' in line or ' CRITICAL ' in line)
-    state = 'cancelled' if cancelled(conn, task_id) else 'succeeded' if proc.returncode == 0 and errors == 0 else 'failed'
+    if error_lines and error_lines[0] not in tail:
+        tail = 'Líneas ERROR del log (%d):\n%s\n...\n%s' % (errors, '\n'.join(error_lines), tail)
+    # Odoo logs some recoverable problems as ERROR and goes on (OpenUpgrade keeping an obsolete record still referenced, a module
+    # left uninstalled): those are counted and shown; the hop fails on a non-zero exit, a traceback or a registry that did not load
+    state = 'cancelled' if cancelled(conn, task_id) else 'succeeded' if proc.returncode == 0 and not fatal else 'failed'
     with conn, conn.cursor() as cur:
         cur.execute("""update mf_hop_task set state = %s, exit_code = %s, errors = %s, log_tail = %s, finished_at = now()
                        where id = %s""", (state, proc.returncode, errors, tail, task_id))

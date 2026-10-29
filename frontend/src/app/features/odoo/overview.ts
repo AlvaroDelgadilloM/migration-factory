@@ -86,6 +86,11 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
               <div class="hop" [class]="'hop ' + h.state"><b>{{ h.version }}</b>{{ hopState(h.state) }}@if (h.errors) { · {{ h.errors }} error(es) }</div>
             }
           </div>
+          @for (h of m.hops; track h.version) {
+            @if (h.state === 'succeeded' && h.errors) {
+              <details><summary class="small">Salto a {{ h.version }}: terminó, con {{ h.errors }} línea(s) ERROR no fatales en el log (revisar)</summary><pre>{{ h.logTail }}</pre></details>
+            }
+          }
           @if (failed(); as f) { <p>Log del salto a {{ f.version }} (últimas líneas):</p><pre>{{ f.logTail }}</pre> }
           @if (m.reconciliation.length) {
             <h2>Conciliación antes / después</h2>

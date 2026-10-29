@@ -3,10 +3,17 @@ migrated one, with the queries each schema needs (invoices: account_invoice in 1
 cannot run on one side (module not installed) is reported as not applicable, never as equal."""
 from __future__ import annotations
 
+USERS = "select count(*) from res_users where login not in ('default', 'portaltemplate')"
+POSTED = ('select round(coalesce(sum(l.debit), 0), 2), round(coalesce(sum(l.credit), 0), 2) from account_move_line l '
+          "join account_move m on m.id = l.move_id where m.state = 'posted'")
+ATTACHMENTS = ("select count(*) from ir_attachment where res_model is not null and res_field is null and res_model not like 'ir.%' "
+               "and coalesce(url, '') not like '/web/%'")
+
 # name -> (label, query on 12.0, query on 19.0); each returns one row: count[, total]
 CHECKS = {
     'partners': ('Contactos', 'select count(*) from res_partner', 'select count(*) from res_partner'),
-    'users': ('Usuarios', 'select count(*) from res_users', 'select count(*) from res_users'),
+    # template users (default, portaltemplate) are configuration, and 18.0 removed base.default_user
+    'users': ('Usuarios', USERS, USERS),
     'products': ('Productos', 'select count(*) from product_template', 'select count(*) from product_template'),
     'sale_orders': ('Pedidos de venta (número y total)', 'select count(*), round(coalesce(sum(amount_total), 0), 2) from sale_order',
                     'select count(*), round(coalesce(sum(amount_total), 0), 2) from sale_order'),
@@ -16,11 +23,12 @@ CHECKS = {
                           "select count(*), round(coalesce(sum(amount_total), 0), 2) from account_invoice",
                           "select count(*), round(coalesce(sum(amount_total), 0), 2) from account_move "
                           "where move_type in ('out_invoice', 'out_refund', 'in_invoice', 'in_refund')"),
-    'journal_items': ('Apuntes contables: débito y crédito', 'select round(coalesce(sum(debit), 0), 2), round(coalesce(sum(credit), 0), 2) from account_move_line',
-                      'select round(coalesce(sum(debit), 0), 2), round(coalesce(sum(credit), 0), 2) from account_move_line'),
+    # posted entries only: since 13.0 a draft invoice is a draft account.move with lines (in 12.0 it had none)
+    'journal_items': ('Apuntes contables publicados: débito y crédito', POSTED, POSTED),
     'stock_moves': ('Movimientos de inventario', 'select count(*) from stock_move', 'select count(*) from stock_move'),
     'leads': ('Oportunidades CRM', 'select count(*) from crm_lead', 'select count(*) from crm_lead'),
-    'attachments': ('Adjuntos', 'select count(*) from ir_attachment where res_model is not null', 'select count(*) from ir_attachment where res_model is not null'),
+    # files attached to business records: not field images (res_field) nor the web assets/views Odoo regenerates per version
+    'attachments': ('Adjuntos de registros', ATTACHMENTS, ATTACHMENTS),
 }
 
 
