@@ -38,8 +38,6 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     assert up.status_code == 201, up.text
     st = up.json()['structure']
     assert st['migrationType'] == 'ODOO' and st['odooDump'] == 'dump.sql' and st['filestore']
-    code = upload(client, token, backup_zip({'my_sale/__manifest__.py': '{}', 'my_sale/models/sale.py': '', 'my_sale/views/v.xml': ''}))
-    assert code.status_code == 422 and code.json()['code'] == 'ODOO_CODE_NOT_DB' and 'my_sale' in code.json()['message']
     plain = upload(client, token, backup_zip({'prod.dump': 'PGDMP'}))
     assert plain.json()['structure']['odooDump'] == 'prod.dump'
     body = {'name': f'Odoo {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': up.json()['id'], 'migrationType': 'ODOO', 'targetRuntime': 'odoo19'}
@@ -96,3 +94,34 @@ def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatc
     assert mig['summary']['reconciliationStatus'] == 'EQUAL' and mig['summary']['uninstalled'] == ['x_acme_custom'] and mig['summary']['fixesApplied'] == ['company_partner_company']
     dl = client.get(f"{API}/artifacts/{mig['summary']['artifacts']['dump']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content == b'PGDMP-19'
+
+
+def test_odoo_module_code_inventory_port_and_install_check(client, token, monkeypatch, tmp_path):
+    from pathlib import Path
+    from mf.odoo import jobs as oj
+    code = upload(client, token, backup_zip({'addons/my_sale/__manifest__.py': "{'version': '12.0.1.0.0', 'depends': ['sale']}",
+                                             'addons/my_sale/models/sale.py': "@api.multi\ndef x(self):\n    pass\n"}))
+    assert code.status_code == 201, code.text
+    st = code.json()['structure']
+    assert st['migrationType'] == 'ODOO' and st['odooModules'] == ['my_sale'] and not st['odooDump']
+    body = {'name': f'Odoo code {tmp_path.name[-6:]}', 'sourceType': 'zip', 'uploadId': code.json()['id'], 'migrationType': 'ODOO', 'targetRuntime': 'odoo19'}
+    pid = client.post(f'{API}/projects', headers=token('ana.arquitecta'), json=body).json()['id']
+    assert client.post(f'{API}/projects/{pid}/odoo-analyses', headers=token('ana.arquitecta')).json()['code'] == 'NO_DUMP'
+    seen = {}
+
+    def port_code(ctx, run, src, om_id, log, cancelled, timeout):
+        seen['src'] = sorted(str(p.relative_to(src)) for p in Path(src).rglob('*.py'))
+        ported = ctx.workdir / 'ported'
+        (ported / 'my_sale').mkdir(parents=True)
+        (ported / 'my_sale' / '__manifest__.py').write_text("{'version': '19.0.1.0.0'}")
+        rows = [{'name': 'my_sale', 'version': '12.0.1.0.0', 'depends': ['sale'], 'counts': {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0},
+                 'findings': [], 'install': {'state': 'failed', 'errors': 1, 'logTail': 'ERROR x'}}]
+        return {'rows': rows, 'portWarnings': [], 'base': {'state': 'succeeded'}, 'ported': ported, 'diff': '--- a\n+++ b\n', 'report': '{}'}
+    monkeypatch.setattr(oj, 'port_code', port_code)
+    r = client.post(f'{API}/projects/{pid}/odoo-code', headers=token('ana.arquitecta')).json()
+    run_job(r['jobId'])
+    c = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert seen['src'] == ['addons/my_sale/__manifest__.py', 'addons/my_sale/models/sale.py'], seen
+    assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0, 'modules': 1, 'installed': 0}
+    dl = client.get(f"{API}/artifacts/{c['summary']['artifacts']['ported']}/download", headers=token('ana.arquitecta'))
+    assert dl.status_code == 200 and dl.content[:2] == b'PK'

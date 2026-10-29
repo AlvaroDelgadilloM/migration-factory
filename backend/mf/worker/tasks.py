@@ -119,7 +119,7 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'datastage_migrate':
             from ..models import DataStageMigration
             s.get(DataStageMigration, job.subject_id).state = state
-        elif job.kind in ('odoo_analyze', 'odoo_migrate'):
+        elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code'):
             from ..models import OdooMigration
             s.get(OdooMigration, job.subject_id).state = state
         elif job.kind in ('preview', 'apply'):
@@ -156,7 +156,7 @@ def run_job(job_id: str):
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
                    'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
                    'http_compare': do_http_compare,
-                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate}[job.kind](job, ctx)
+                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -1450,6 +1450,50 @@ def do_odoo_migrate(job: Job, ctx: Context):
             raise StepFailure(e.code, str(e)) from None
     st = res['reconciliationStatus']
     return None if st == 'EQUAL' else ('partial_success', 'RECONCILIATION_' + st, 'La conciliación antes/después tiene diferencias o no aplica')
+
+
+def do_odoo_code(job: Job, ctx: Context):
+    """Odoo 12 -> 19, custom module code: inventory (file and line), automatic port (OCA odoo-module-migrator) and an install check
+    of each ported module on a new Odoo 19 (mf.odoo.code). The uploaded code is only read and rewritten here."""
+    import io
+    import zipfile
+    from ..models import OdooMigration
+    from ..odoo import jobs as oj
+    with session() as db:
+        om = db.get(OdooMigration, job.subject_id)
+        project = db.get(Project, om.project_id)
+        repo = db.get(Repository, project.repository_id)
+        om.state = 'running'
+        db.commit()
+        set_phase(ctx, 'source', 5)
+        src, *_ = _materialize(db, repo, None, ctx.workdir / 'source', ctx, require_maven=False)
+        set_phase(ctx, 'port', 20)
+        try:
+            res = oj.port_code(ctx, runner.run, Path(src), om.id, lambda m: ctx.emit('info', 'odoo', m), ctx.cancel.is_set,
+                               get_settings().odoo_hop_timeout_seconds)
+        except oj.OdooJobError as e:
+            raise StepFailure(e.code, str(e)) from None
+        set_phase(ctx, 'package', 90)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            for f in sorted(res['ported'].rglob('*')):
+                if f.is_file():
+                    z.write(f, f.relative_to(res['ported']))
+        tag = str(om.id)[:8]
+        arts = {'ported': _store(db, om.project_id, 'candidate-zip', f'modulos-odoo19-{tag}.zip', buf.getvalue(), 'application/zip', commit=False),
+                'diff': _store(db, om.project_id, 'patch', f'port-odoo19-{tag}.diff', res['diff'], 'text/x-diff; charset=utf-8', ctx, commit=False),
+                'report': _store(db, om.project_id, 'report-json', f'inventario-odoo19-{tag}.json', res['report'], 'application/json', ctx, commit=False)}
+        rows = res['rows']
+        failed = [r['name'] for r in rows if (r.get('install') or {}).get('state') != 'succeeded']
+        om.modules = rows
+        om.summary = {'from': '12.0', 'to': '19.0', 'portWarnings': res['portWarnings'], 'base': res['base'],
+                      'counts': {k: sum(r['counts'][k] for r in rows) for k in ('AUTO', 'MANUAL', 'REVIEW')} | {'modules': len(rows),
+                                 'installed': len(rows) - len(failed)},
+                      'artifacts': {k: str(v.id) for k, v in arts.items()}}
+        db.commit()
+    if res['base']['state'] != 'succeeded':
+        return ('partial_success', 'BASE_INSTALL_FAILED', 'No se pudo crear el Odoo 19 base con las dependencias estándar; ver su log')
+    return None if not failed else ('partial_success', 'MODULES_NOT_INSTALLABLE', f"No instalan en Odoo 19: {', '.join(failed)}")
 
 
 def do_datastage_migrate(job: Job, ctx: Context):

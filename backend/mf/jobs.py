@@ -13,7 +13,7 @@ from .models import IdempotencyRecord, Job, JobEvent, Outbox, now
 log = logging.getLogger('mf.jobs')
 QUEUE = 'mf-jobs'
 LONG_QUEUE = 'mf-long'  # workspace migrations and modernizations: own worker, never delay scans/executions
-LONG_KINDS = {'workspace_migrate', 'modernize', 'datastage_migrate', 'http_compare', 'odoo_analyze', 'odoo_migrate'}
+LONG_KINDS = {'workspace_migrate', 'modernize', 'datastage_migrate', 'http_compare', 'odoo_analyze', 'odoo_migrate', 'odoo_code'}
 
 
 def queue_for(kind: str | None) -> str:

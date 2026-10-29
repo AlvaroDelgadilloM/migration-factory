@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['backend/mf/odoo/**', 'docker/odoo-hop*', 'docker/odoo-hop/**', 'rules/odoo/**', 'backend/tests/e2e/odoo_chain.py', '.github/workflows/odoo-e2e.yml']
+    paths: ['backend/mf/odoo/**', 'examples/odoo-legacy-modules/**', 'docker/odoo-hop*', 'docker/odoo-hop/**', 'rules/odoo/**', 'backend/tests/e2e/odoo_chain.py', '.github/workflows/odoo-e2e.yml']
 
 permissions:
   contents: read
@@ -51,12 +51,26 @@ jobs:
             docker run -d --name "hop-$v" --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
               -v /tmp/hop-logs:/hop-logs "mf-odoo-hop:$v"
             python backend/tests/e2e/odoo_chain.py hop "$v" || { docker logs "hop-$v" | tail -50; exit 1; }
-            docker rm -f "hop-$v" && docker rmi "mf-odoo-hop:$v" > /dev/null && docker image prune -af > /dev/null
+            docker rm -f "hop-$v"
+            [ "$v" = 19.0 ] || { docker rmi "mf-odoo-hop:$v" > /dev/null && docker image prune -af > /dev/null; }   # 19 stays for the module code step
             df -h / | tail -1
             echo "::endgroup::"
           done
       - name: Conciliación antes / después
         run: python backend/tests/e2e/odoo_chain.py reconcile
+      - name: Código de módulos a la medida (port 12 → 19 e instalación en Odoo 19)
+        env:
+          MF_ODOO_ADDONS_DIR: /tmp/odoo-addons
+        run: |
+          OMM=$(grep -o 'OMM_COMMIT=[0-9a-f]*' docker/worker.Dockerfile | cut -d= -f2)
+          python -m venv /tmp/omm && /tmp/omm/bin/pip install -q "argcomplete==3.7.2" "colorama==0.4.6" "lxml==6.1.3" "PyYAML==6.0.3" \
+            "requests==2.34.2" "urllib3==2.8.0" "idna==3.20" "certifi==2026.10.23" "charset-normalizer==3.5.2"
+          /tmp/omm/bin/pip install -q --no-deps "https://codeload.github.com/OCA/odoo-module-migrator/tar.gz/$OMM"
+          mkdir -p /tmp/odoo-addons && chmod 755 /tmp/odoo-addons
+          docker run -d --name hop-code --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
+            -v /tmp/hop-logs:/hop-logs -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:19.0"
+          MF_TOOL_PATH="/tmp/omm/bin:/usr/local/bin:/usr/bin:/bin" python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules \
+            || { docker logs hop-code | tail -30; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: odoo-hop-logs, path: /tmp/hop-logs, retention-days: 7}

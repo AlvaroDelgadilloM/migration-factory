@@ -10,6 +10,7 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'portfolio' },
       { path: 'portfolio', title: 'Cartera', loadComponent: () => import('./features/portfolio/portfolio').then(m => m.Portfolio) },
       { path: 'p/:projectId/odoo', title: 'Resumen · Odoo', loadComponent: () => import('./features/odoo/overview').then(m => m.OdooOverview) },
+      { path: 'p/:projectId/odoo/codigo', title: 'Código · Odoo', loadComponent: () => import('./features/odoo/code').then(m => m.OdooCode) },
       { path: 'p/:projectId/odoo/modulos', title: 'Módulos · Odoo', loadComponent: () => import('./features/odoo/modules').then(m => m.OdooModules) },
       { path: 'p/:projectId/ds', title: 'Resumen · DataStage', loadComponent: () => import('./features/datastage/overview').then(m => m.DsOverview) },
       { path: 'p/:projectId/ds/jobs', title: 'Jobs · DataStage', loadComponent: () => import('./features/datastage/jobs').then(m => m.DsJobs) },

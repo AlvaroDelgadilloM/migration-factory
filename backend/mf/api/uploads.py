@@ -36,14 +36,10 @@ def odoo_dump(files) -> str | None:
     return dumps[0] if len(dumps) == 1 else None
 
 
-def odoo_code_hint(files) -> str | None:
-    """Odoo module source (no database) uploaded instead of a backup: say what it is and what to upload."""
-    mods = sorted({f.rsplit('/', 2)[-2] if '/' in f else '(raíz)' for f in files if f.endswith(('__manifest__.py', '__openerp__.py'))})
-    if not mods:
-        return None
-    return (f"Es código de módulos de Odoo ({len(mods)}: {', '.join(mods[:8])}{'…' if len(mods) > 8 else ''}), no un respaldo de la base. "
-            'La migración Odoo 12 → 19 migra la base de datos: suba el respaldo de Odoo (Administrar bases de datos → Respaldar, '
-            'formato zip: dump.sql + filestore) o un pg_dump (.sql / .dump). Los módulos instalados y su estado en 19 se muestran tras el análisis.')
+def odoo_modules(files) -> list[str]:
+    """Odoo addons in the ZIP (folders with a manifest): custom module code to inventory and port to 19."""
+    return sorted({f.rsplit('/', 2)[-2] for f in files if '/' in f and f.endswith(('/__manifest__.py', '/__openerp__.py'))})
+
 
 router = APIRouter(tags=['sources'])
 
@@ -129,17 +125,17 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             if mode == 'AUTO':  # the platform decides from the content: .dsx = DataStage, a database dump = Odoo, else Maven
                 probe = inspect_zip(Path(tmp), require_maven=False)
                 mode = 'DATASTAGE_AIRFLOW' if any(f.lower().endswith('.dsx') for f in probe['files']) else \
-                    'ODOO' if odoo_dump(probe['files']) else 'JAVA_CAMEL'
+                    'ODOO' if odoo_dump(probe['files']) or (odoo_modules(probe['files']) and not any(
+                        f == 'pom.xml' or f.endswith('/pom.xml') for f in probe['files'])) else 'JAVA_CAMEL'
             if mode == 'ODOO':
                 structure = probe or inspect_zip(Path(tmp), require_maven=False)
-                dump = odoo_dump(structure['files'])
-                if not dump:
-                    if hint := odoo_code_hint(structure['files']):
-                        raise UnsafeInput('ODOO_CODE_NOT_DB', hint)
-                    raise UnsafeInput('NO_DUMP', 'El ZIP no trae el respaldo de la base: dump.sql (respaldo de Odoo), un .sql o un .dump '
-                                                 f'de pg_dump; trae: {_kinds(structure["files"])}.')
+                dump, mods = odoo_dump(structure['files']), odoo_modules(structure['files'])
+                if not dump and not mods:
+                    raise UnsafeInput('NO_DUMP', 'El ZIP no trae el respaldo de la base (dump.sql del respaldo de Odoo, un .sql o un .dump '
+                                                 'de pg_dump) ni código de módulos (carpetas con __manifest__.py); '
+                                                 f'trae: {_kinds(structure["files"])}.')
                 files = structure.pop('files')
-                structure |= {'migrationType': 'ODOO', 'odooDump': dump, 'filestore': any(f.startswith('filestore/') for f in files),
+                structure |= {'migrationType': 'ODOO', 'odooDump': dump, 'odooModules': mods[:200], 'filestore': any(f.startswith('filestore/') for f in files),
                               'odooManifest': 'manifest.json' in files}
                 blobs().write_file(key, Path(tmp))
                 raise _Stored(structure)
@@ -149,8 +145,6 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             except UnsafeInput as e:
                 if x_migration_type != 'AUTO':
                     raise
-                if hint := odoo_code_hint(probe['files']):
-                    raise UnsafeInput('ODOO_CODE_NOT_DB', hint) from None
                 raise UnsafeInput(e.code, f'{e} El ZIP no trae un proyecto Maven (pom.xml), exportaciones DataStage (.dsx) ni un respaldo de Odoo; '
                                           f'trae: {_kinds(probe["files"])}.') from None
             if datastage:

@@ -1,0 +1,8 @@
+<odoo>
+  <record id="partner_legacy_demo" model="res.partner">
+    <field name="name">Legacy Migration Customer</field>
+    <field name="customer">True</field>
+    <field name="x_credit_limit">50000</field>
+    <field name="x_legacy_segment">gold</field>
+  </record>
+</odoo>

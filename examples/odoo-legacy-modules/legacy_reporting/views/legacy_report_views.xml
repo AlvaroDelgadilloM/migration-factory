@@ -1,0 +1,23 @@
+<odoo>
+  <record id="view_legacy_sale_report_tree" model="ir.ui.view">
+    <field name="name">legacy.sale.report.tree</field>
+    <field name="model">legacy.sale.report</field>
+    <field name="arch" type="xml">
+      <tree string="Legacy Sales Report">
+        <field name="order_id"/>
+        <field name="partner_id"/>
+        <field name="amount_total"/>
+        <field name="legacy_reference"/>
+      </tree>
+    </field>
+  </record>
+
+  <record id="action_legacy_sale_report" model="ir.actions.act_window">
+    <field name="name">Legacy Sales Report</field>
+    <field name="res_model">legacy.sale.report</field>
+    <field name="view_mode">tree,form</field>
+  </record>
+
+  <menuitem id="menu_legacy_root" name="Legacy Migration"/>
+  <menuitem id="menu_legacy_sale_report" parent="menu_legacy_root" action="action_legacy_sale_report" name="Sales SQL View"/>
+</odoo>

@@ -35,6 +35,14 @@ RUN python3 -m venv /opt/airflow-venv \
     && /opt/airflow-venv/bin/pip install "apache-airflow==2.10.5" "apache-airflow-providers-oracle==4.0.0" \
        "apache-airflow-providers-common-sql==1.21.0" \
        --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.5/constraints-3.12.txt"
+# Odoo 12 -> 19 custom module code (mf.odoo.code): OCA odoo-module-migrator at a pinned commit with pinned dependencies, in its
+# own venv. It only rewrites the uploaded code (no git, no network); the code itself runs only in the isolated odoo-hop-19 runner.
+ARG OMM_COMMIT=72fbe20b6715a00010ac1a90be1744fe9257819e
+RUN python3 -m venv /opt/omm-venv \
+    && /opt/omm-venv/bin/pip install "argcomplete==3.7.2" "colorama==0.4.6" "lxml==6.1.3" "PyYAML==6.0.3" "requests==2.34.2" \
+       "urllib3==2.8.0" "idna==3.20" "certifi==2026.10.23" "charset-normalizer==3.5.2" \
+    && /opt/omm-venv/bin/pip install --no-deps "https://codeload.github.com/OCA/odoo-module-migrator/tar.gz/${OMM_COMMIT}" \
+    && ln -s /opt/omm-venv/bin/odoo-module-migrate /usr/local/bin/odoo-module-migrate && odoo-module-migrate --help > /dev/null
 WORKDIR /app/backend
 COPY backend/requirements.lock ./
 RUN /opt/venv/bin/pip install -r requirements.lock

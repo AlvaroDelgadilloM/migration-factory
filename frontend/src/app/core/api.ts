@@ -127,8 +127,9 @@ export class Api {
     return this.send<DataStageMigration>('POST', `/datastage-migrations/${id}/reconciliations`, result);
   }
   odooRuns(projectId: string) { return this.get<OdooRun[]>(`/projects/${projectId}/odoo-migrations`); }
-  startOdoo(projectId: string, mode: 'analyze' | 'migrate') {
-    return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/${mode === 'analyze' ? 'odoo-analyses' : 'odoo-migrations'}`, {});
+  startOdoo(projectId: string, mode: 'analyze' | 'migrate' | 'code') {
+    const path = { analyze: 'odoo-analyses', migrate: 'odoo-migrations', code: 'odoo-code' }[mode];
+    return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/${path}`, {});
   }
   decideOdoo(id: string, module: string, action: 'uninstall' | 'apply' | 'ignore' | 'pending', reason: string) {
     return this.send<OdooRun>('PATCH', `/odoo-migrations/${id}/decisions`, { module, action, reason });

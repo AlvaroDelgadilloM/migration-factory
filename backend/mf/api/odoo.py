@@ -61,6 +61,14 @@ def _project(db, me, project_id, perm):
     return p
 
 
+def _uploaded(db, p) -> dict:
+    """What the project's ZIP brought: odooDump (database) and/or odooModules (custom module code)."""
+    from ..models import Repository, Upload
+    repo = db.get(Repository, p.repository_id)
+    up = db.get(Upload, repo.upload_id) if repo and repo.upload_id else None
+    return (up.structure or {}) if up else {}
+
+
 def blocking(om: OdooMigration) -> list[str]:
     """Blocking modules and suggested data fixes of an analysis still without a decision."""
     d = om.decisions or {}
@@ -89,7 +97,19 @@ def _start(db, me, p, mode, request, analysis=None) -> dict:
 @router.post('/projects/{project_id}/odoo-analyses', status_code=202)
 def analyze(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     """Restore the uploaded dump on the isolated database server and classify every installed module."""
-    return _start(db, me, _project(db, me, project_id, 'execute'), 'analyze', request)
+    p = _project(db, me, project_id, 'execute')
+    if not _uploaded(db, p).get('odooDump'):
+        raise ApiError(409, 'NO_DUMP', 'El proyecto trae código de módulos, no el respaldo de la base: use «Portar código»')
+    return _start(db, me, p, 'analyze', request)
+
+
+@router.post('/projects/{project_id}/odoo-code', status_code=202)
+def port_code(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """Custom module code: inventory, automatic port to 19 and an install check of each module on a new Odoo 19."""
+    p = _project(db, me, project_id, 'execute')
+    if not _uploaded(db, p).get('odooModules'):
+        raise ApiError(409, 'NO_MODULE_CODE', 'El ZIP del proyecto no trae código de módulos (carpetas con __manifest__.py)')
+    return _start(db, me, p, 'code', request)
 
 
 @router.post('/projects/{project_id}/odoo-migrations', status_code=202)

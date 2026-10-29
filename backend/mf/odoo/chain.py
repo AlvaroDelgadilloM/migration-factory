@@ -14,7 +14,8 @@ CONTROL = 'mf_control'
 TABLE = """create table if not exists mf_hop_task (
     id bigserial primary key, version text not null, database text not null, extra_paths text[] not null default '{}',
     state text not null default 'queued', cancel_requested boolean not null default false, runner text,
-    exit_code int, errors int, log_tail text, created_at timestamptz default now(), started_at timestamptz, finished_at timestamptz)"""
+    exit_code int, errors int, log_tail text, created_at timestamptz default now(), started_at timestamptz, finished_at timestamptz);
+alter table mf_hop_task add column if not exists install text"""   # install: modules to install on a new database (no OpenUpgrade)
 NAME = re.compile(r'^[a-z][a-z0-9_]{2,62}$')
 
 
@@ -80,10 +81,11 @@ def mark_uninstall(database: str, modules: list[str]):
             c.execute("update ir_module_module set state = 'to remove' where name = any(%s) and state = 'installed'", (modules,))
 
 
-def enqueue(version: str, database: str, extra_paths=()) -> int:
+def enqueue(version: str, database: str, extra_paths=(), install: list[str] | None = None) -> int:
+    """An OpenUpgrade hop on database, or (install) a plain Odoo installing those modules on database (created if missing)."""
     with connect(CONTROL) as c:
-        return c.execute('insert into mf_hop_task (version, database, extra_paths) values (%s, %s, %s) returning id',
-                         (version, database, list(extra_paths))).fetchone()[0]
+        return c.execute('insert into mf_hop_task (version, database, extra_paths, install) values (%s, %s, %s, %s) returning id',
+                         (version, database, list(extra_paths), ','.join(install) if install else None)).fetchone()[0]
 
 
 def wait(task_id: int, timeout: int, cancelled=lambda: False, poll: float = 5, on_progress=lambda row: None) -> dict:

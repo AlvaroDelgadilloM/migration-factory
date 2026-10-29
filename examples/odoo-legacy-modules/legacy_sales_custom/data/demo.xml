@@ -1,0 +1,6 @@
+<odoo>
+  <record id="legacy_sale_audit_demo" model="legacy.sale.audit">
+    <field name="name">Initial legacy audit</field>
+    <field name="external_ref">LEG-SALE-001</field>
+  </record>
+</odoo>

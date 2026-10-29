@@ -18,12 +18,18 @@ OU = '/opt/openupgrade'
 TAIL = 20000
 
 
-def command(database, extra_paths):
+def command(database, extra_paths, install=None):
     """OpenUpgrade for this version: 13.0 is a full fork of Odoo; 14.0+ is the official Odoo with openupgrade_framework and the
-    migration scripts of OCA/OpenUpgrade (--upgrade-path)."""
+    migration scripts of OCA/OpenUpgrade (--upgrade-path). install: the plain Odoo of the image installing those modules on a
+    new database (checks that ported module code installs on this version)."""
     common = ['-d', database, '--db_host', DB['host'], '--db_port', str(DB['port']), '--db_user', DB['user'],
-              '--db_password', DB['password'], '--update', 'all', '--stop-after-init', '--without-demo', 'all',
+              '--db_password', DB['password'], '--stop-after-init', '--without-demo', 'all',
               '--data-dir', '/var/lib/odoo', '--log-level', 'info', '--workers', '0', '--max-cron-threads', '0']
+    if install:
+        import odoo
+        core = os.path.join(os.path.dirname(odoo.__file__), 'addons')
+        return ['odoo', '--addons-path', ','.join([core] + list(extra_paths)), '--init', install] + common
+    common += ['--update', 'all']
     if VERSION == '13.0':
         paths = [OU + '/addons', OU + '/odoo/addons'] + list(extra_paths)
         return ['python3', OU + '/odoo-bin', '--addons-path', ','.join(paths)] + common
@@ -43,7 +49,7 @@ def take(conn):
         cur.execute("""update mf_hop_task set state = 'running', started_at = now(), runner = %s
                        where id = (select id from mf_hop_task where version = %s and state = 'queued' order by id
                                    for update skip locked limit 1)
-                       returning id, database, extra_paths""", (os.uname()[1], VERSION))
+                       returning id, database, extra_paths, install""", (os.uname()[1], VERSION))
         return cur.fetchone()
 
 
@@ -54,10 +60,10 @@ def cancelled(conn, task_id):
         return bool(row and row[0])
 
 
-def run(conn, task_id, database, extra_paths):
+def run(conn, task_id, database, extra_paths, install=None):
     log_path = os.path.join(LOGS, 'hop-%s.log' % task_id)
     with open(log_path, 'wb') as out:
-        proc = subprocess.Popen(command(database, extra_paths or []), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        proc = subprocess.Popen(command(database, extra_paths or [], install), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         while proc.poll() is None:
             time.sleep(3)
             if cancelled(conn, task_id):

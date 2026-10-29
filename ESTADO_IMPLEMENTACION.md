@@ -691,5 +691,16 @@ a la medida). Destino: Odoo 19 (OpenUpgrade 20.0 todavía no tiene scripts, veri
   se muestran en Resumen, un arquitecto decide «corregir en la copia» o «migrar sin corregir» con motivo (auditado, bloquea la
   migración hasta decidir) y se aplican solo a la copia antes del primer salto. Verificado en la base demo restaurada (2 casos,
   0 después de corregir). Resto de la cadena (15→19) y conciliación: en curso.
-- Pendiente / limitaciones: el filestore (adjuntos en disco) no viaja todavía; módulos a la medida con código portado (hoy solo
-  «desinstalar»); Odoo 20 cuando OpenUpgrade publique sus scripts.
+- **Código de módulos a la medida** (`mf/odoo/code.py`, job `odoo_code`, pantalla Código): el ZIP del proyecto puede traer
+  módulos (carpetas con `__manifest__.py`) en vez del respaldo, o junto con él. Inventario por archivo y línea (`@api.multi`,
+  `@api.one`, `track_visibility`, `attrs`/`states`, `<tree>`, `account.invoice`, `stock.production.lot`, `customer`/`supplier`,
+  SQL directo, `_auto = False`, tablas externas…), port automático con OCA odoo-module-migrator (commit fijado en la imagen del
+  worker, sin git ni red) y, por cada hallazgo, si quedó **automático**, **manual** (sigue en el código portado) o **a revisar**.
+  Cada módulo portado se instala en un Odoo 19 nuevo (ejecutor odoo-hop-19, tarea `install`) para saber si instala; se
+  descargan el código portado, el diff y el inventario. Nombres de archivo restringidos a `[A-Za-z0-9_./-]` porque la
+  herramienta renombra archivos por shell. Probado con los 5 módulos sintéticos de `examples/odoo-legacy-modules` (del
+  laboratorio del usuario): 20 cambios automáticos, 6 manuales (`account.invoice`, `stock.production.lot` en vistas, `customer`)
+  y 6 a revisar (SQL, vistas SQL, tabla externa, `@api.one`). La instalación en Odoo 19 real: en `odoo-e2e.yml` (en curso).
+- Pendiente / limitaciones: el filestore (adjuntos en disco) no viaja todavía; migrar los **datos** de módulos a la medida con
+  su código portado en cada salto (hoy, con respaldo, esos módulos solo se pueden desinstalar); Odoo 20 cuando OpenUpgrade
+  publique sus scripts.

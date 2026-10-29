@@ -150,3 +150,50 @@ def dump(ctx, run, database: str) -> Path:
     if res.exit_code != 0 or not out.exists():
         raise OdooJobError('DUMP_FAILED', 'No se pudo generar el respaldo de la base migrada')
     return out
+
+
+def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int) -> dict:
+    """Custom module code: inventory, automatic port to 19 (OCA odoo-module-migrator) and an install check of every ported module
+    on a new Odoo 19 database (odoo-hop-19 runner, the code on the shared read-only volume). Nothing of the uploaded code runs in
+    the worker: it is only read and rewritten; it runs inside the isolated runner."""
+    import json
+    from ..config import get_settings
+    from . import code as oc
+    bad = oc.safe_tree(src)
+    if bad:
+        raise OdooJobError('UNSAFE_NAMES', f"Nombres de archivo no admitidos (solo letras, números, _ . - /): {', '.join(bad[:5])}")
+    if not oc.modules(src):
+        raise OdooJobError('NO_MODULES', 'El ZIP no trae módulos de Odoo (carpetas con __manifest__.py)')
+    ported = ctx.workdir / 'ported'
+    warnings = oc.port(src, ported, run, ctx, log)
+    rows = oc.inventory(src, ported)
+    log(f"{len(rows)} módulo(s): " + ', '.join(f"{r['name']} ({r['counts']['AUTO']} automáticos, {r['counts']['MANUAL']} manuales, "
+                                              f"{r['counts']['REVIEW']} a revisar)" for r in rows))
+    tag = str(om_id).replace('-', '')[:12]
+    addons = Path(get_settings().odoo_addons_dir) / 'custom' / tag
+    shutil.rmtree(addons, ignore_errors=True)
+    for name, m in oc.modules(ported).items():
+        shutil.copytree(m['path'], addons / name)
+    names = {r['name'] for r in rows}
+    core = sorted({d for r in rows for d in r['depends'] if d not in names}) or ['base']
+    base = f'mf_{tag}_base'
+    chain.ensure_control()
+    chain.drop_db(base)
+    log(f"Odoo 19 nuevo con las dependencias estándar: {', '.join(core)}")
+    res = chain.wait(chain.enqueue('19.0', base, install=core), timeout, cancelled)
+    installs = {'base': {'modules': core, 'state': res['state'], 'errors': res['errors'], 'logTail': res['logTail'][-6000:]}}
+    for i, name in enumerate(oc.install_order(rows)):
+        if res['state'] != 'succeeded' or cancelled():
+            installs[name] = {'state': 'skipped', 'errors': 0, 'logTail': ''}
+            continue
+        db = f'mf_{tag}_i{i}'
+        chain.copy_db(base, db)
+        r = chain.wait(chain.enqueue('19.0', db, [str(addons)], install=[name]), timeout, cancelled)
+        chain.drop_db(db)
+        installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:]}
+        log(f"instalar {name} en Odoo 19: {r['state']}")
+    chain.drop_db(base)
+    for r in rows:
+        r['install'] = installs.get(r['name'])
+    return {'rows': rows, 'portWarnings': warnings, 'base': installs['base'], 'ported': ported, 'diff': oc.diff(src, ported),
+            'report': json.dumps({'modules': rows, 'portWarnings': warnings}, ensure_ascii=False, indent=2)}

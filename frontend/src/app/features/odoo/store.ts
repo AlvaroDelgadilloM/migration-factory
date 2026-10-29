@@ -16,6 +16,8 @@ export class OdooStore {
   readonly running = computed(() => (this.list.data() ?? []).find(r => ['queued', 'running'].includes(r.state)) ?? null);
   readonly analysis = computed(() => (this.list.data() ?? []).find(r => r.mode === 'analyze' && r.state === 'succeeded') ?? null);
   readonly migration = computed(() => (this.list.data() ?? []).find(r => r.mode === 'migrate') ?? null);
+  /** latest custom module code run (inventory, port to 19, install check) */
+  readonly code = computed(() => (this.list.data() ?? []).find(r => r.mode === 'code' && !['queued', 'running'].includes(r.state)) ?? null);
   /** blocking modules of the latest analysis still without the architect's decision */
   readonly pending = computed(() => {
     const a = this.analysis();
@@ -41,7 +43,7 @@ export class OdooStore {
 
   reload() { return this.list.reload(); }
 
-  async start(mode: 'analyze' | 'migrate') {
+  async start(mode: 'analyze' | 'migrate' | 'code') {
     const id = this.ctx.projectId();
     if (!id) return;
     this.error.set(null);

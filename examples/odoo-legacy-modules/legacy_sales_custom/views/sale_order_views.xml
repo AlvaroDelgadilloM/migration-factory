@@ -1,0 +1,14 @@
+<odoo>
+  <record id="view_order_form_legacy_custom" model="ir.ui.view">
+    <field name="name">sale.order.form.legacy.custom</field>
+    <field name="model">sale.order</field>
+    <field name="inherit_id" ref="sale.view_order_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='client_order_ref']" position="after">
+        <field name="x_legacy_reference"/>
+        <field name="x_priority_code" attrs="{'readonly': [('state', 'not in', ['draft','sent'])]}"/>
+        <field name="x_approved_legacy" attrs="{'invisible': [('amount_total', '&lt;', 1000)]}"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

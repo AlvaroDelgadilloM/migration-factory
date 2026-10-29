@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_legacy_sale_report,legacy.sale.report,model_legacy_sale_report,base.group_user,1,0,0,0
+access_legacy_db_audit,legacy.db.audit,model_legacy_db_audit,base.group_system,1,0,0,0

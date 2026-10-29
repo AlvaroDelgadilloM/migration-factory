@@ -35,7 +35,7 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
     <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.list.data()" [empty]="os.list.data()?.length === 0"
               emptyText="Aún no se analiza la base. «Analizar la base» la restaura en un servidor aislado y revisa cada módulo instalado." (retry)="os.reload()">
       @if (os.running(); as r) {
-        <section class="card"><h2>{{ r.mode === 'analyze' ? 'Análisis en curso' : 'Migración en curso' }}</h2>
+        <section class="card"><h2>{{ r.mode === 'analyze' ? 'Análisis en curso' : r.mode === 'code' ? 'Port de código en curso' : 'Migración en curso' }}</h2>
           @if (r.jobId) { <mf-job-log [jobId]="r.jobId" (finished)="os.reload()" /> }</section>
       }
       @if (os.analysis(); as a) {
