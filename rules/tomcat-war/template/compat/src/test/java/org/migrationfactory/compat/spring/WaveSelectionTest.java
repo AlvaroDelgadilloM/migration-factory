@@ -14,6 +14,10 @@ import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.junit.jupiter.api.Test;
 
+/** Un componente de colas con otro nombre de esquema (solo para la prueba: se comporta como un timer). */
+class FakeActiveMQComponent extends org.apache.camel.component.timer.TimerComponent {
+}
+
 /** Despliegue por olas: que arranca con mf.waves y mf.consumers.off, y que las colas y tareas quedan detenidas. */
 class WaveSelectionTest {
 
@@ -73,17 +77,20 @@ class WaveSelectionTest {
 		try (DefaultCamelContext context = new DefaultCamelContext()) {
 			context.addModelLifecycleStrategy(new LegacyCamelSettings.PassiveConsumers(context));
 			context.getPropertiesComponent().addInitialProperty("job.uri", "timer:fromProperty?period=60000");
+			context.getRegistry().bind("amq", new FakeActiveMQComponent());  // Posadas: ActiveMQ registrado como "amq"
 			context.addRoutes(new RouteBuilder() {
 				@Override
 				public void configure() {
 					from("timer:job?period=60000").routeId("job").log("tick");
 					from("{{job.uri}}").routeId("jobProp").log("tick");
+					from("amq:queue?period=60000").routeId("queue").log("msg");
 					from("direct:answer").routeId("answer").setBody(constant("ok"));
 				}
 			});
 			context.start();
 			assertEquals(ServiceStatus.Stopped, context.getRouteController().getRouteStatus("job"));
 			assertEquals(ServiceStatus.Stopped, context.getRouteController().getRouteStatus("jobProp"));
+			assertEquals(ServiceStatus.Stopped, context.getRouteController().getRouteStatus("queue"));
 			assertEquals(ServiceStatus.Started, context.getRouteController().getRouteStatus("answer"));
 			assertEquals("ok", context.createProducerTemplate().requestBody("direct:answer", "", String.class));
 		}

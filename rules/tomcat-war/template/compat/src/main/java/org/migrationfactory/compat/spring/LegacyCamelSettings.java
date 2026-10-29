@@ -95,6 +95,14 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 				"kafka", "rabbitmq", "spring-rabbitmq", "timer", "quartz", "quartz2", "scheduler", "cron", "file", "ftp", "ftps", "sftp", "sql",
 				"jpa", "mybatis", "imap", "imaps", "pop3", "pop3s");
 
+		/** Los que responden a una llamada: nunca se detienen. */
+		static final java.util.Set<String> REQUEST = java.util.Set.of("direct", "direct-vm", "seda", "vm", "rest", "rest-api", "servlet",
+				"cxf", "cxfrs", "jetty", "netty-http", "undertow", "platform-http", "websocket", "spring-ws", "bean", "language");
+
+		/** Un componente registrado con otro nombre (Posadas: "amq" es un ActiveMQComponent importado como servicio OSGi). */
+		private static final java.util.regex.Pattern CONSUMER_TYPE = java.util.regex.Pattern.compile(
+				"Jms|ActiveMQ|Amqp|AMQP|Sjms|Kafka|Rabbit|Stomp|Mqtt|Paho|Quartz|Timer|Scheduler|Cron|File|Ftp|Mail|Jpa|Sql");
+
 		private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(PassiveConsumers.class);
 
 		private final CamelContext context;
@@ -114,10 +122,30 @@ public class LegacyCamelSettings implements BeanPostProcessor {
 				}
 			}
 			int colon = from == null ? -1 : from.indexOf(':');
-			if (colon > 0 && SCHEMES.contains(from.substring(0, colon))) {
+			String scheme = colon > 0 ? from.substring(0, colon) : null;
+			if (scheme != null && consumes(scheme)) {
 				route.setAutoStartup("false");
-				LOG.info("Ruta {} sin arrancar: consume de {} y su ola aun no la procesa aqui", route.getRouteId(), from.substring(0, colon));
+				LOG.info("Ruta {} sin arrancar: consume de {} y su ola aun no la procesa aqui", route.getRouteId(), scheme);
 			}
+		}
+
+		boolean consumes(String scheme) {
+			if (REQUEST.contains(scheme)) {
+				return false;
+			}
+			if (SCHEMES.contains(scheme)) {
+				return true;
+			}
+			Object bean = context.getRegistry().lookupByName(scheme);
+			for (Class<?> c = bean == null ? null : bean.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+				if (CONSUMER_TYPE.matcher(c.getSimpleName()).find()) {
+					return true;
+				}
+			}
+			if (bean == null) {
+				LOG.warn("Componente {} desconocido: sus rutas arrancan aunque el modulo este sin colas ni tareas", scheme);
+			}
+			return false;
 		}
 	}
 
