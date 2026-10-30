@@ -20,7 +20,7 @@ RUN (pip3 install --no-cache-dir --no-deps --break-system-packages openupgradeli
     && if [ "${ODOO}" = "13.0" ]; then rm -rf /usr/lib/python3/dist-packages/odoo /usr/bin/odoo; fi
 # 13.0 is a full fork of Odoo (its addons carry the migration scripts): the image's own Odoo is removed so no module can be
 # loaded from it instead (it shadowed the fork's addons and their scripts never ran).
-COPY docker/odoo-hop/runner.py /opt/mf/runner.py
+COPY docker/odoo-hop/runner.py docker/odoo-hop/preview.py /opt/mf/
 ENV MF_ODOO_VERSION=${ODOO}
 USER odoo
 ENTRYPOINT ["python3", "/opt/mf/runner.py"]

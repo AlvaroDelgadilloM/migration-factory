@@ -325,3 +325,65 @@ def run_flows(ctx, src: Path, addons19: str, rows: list[dict], sql_files, conten
                       'logTail': '' if checks is not None else r['logTail'][-6000:]}
     finally:
         chain.drop_db(db)
+
+
+def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | None, addons19: str | None, rows: list[dict],
+            sql_files, base_url: str, log, cancelled, timeout: int) -> dict:
+    """An Odoo 19 people can use (pantalla Pruebas → «Levantar Odoo 19»), in one of the preview slots (mf_preview, served by
+    odoo-preview-<slot>). With backup (the migration's Odoo 19 backup ZIP) the migrated database itself; without, a new database
+    with demo data, the project's external SQL and its ported modules. The admin user gets a new password; outgoing mail servers
+    are turned off. The slot is released by the team, or by its supervisor after the idle time."""
+    import secrets
+    import zipfile
+    from ..config import get_settings
+    s = get_settings()
+    ports = [p.strip() for p in s.odoo_preview_ports.split(',') if p.strip()]
+    chain.ensure_control()
+    slot = chain.preview_claim(str(project_id), str(om_id), len(ports))
+    if slot is None:
+        busy = ', '.join(f"{p['slot']}: {p['state']}" for p in chain.previews())
+        raise OdooJobError('NO_PREVIEW_SLOT', f'No hay espacios libres para levantar Odoo 19 ({busy}); apague uno en la pantalla Pruebas')
+    db = f'mf_preview_{slot}'
+    try:
+        # the slot serves its own copy of the code, so a new port of the project does not change what is running
+        addons = None
+        if addons19 and Path(addons19).is_dir():
+            dest = Path(s.odoo_addons_dir) / 'preview' / str(slot)
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(addons19, dest)
+            addons = str(dest)
+        if backup:
+            log('base migrada a Odoo 19 (respaldo de la migración)')
+            with zipfile.ZipFile(backup) as z, z.open('dump.sql') as fin, open(ctx.workdir / 'dump.sql', 'wb') as fout:
+                shutil.copyfileobj(fin, fout, 1 << 20)
+            restore(ctx, run, ctx.workdir / 'dump.sql', db)
+        else:
+            names = sorted(r['name'] for r in rows)
+            core = sorted({d for r in rows for d in r['depends'] if d not in names}) or ['base']
+            log(f"Odoo 19 nuevo con datos demo, SQL externo y {len(names)} módulo(s) portados")
+            chain.drop_db(db)
+            r = chain.wait(chain.enqueue('19.0', db, install=core), timeout, cancelled)
+            if r['state'] != 'succeeded':
+                raise OdooJobError('PREVIEW_BASE_FAILED', 'No se pudo crear el Odoo 19 base; ver el log del trabajo')
+            if src is not None:
+                external_sql(src, sql_files, db, log)
+            if names:
+                r = chain.wait(chain.enqueue('19.0', db, [addons] if addons else [], install=names), timeout, cancelled)
+                if r['state'] != 'succeeded':
+                    raise OdooJobError('PREVIEW_INSTALL_FAILED', 'Los módulos portados no instalaron: ' + r['logTail'][-800:])
+        password = secrets.token_urlsafe(12)
+        script = (f"admin = env.ref('base.user_admin')\nadmin.write({{'password': {password!r}, 'active': True}})\n"
+                  "env['ir.mail_server'].sudo().search([]).write({'active': False})\n"
+                  f"env['ir.config_parameter'].sudo().set_param('web.base.url', {base_url.rstrip('/') + ':' + ports[slot - 1]!r})\n"
+                  "env.cr.commit()\nprint('MF_PREVIEW ' + admin.login)\n")
+        r = chain.wait(chain.enqueue('19.0', db, [addons] if addons else [], shell=script), timeout, cancelled)
+        login = next((line.split(' ', 1)[1].strip() for line in r['logTail'].splitlines() if line.startswith('MF_PREVIEW ')), None)
+        if not login:
+            raise OdooJobError('PREVIEW_ADMIN_FAILED', 'No se pudo preparar el usuario administrador: ' + r['logTail'][-800:])
+        chain.preview_serve(slot, db, addons)
+        log(f'Odoo 19 en el espacio {slot} (puerto {ports[slot - 1]})')
+        return {'slot': slot, 'port': ports[slot - 1], 'login': login, 'password': password, 'database': db,
+                'source': 'migrated' if backup else 'code', 'modules': sorted(r['name'] for r in rows)}
+    except Exception:
+        chain.preview_release(slot)
+        raise

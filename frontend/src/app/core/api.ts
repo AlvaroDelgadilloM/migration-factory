@@ -131,6 +131,15 @@ export class Api {
     const path = { analyze: 'odoo-analyses', migrate: 'odoo-migrations', code: 'odoo-code', flows: 'odoo-flow-runs' }[mode];
     return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/${path}`, {});
   }
+  odooPreview(projectId: string) {
+    return this.get<{ available: boolean; slots: { slot: number; busy: boolean }[]; preview: null | { slot: number; state: string; port: string | null;
+      from: string | null; lastActivity: string | null; startedAt: string | null; login: string | null; password: string | null; jobId: string | null } }>(
+      `/projects/${projectId}/odoo-preview`);
+  }
+  startOdooPreview(projectId: string, baseUrl: string) {
+    return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/odoo-previews`, { baseUrl });
+  }
+  stopOdooPreview(projectId: string) { return this.send<{ status: string }>('DELETE', `/projects/${projectId}/odoo-preview`); }
   odooFlows(projectId: string) {
     return this.get<{ content: string; isTemplate: boolean; updatedBy: string | null; updatedAt: string | null }>(`/projects/${projectId}/odoo-flows`);
   }

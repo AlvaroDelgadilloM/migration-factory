@@ -49,6 +49,7 @@ class OdooDecisionIn(Dto):
 
 def _out(db, om) -> dict:
     d = OdooMigrationOut.model_validate(om).model_dump(mode='json')
+    d['summary'].pop('password', None)   # a preview's admin password: only GET /projects/{id}/odoo-preview, to who can execute
     job = db.get(Job, om.job_id) if om.job_id else None
     d['job'] = JobOut.model_validate(job).model_dump(mode='json') if job else None
     return d
@@ -76,10 +77,10 @@ def blocking(om: OdooMigration) -> list[str]:
     return mods + [f"fix:{f['id']}" for f in (om.summary or {}).get('fixes') or [] if d.get(f"fix:{f['id']}", {}).get('action') not in ('apply', 'ignore')]
 
 
-def _start(db, me, p, mode, request, analysis=None) -> dict:
+def _start(db, me, p, mode, request, analysis=None, summary=None) -> dict:
     if db.scalar(select(OdooMigration.id).where(OdooMigration.project_id == p.id, OdooMigration.state.in_(('queued', 'running')))):
         raise ApiError(409, 'INVALID_STATE', 'Ya hay un análisis o una migración Odoo en curso para este proyecto')
-    om = OdooMigration(project_id=p.id, mode=mode, created_by=me.subject, analysis_id=analysis.id if analysis else None,
+    om = OdooMigration(project_id=p.id, mode=mode, created_by=me.subject, analysis_id=analysis.id if analysis else None, summary=summary or {},
                        decisions=dict(analysis.decisions or {}) if analysis else {}, modules=list(analysis.modules or []) if analysis else [])
     db.add(om)
     db.flush()
@@ -177,6 +178,62 @@ def run_flows(project_id: uuid.UUID, request: Request, db: Session = Depends(get
     if code is None:
         raise ApiError(409, 'CODE_PORT_REQUIRED', 'Primero porte el código a 19 (pantalla Código): los flujos corren sobre ese código')
     return _start(db, me, p, 'flows', request, code)
+
+
+class OdooPreviewIn(Dto):
+    base_url: Annotated[str, Field(pattern=r'^https?://[A-Za-z0-9.\-]+$', max_length=200)] = 'http://localhost'
+
+
+@router.post('/projects/{project_id}/odoo-previews', status_code=202)
+def start_preview(project_id: uuid.UUID, body: OdooPreviewIn, request: Request, db: Session = Depends(get_db),
+                  me: Principal = Depends(current_principal)):
+    """An Odoo 19 people can use: the migrated database, or the ported code with demo data, in a free preview slot."""
+    p = _project(db, me, project_id, 'execute')
+    return _start(db, me, p, 'preview', request, summary={'baseUrl': body.base_url})
+
+
+@router.get('/projects/{project_id}/odoo-preview')
+def get_preview(project_id: uuid.UUID, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """The project's preview, live (from the slots' control table): where to open it and, for who can execute, the admin login."""
+    from ..odoo import chain
+    p = _project(db, me, project_id, 'view')
+    try:
+        slots = chain.previews()
+    except Exception:  # noqa: BLE001 — odoo-db unreachable (profile off): no previews
+        return {'available': False, 'preview': None, 'slots': []}
+    mine = next((s for s in slots if s['project'] == str(p.id)), None)
+    run = db.get(OdooMigration, uuid.UUID(mine['omId'])) if mine and mine['omId'] else None
+    preview = None
+    if mine and run:
+        sm = run.summary or {}
+        preview = {'slot': mine['slot'], 'state': mine['state'] if run.state not in ('queued', 'running') else 'preparing',
+                   'port': sm.get('port'), 'from': sm.get('from'), 'lastActivity': mine['lastActivity'], 'startedAt': mine['startedAt'],
+                   'login': sm.get('login'), 'database': sm.get('database'), 'jobId': str(run.job_id) if run.job_id else None,
+                   'password': sm.get('password') if me.is_admin or authorize_ok(db, me, p.id, 'execute') else None}
+    return {'available': True, 'preview': preview, 'slots': [{'slot': s['slot'], 'busy': s['state'] != 'free'} for s in slots]}
+
+
+@router.delete('/projects/{project_id}/odoo-preview', status_code=202)
+def stop_preview(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """Turn the project's preview off: its slot stops Odoo and drops the preview database."""
+    from ..odoo import chain
+    p = _project(db, me, project_id, 'execute')
+    mine = next((s for s in chain.previews() if s['project'] == str(p.id)), None)
+    if not mine:
+        raise ApiError(404, 'NOT_FOUND', 'Este proyecto no tiene un Odoo 19 levantado')
+    chain.preview_release(mine['slot'], str(p.id))
+    audit.record(db, actor=me.subject, action='odoo.preview.stop', entity_type='project', entity_id=p.id, project_id=p.id,
+                 details={'slot': mine['slot']}, request=request)
+    db.commit()
+    return {'status': 'stopping'}
+
+
+def authorize_ok(db, me, project_id, perm) -> bool:
+    try:
+        authorize(db, me, project_id, perm)
+        return True
+    except ApiError:
+        return False
 
 
 @router.get('/projects/{project_id}/odoo-migrations', response_model=list[OdooMigrationOut])

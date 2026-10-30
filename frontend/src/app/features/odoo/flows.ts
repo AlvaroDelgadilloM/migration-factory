@@ -23,12 +23,39 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
     table { width: 100%; border-collapse: collapse; font-size: 13px; } td, th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--mf-line); vertical-align: top; }
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; } .ok { background: #e7f6ec; color: #067647; } .bad { background: #fdecea; color: #b42318; }
     pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
-    .small { font-size: 12.5px; } .muted { color: var(--mf-muted); } .err { color: #b42318; }`],
+    .small { font-size: 12.5px; } .muted { color: var(--mf-muted); } .err { color: #b42318; }
+    button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }`],
   template: `
     <mf-page-header title="Pruebas" crumb="ODOO 12 → 19" subtitle="Flujos de negocio contra el código portado, en un Odoo 19 nuevo con datos demo.">
       <mf-action label="Ejecutar flujos" icon="pi pi-play" [busy]="os.busy()" [disabledReason]="runReason()" (run)="os.start('flows')" />
     </mf-page-header>
     @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    <section class="card">
+      <h2>Odoo 19 para probar a mano @if (pv()?.preview; as p) { <mf-status [value]="p.state === 'serving' ? 'running' : p.state" /> }</h2>
+      @if (pv()?.preview; as p) {
+        @if (p.state === 'preparing' && p.jobId) {
+          <p class="small muted">Preparando el espacio {{ p.slot }}: base, módulos y usuario administrador…</p>
+          <mf-job-log [jobId]="p.jobId" (finished)="loadPreview()" />
+        } @else if (p.state === 'serving') {
+          <p>Abrir: <a [href]="url(p.port)" target="_blank" rel="noopener">{{ url(p.port) }}</a></p>
+          <p class="small">Usuario <code>{{ p.login }}</code>
+            @if (p.password) { · contraseña <code>{{ p.password }}</code> <button class="link" (click)="copy(p.password)">copiar</button> }
+            @else { · la contraseña solo la ven quienes pueden ejecutar en el proyecto }</p>
+          <p class="small muted">Con {{ p.from === 'migración' ? 'la base migrada a Odoo 19' : 'el código portado, datos demo y el SQL externo' }} ·
+            espacio {{ p.slot }} · sin tareas programadas ni correo saliente · se apaga sola tras 4 h sin uso@if (p.lastActivity) { (último uso {{ p.lastActivity.slice(11, 16) }} UTC) }.</p>
+          <mf-action label="Apagar" icon="pi pi-power-off" [outlined]="true" [busy]="pvBusy()" [disabledReason]="execReason()" (run)="stopPreview()" />
+        } @else {
+          <p class="small err">El Odoo del espacio {{ p.slot }} terminó con error ({{ p.state }}). Apáguelo y vuelva a levantarlo.</p>
+          <mf-action label="Apagar" icon="pi pi-power-off" [outlined]="true" [busy]="pvBusy()" [disabledReason]="execReason()" (run)="stopPreview()" />
+        }
+      } @else {
+        <p class="small muted">Un Odoo 19 de verdad con este proyecto, para entrar con el navegador y usarlo:
+          {{ os.migration()?.state === 'succeeded' || os.migration()?.state === 'partial_success' ? 'la base migrada' : 'el código portado con datos demo y su SQL externo' }}.
+          Usuario administrador con contraseña nueva; sin tareas programadas ni correo saliente; se apaga sola tras 4 h sin uso.</p>
+        <mf-action label="Levantar Odoo 19" icon="pi pi-server" [busy]="pvBusy()" [disabledReason]="previewReason()" (run)="startPreview()" />
+      }
+      @if (pvError(); as e) { <p class="small err">{{ e.code }}: {{ e.message }}</p> }
+    </section>
     @if (running(); as r) {
       <section class="card"><h2>Ejecutando flujos</h2>@if (r.jobId) { <mf-job-log [jobId]="r.jobId" (finished)="os.reload()" /> }</section>
     }
@@ -87,12 +114,47 @@ export class OdooFlows {
   dirty = computed(() => this.content() !== this.saved());
   running = computed(() => { const r = this.os.running(); return r?.mode === 'flows' ? r : null; });
   private loadedFor: string | null = null;
+  pv = signal<Awaited<ReturnType<Api['odooPreview']>> | null>(null);
+  pvBusy = signal(false);
+  pvError = signal<UiError | null>(null);
 
   constructor() {
     effect(() => {
       const id = this.os.ctx.projectId();
-      if (id && id !== this.loadedFor) { this.loadedFor = id; this.load(); }
+      if (id && id !== this.loadedFor) { this.loadedFor = id; this.load(); this.loadPreview(); }
     });
+  }
+
+  async loadPreview() {
+    const id = this.os.ctx.projectId();
+    if (!id) return;
+    try { this.pv.set(await this.api.odooPreview(id)); } catch (e) { this.pvError.set(UiError.from(e)); }
+  }
+  async startPreview() {
+    const id = this.os.ctx.projectId();
+    if (!id) return;
+    this.pvBusy.set(true); this.pvError.set(null);
+    try { await this.api.startOdooPreview(id, `${location.protocol}//${location.hostname}`); await this.loadPreview(); await this.os.reload(); }
+    catch (e) { this.pvError.set(UiError.from(e)); } finally { this.pvBusy.set(false); }
+  }
+  async stopPreview() {
+    const id = this.os.ctx.projectId();
+    if (!id) return;
+    this.pvBusy.set(true); this.pvError.set(null);
+    try { await this.api.stopOdooPreview(id); setTimeout(() => this.loadPreview(), 4000); this.pv.update(v => v ? { ...v, preview: null } : v); }
+    catch (e) { this.pvError.set(UiError.from(e)); } finally { this.pvBusy.set(false); }
+  }
+  url(port: string | null) { return `${location.protocol}//${location.hostname}:${port}/web/login`; }
+  copy(text: string) { navigator.clipboard?.writeText(text); }
+  execReason() { return this.os.ctx.can('execute') ? null : `Su rol (${this.os.ctx.role()}) no permite ejecutar`; }
+  previewReason() {
+    const v = this.pv();
+    if (!this.os.ctx.can('execute')) return `Su rol (${this.os.ctx.role()}) no permite ejecutar`;
+    if (v && !v.available) return 'Odoo no está habilitado en este servidor';
+    if (this.os.running()) return 'Hay un análisis, una migración o un port en curso';
+    if (!this.os.code() && !this.os.migration()) return 'Primero porte el código (Código) o migre la base (Resumen)';
+    if (v && v.slots.length && v.slots.every(s => s.busy)) return `Los ${v.slots.length} espacios están ocupados: espere a que otro proyecto apague el suyo`;
+    return null;
   }
 
   async load() {

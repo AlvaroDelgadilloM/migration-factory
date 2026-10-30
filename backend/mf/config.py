@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     odoo_db_user: str = 'odoo'
     odoo_db_password: str = ''
     odoo_hop_timeout_seconds: int = 4 * 3600
+    odoo_preview_ports: str = '3242,3243'   # one per odoo-preview-<n> slot (docker-compose), as published to the users
     odoo_job_timeout_seconds: int = 12 * 3600  # a whole Odoo job: restore, seven hops, reconciliation, dump
     odoo_addons_dir: Path = Path('/odoo-addons')   # OCA code per version, shared read-only with the hop runners  # host:port of the egress proxy (k8s runner pods); empty = direct
     maven_file_locks: bool = False  # true when several workers share maven_repo_local

@@ -119,7 +119,7 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'datastage_migrate':
             from ..models import DataStageMigration
             s.get(DataStageMigration, job.subject_id).state = state
-        elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows'):
+        elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows', 'odoo_preview'):
             from ..models import OdooMigration
             s.get(OdooMigration, job.subject_id).state = state
         elif job.kind in ('preview', 'apply'):
@@ -157,7 +157,7 @@ def run_job(job_id: str):
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
                    'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
                    'http_compare': do_http_compare,
-                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code, 'odoo_flows': do_odoo_flows}[job.kind](job, ctx)
+                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code, 'odoo_flows': do_odoo_flows, 'odoo_preview': do_odoo_preview}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -1562,6 +1562,48 @@ def do_odoo_flows(job: Job, ctx: Context):
         return ('partial_success', 'FLOWS_SCRIPT_ERROR', 'El script de flujos no terminó (error de Python); ver el log')
     bad = [c['check'] for c in checks if not c['ok']]
     return None if not bad else ('partial_success', 'FLOWS_FAILED', f"{len(bad)} flujo(s) fallan: {', '.join(bad[:5])}")
+
+
+def do_odoo_preview(job: Job, ctx: Context):
+    """An Odoo 19 people can use (Pruebas → «Levantar Odoo 19»): the migrated database if there is one, else the ported code on a
+    new database with demo data (mf.odoo.jobs.preview), served by a preview slot."""
+    from ..models import Artifact, OdooMigration
+    from ..odoo import jobs as oj
+    from ..storage import ArtifactStore
+    with session() as db:
+        om = db.get(OdooMigration, job.subject_id)
+        project = db.get(Project, om.project_id)
+        om.state = 'running'
+        db.commit()
+        latest = lambda mode: db.scalar(select(OdooMigration).where(  # noqa: E731
+            OdooMigration.project_id == project.id, OdooMigration.mode == mode,
+            OdooMigration.state.in_(('succeeded', 'partial_success'))).order_by(OdooMigration.created_at.desc()).limit(1))
+        mig, code = latest('migrate'), latest('code')
+        root = Path(get_settings().odoo_addons_dir) / 'custom'
+        tag = lambda r: str(r.id).replace('-', '')[:12]  # noqa: E731
+        backup, addons, rows, src = None, None, [], None
+        if mig and (mig.summary.get('artifacts') or {}).get('dump'):
+            art = db.get(Artifact, uuid.UUID(mig.summary['artifacts']['dump']))
+            backup = ctx.workdir / 'odoo19.zip'
+            backup.write_bytes(ArtifactStore().read(art))
+            addons = str(root / tag(mig) / '19.0') if (root / tag(mig) / '19.0').is_dir() else None
+        elif code:
+            addons, rows = str(root / tag(code) / '19.0'), list(code.modules or [])
+            src, *_ = _materialize(db, db.get(Repository, project.repository_id), None, ctx.workdir / 'source', ctx, require_maven=False)
+            src = Path(src)
+        else:
+            raise StepFailure('NOTHING_TO_PREVIEW', 'Primero migre la base (Resumen) o porte el código (Código)')
+        set_phase(ctx, 'preview', 20)
+        try:
+            res = oj.preview(ctx, runner.run, project.id, om.id, src, backup=backup, addons19=addons, rows=rows,
+                             sql_files=_odoo_upload(db, project).get('odooSql') or [], base_url=om.summary.get('baseUrl') or 'http://localhost',
+                             log=lambda m: ctx.emit('info', 'odoo', m), cancelled=ctx.cancel.is_set,
+                             timeout=get_settings().odoo_hop_timeout_seconds)
+        except oj.OdooJobError as e:
+            raise StepFailure(e.code, str(e)) from None
+        om.summary = dict(om.summary or {}) | res | {'from': 'migración' if backup else 'código portado'}
+        db.commit()
+    return None
 
 
 def do_datastage_migrate(job: Job, ctx: Context):

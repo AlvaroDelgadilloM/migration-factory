@@ -74,13 +74,16 @@ services:
   api:
     build: {context: ., dockerfile: docker/api.Dockerfile}
     image: migration-factory/api:local
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      MF_ODOO_DB_HOST: odoo-db           # only the preview slots' status (mf_preview): read, and released on request
+      MF_ODOO_DB_PASSWORD: ${MF_ODOO_DB_PASSWORD:-}
     volumes: [artifacts:/artifacts, "${MF_HOST_SOURCES_DIR:-./examples}:/sources:ro"]
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
     ports: ["127.0.0.1:${MF_API_PORT:-3241}:8000"]   # local only: pilot script and API docs
-    networks: [data, edge]
+    networks: [data, edge, odoo]
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -197,6 +200,29 @@ services:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "19.0", OU_COMMIT: "bf12c3cee6097145e53efa589b0d99a7e64d6a87"}}
     image: migration-factory/odoo-hop:19.0-bf12c3ce-5dfe3b48
+
+  # Odoo 19 previews (Pruebas → «Levantar Odoo 19»): the migrated project served for people to use in a browser, one per slot.
+  # Same image as hop 19, another entrypoint (docker/odoo-hop/preview.py). Published like the UI; admin password per preview.
+  odoo-preview-1: &odoo-preview
+    <<: *odoo-hop
+    image: migration-factory/odoo-hop:19.0-bf12c3ce-5dfe3b48
+    entrypoint: ["python3", "/opt/mf/preview.py"]
+    environment:
+      MF_ODOO_DB_HOST: odoo-db
+      MF_ODOO_DB_PASSWORD: ${MF_ODOO_DB_PASSWORD:-}
+      MF_PREVIEW_SLOT: "1"
+      MF_PREVIEW_IDLE: ${MF_ODOO_PREVIEW_IDLE:-14400}
+    networks: [odoo, edge]
+    ports: ["${MF_UI_BIND:-127.0.0.1}:${MF_ODOO_PREVIEW_PORT_1:-3242}:8069"]
+
+  odoo-preview-2:
+    <<: *odoo-preview
+    environment:
+      MF_ODOO_DB_HOST: odoo-db
+      MF_ODOO_DB_PASSWORD: ${MF_ODOO_DB_PASSWORD:-}
+      MF_PREVIEW_SLOT: "2"
+      MF_PREVIEW_IDLE: ${MF_ODOO_PREVIEW_IDLE:-14400}
+    ports: ["${MF_UI_BIND:-127.0.0.1}:${MF_ODOO_PREVIEW_PORT_2:-3243}:8069"]
 
   frontend:
     build: {context: ., dockerfile: docker/frontend.Dockerfile}

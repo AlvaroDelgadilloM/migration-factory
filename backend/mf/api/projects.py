@@ -31,7 +31,8 @@ def progress(db, p: Project, last_scan) -> dict:
         return db.scalar(select(model).where(model.project_id == p.id).order_by(model.created_at.desc()).limit(1))
     runs = []  # (created_at, step, state, phase when it ends well)
     if p.migration_type == 'ODOO':
-        om = latest(OdooMigration)
+        om = db.scalar(select(OdooMigration).where(OdooMigration.project_id == p.id, OdooMigration.mode != 'preview')  # a preview
+                       .order_by(OdooMigration.created_at.desc()).limit(1))                                     # is not a stage
         if om:
             step, done = {'analyze': ('Análisis de la base', 'analyzed'), 'code': ('Port de código a 19', 'migrated'),
                           'migrate': ('Migración a Odoo 19', 'migrated'),

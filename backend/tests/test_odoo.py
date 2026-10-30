@@ -163,6 +163,30 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     assert fr['mode'] == 'flows' and fr['state'] == 'partial_success' and fr['summary']['counts'] == {'total': 2, 'ok': 1}
     assert client.get(f'{API}/projects/{pid}', headers=token('ana.arquitecta')).json()['progress']['phase'] == 'tested'
 
+    # an Odoo 19 to use in a browser (preview slot), from that code port
+    from mf.odoo import chain
+    seen_preview = {}
+
+    def preview(ctx, run, project_id, om_id, src, **kw):
+        seen_preview.update(kw | {'om': str(om_id)})
+        return {'slot': 1, 'port': '3242', 'login': 'admin', 'password': 'secreta-123', 'database': 'mf_preview_1', 'source': 'code',
+                'modules': ['my_sale']}
+    monkeypatch.setattr(oj, 'preview', preview)
+    assert client.post(f'{API}/projects/{pid}/odoo-previews', headers=token('ana.arquitecta'), json={'baseUrl': 'javascript:x'}).status_code == 422
+    r = client.post(f'{API}/projects/{pid}/odoo-previews', headers=token('ana.arquitecta'), json={'baseUrl': 'http://85.239.240.43'}).json()
+    run_job(r['jobId'])
+    assert seen_preview['base_url'] == 'http://85.239.240.43' and seen_preview['backup'] is None and seen_preview['addons19'].endswith('/19.0')
+    monkeypatch.setattr(chain, 'previews', lambda: [{'slot': 1, 'state': 'serving', 'project': pid, 'omId': seen_preview['om'],
+                                                     'lastActivity': None, 'startedAt': None}, {'slot': 2, 'state': 'free', 'project': None,
+                                                                                                'omId': None, 'lastActivity': None, 'startedAt': None}])
+    released = []
+    monkeypatch.setattr(chain, 'preview_release', lambda slot, project=None: released.append((slot, project)))
+    pv = client.get(f'{API}/projects/{pid}/odoo-preview', headers=token('ana.arquitecta')).json()
+    assert pv['preview']['port'] == '3242' and pv['preview']['password'] == 'secreta-123' and pv['slots'] == [{'slot': 1, 'busy': True}, {'slot': 2, 'busy': False}]
+    assert 'password' not in client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()['summary']
+    assert client.get(f'{API}/projects/{pid}', headers=token('ana.arquitecta')).json()['progress']['phase'] == 'tested'   # not a stage
+    assert client.delete(f'{API}/projects/{pid}/odoo-preview', headers=token('ana.arquitecta')).status_code == 202 and released == [(1, pid)]
+
 
 def test_odoo_jobs_get_their_own_time_limit():
     from mf.jobs import timeout_for   # a whole chain outlives the 30 min of short jobs (RQ killed a real migration at 32 min)

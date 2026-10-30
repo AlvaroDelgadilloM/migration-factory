@@ -17,7 +17,10 @@ TABLE = """create table if not exists mf_hop_task (
     exit_code int, errors int, log_tail text, created_at timestamptz default now(), started_at timestamptz, finished_at timestamptz);
 alter table mf_hop_task add column if not exists install text;
 alter table mf_hop_task add column if not exists test_tags text;
-alter table mf_hop_task add column if not exists shell text"""   # install: modules to install on a new database (no OpenUpgrade); test_tags: run those tests
+alter table mf_hop_task add column if not exists shell text;
+create table if not exists mf_preview (slot int primary key, generation int not null default 0, state text not null default 'free',
+    project text, om_id text, database text, addons text, stop boolean not null default false, started_at timestamptz,
+    last_activity timestamptz)"""   # Odoo 19 previews: what each odoo-preview-<slot> serves (docker/odoo-hop/preview.py)   # install: modules to install on a new database (no OpenUpgrade); test_tags: run those tests
 NAME = re.compile(r'^[a-z][a-z0-9_]{2,62}$')
 
 
@@ -74,6 +77,46 @@ def base_version(database: str) -> str | None:
     with connect(database) as c:
         row = c.execute("select latest_version from ir_module_module where name = 'base'").fetchone()
     return row[0] if row else None
+
+
+def preview_claim(project: str, om_id: str, slots: int) -> int | None:
+    """A preview slot for the project: its own if it has one (stopped first, the slot is prepared again), else a free one."""
+    with connect(CONTROL) as c:
+        for s in range(1, slots + 1):
+            c.execute('insert into mf_preview (slot) values (%s) on conflict do nothing', (s,))
+        mine = c.execute('select slot from mf_preview where project = %s', (project,)).fetchone()
+        if mine:
+            c.execute('update mf_preview set stop = true where slot = %s', (mine[0],))
+            for _ in range(60):   # the slot's supervisor stops Odoo and drops the database
+                if c.execute("select state from mf_preview where slot = %s", (mine[0],)).fetchone()[0] == 'free':
+                    break
+                time.sleep(2)
+            else:   # no supervisor answering (slot down): take it anyway
+                c.execute("update mf_preview set state = 'free', stop = false, project = null, database = null where slot = %s", (mine[0],))
+        row = c.execute("update mf_preview set state = 'preparing', project = %s, om_id = %s, started_at = now(), stop = false "
+                        "where slot = (select slot from mf_preview where state in ('free', 'failed') and slot <= %s "
+                        "order by slot limit 1 for update skip locked) returning slot", (project, om_id, slots)).fetchone()
+        return row[0] if row else None
+
+
+def preview_serve(slot: int, database: str, addons: str | None):
+    with connect(CONTROL) as c:
+        c.execute("update mf_preview set generation = generation + 1, state = 'serving', database = %s, addons = %s, stop = false, "
+                  'last_activity = now() where slot = %s', (database, addons, slot))
+
+
+def preview_release(slot: int, project: str | None = None):
+    """Stop the slot (its supervisor stops Odoo, drops the database and frees it). With project, only if it is that project's."""
+    with connect(CONTROL) as c:
+        c.execute('update mf_preview set stop = true where slot = %s' + (' and project = %s' if project else ''),
+                  (slot, project) if project else (slot,))
+
+
+def previews() -> list[dict]:
+    with connect(CONTROL) as c:
+        rows = c.execute('select slot, state, project, om_id, last_activity, started_at from mf_preview order by slot').fetchall()
+    return [{'slot': s, 'state': st, 'project': p, 'omId': o, 'lastActivity': a.isoformat() if a else None,
+             'startedAt': b.isoformat() if b else None} for s, st, p, o, a, b in rows]
 
 
 def server_version() -> str:

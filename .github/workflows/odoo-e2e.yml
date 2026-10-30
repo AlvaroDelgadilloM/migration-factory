@@ -10,6 +10,7 @@ name: Odoo e2e
 #   oca12    Odoo 12 + an OCA module (partner_firstname): its code is fetched branch by branch and it stays installed in 19
 #   demo16   an Odoo 16 database: only the hops 17 -> 19
 #   code     the custom modules' code: inventory, automatic port, install check of each module on a new Odoo 19
+#   preview  an Odoo 19 preview slot serving the ported complex example: prepared through the platform, a real login, released
 #   flows    the ported examples on a plain official Odoo 19 (not the platform's runners): their business flows (backend/tests/e2e/odoo_flows)
 #   codecomplex  eight dependent modules and external SQL (examples/odoo-complex-lab): every module installs, every external object
 #            is created in Odoo 19 and classified as expected
@@ -17,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       scenarios:
-        description: 'Escenarios (all, o una lista: demo12,lab12,lab12code,oca12,demo16,code,codecomplex,flows)'
+        description: 'Escenarios (all, o una lista: demo12,lab12,lab12code,oca12,demo16,code,codecomplex,flows,preview)'
         default: all
   push:
     branches: [main]
@@ -144,6 +145,16 @@ jobs:
           python backend/tests/e2e/odoo_chain.py port examples/odoo-complex-lab /tmp/flows-complex --sql backups/odoo12_complex_custom_backup.sql
           backend/tests/e2e/odoo_flows/run.sh /tmp/flows-complex legacy_customer360,legacy_credit,legacy_sales_contract,legacy_account_bridge,legacy_integration,legacy_commission,legacy_inventory_quality,legacy_reporting \
             flow_complex.py examples/odoo-complex-lab/backups/odoo12_complex_custom_backup.sql
+      - name: Escenario preview (Odoo 19 levantado para usarlo, con login real)
+        if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',preview,'))
+        env:
+          MF_ODOO_PREVIEW_PORTS: '8069'
+        run: |
+          docker run -d --name preview-1 --network host --entrypoint python3 -e MF_ODOO_DB_HOST=127.0.0.1 \
+            -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" -e MF_PREVIEW_SLOT=1 -v /tmp/hop-logs:/hop-logs \
+            -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:19.0" /opt/mf/preview.py
+          python backend/tests/e2e/odoo_chain.py preview examples/odoo-complex-lab --sql backups/odoo12_complex_custom_backup.sql \
+            || { docker logs preview-1 | tail -40; tail -60 /tmp/hop-logs/preview.log; exit 1; }
       - name: Logs de los ejecutores
         if: failure()
         run: for v in 13.0 14.0 15.0 16.0 17.0 18.0 19.0; do echo "== hop-$v"; docker logs --tail 20 "hop-$v" 2>&1; done

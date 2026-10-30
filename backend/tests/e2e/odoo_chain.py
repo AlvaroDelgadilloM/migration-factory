@@ -133,6 +133,47 @@ def port(a):
     print('\n'.join(n for n in res['notes'] if 'regla' in n or 'script' in n))
 
 
+def preview(a):
+    """An Odoo 19 preview through the platform's path: the example ported, a slot prepared (base with demo data, external SQL,
+    modules, admin password) and served by the slot's supervisor (container started by the workflow); then a real login over
+    HTTP, and the slot released (its database dropped)."""
+    import json as _json
+    import urllib.request
+    from mf.odoo import code as oc
+    from mf.worker.runner import run
+    src = Path(a.addons)
+    ext = oj.external_sql(src, a.sql or [], None, print)
+    port = oc.port_steps(src, ctx().workdir / 'ported', run, ctx(), print, ext=ext)
+    final = port['snapshots']['19.0']
+    rows = [{'name': n, 'depends': list(m['manifest'].get('depends', []))} for n, m in oc.modules(final).items()]
+    om = uuid.uuid4()
+    res = oj.preview(ctx(), run, 'e2e-project', om, src, backup=None, addons19=str(final), rows=rows, sql_files=a.sql or [],
+                     base_url='http://127.0.0.1', log=print, cancelled=lambda: False, timeout=3 * 3600)
+    print('preview:', {k: v for k, v in res.items() if k != 'password'})
+    url = f"http://127.0.0.1:{res['port']}"
+    for _ in range(120):   # the supervisor starts Odoo
+        try:
+            if urllib.request.urlopen(url + '/web/login', timeout=10).status == 200:
+                break
+        except Exception:  # noqa: BLE001
+            time.sleep(5)
+    else:
+        raise AssertionError('Odoo del espacio no respondió')
+    body = _json.dumps({'jsonrpc': '2.0', 'params': {'db': res['database'], 'login': res['login'], 'password': res['password']}}).encode()
+    ans = _json.loads(urllib.request.urlopen(urllib.request.Request(url + '/web/session/authenticate', data=body,
+                                                                    headers={'Content-Type': 'application/json'}), timeout=60).read())
+    assert (ans.get('result') or {}).get('uid'), ans
+    print('login como', res['login'], 'uid', ans['result']['uid'], '· módulos', res['modules'])
+    chain.preview_release(res['slot'])
+    for _ in range(40):
+        if not chain.query('postgres')(f"select 1 from pg_database where datname = '{res['database']}'"):
+            break
+        time.sleep(3)
+    else:
+        raise AssertionError('el espacio no borró su base al apagarse')
+    print('apagado: base borrada, espacio libre')
+
+
 def main(argv):
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -150,6 +191,9 @@ def main(argv):
     k.add_argument('--sql', action='append')
     k.add_argument('--expect-sql', action='append')
     k.add_argument('--flows')
+    v = sub.add_parser('preview')
+    v.add_argument('addons')
+    v.add_argument('--sql', action='append')
     q = sub.add_parser('port')
     q.add_argument('addons')
     q.add_argument('out')
@@ -157,6 +201,9 @@ def main(argv):
     a = p.parse_args(argv)
     if a.cmd == 'port':
         return port(a)
+    if a.cmd == 'preview':
+        chain.ensure_control()
+        return preview(a)
     chain.ensure_control()
     scenario(a) if a.cmd == 'scenario' else code(a)
 
