@@ -28,7 +28,7 @@ def command(database, addons):
             '--db-filter', '^%s$' % database, '--no-database-list', '--http-port', '8069', '--proxy-mode',
             '--db_host', DB['host'], '--db_port', str(DB['port']), '--db_user', DB['user'], '--db_password', DB['password'],
             '--data-dir', '/var/lib/odoo', '--workers', '0', '--max-cron-threads', '0',
-            '--smtp-server', '127.0.0.1', '--smtp-port', '9', '--log-level', 'info']
+            '--smtp', '127.0.0.1', '--smtp-port', '9', '--log-level', 'info']
 
 
 def connect(dbname='mf_control'):
