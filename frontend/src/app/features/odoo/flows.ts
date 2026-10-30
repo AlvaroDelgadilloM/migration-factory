@@ -39,6 +39,8 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
         @if (p.state === 'preparing' && p.jobId) {
           <p class="small muted">Preparando el espacio {{ p.slot }}: base, módulos y usuario administrador…</p>
           <mf-job-log [jobId]="p.jobId" (finished)="loadPreview()" />
+        } @else if (p.state === 'starting' || p.state === 'preparing') {
+          <p class="small muted"><i class="pi pi-spin pi-spinner"></i> Arrancando Odoo 19 en el espacio {{ p.slot }} (genera sus estilos la primera vez); el enlace aparece en cuanto esté listo.</p>
         } @else if (p.state === 'serving') {
           <p>Abrir: <a [href]="url(p.port)" target="_blank" rel="noopener">{{ url(p.port) }}</a></p>
           <p class="small">Usuario <code>{{ p.login }}</code>
@@ -140,10 +142,13 @@ export class OdooFlows {
     });
   }
 
+  private poll?: ReturnType<typeof setTimeout>;
   async loadPreview() {
     const id = this.os.ctx.projectId();
     if (!id) return;
     try { this.pv.set(await this.api.odooPreview(id)); } catch (e) { this.pvError.set(UiError.from(e)); }
+    clearTimeout(this.poll);   // while it starts, look again in a few seconds
+    if (['starting', 'preparing'].includes(this.pv()?.preview?.state ?? '')) this.poll = setTimeout(() => this.loadPreview(), 5000);
   }
   async startPreview() {
     const id = this.os.ctx.projectId();

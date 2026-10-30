@@ -5,9 +5,11 @@ seconds with no request it stops Odoo, drops the preview database and frees the 
 
 Python 3 stdlib + psycopg2 (both in the Odoo image)."""
 import os
+import re
 import signal
 import subprocess
 import time
+import urllib.request
 
 import psycopg2
 
@@ -29,6 +31,18 @@ def command(database, addons):
             '--db_host', DB['host'], '--db_port', str(DB['port']), '--db_user', DB['user'], '--db_password', DB['password'],
             '--data-dir', '/var/lib/odoo', '--workers', '0', '--max-cron-threads', '0',
             '--smtp', '127.0.0.1', '--smtp-port', '9', '--log-level', 'info']
+
+
+def warm_up():
+    """The first request makes Odoo build its asset bundles (several MB): done here, before people get the link, so their first
+    page is complete. True when the login page and its assets answered."""
+    try:
+        html = urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=60).read().decode('utf-8', 'replace')
+        for url in re.findall(r'(?:href|src)="(/web/assets/[^"]+)"', html):
+            urllib.request.urlopen('http://127.0.0.1:8069' + url, timeout=300).read()
+        return 'name="login"' in html
+    except Exception:  # noqa: BLE001 — not up yet
+        return False
 
 
 def connect(dbname='mf_control'):
@@ -60,14 +74,14 @@ def drop(database):
 
 
 def main():
-    proc, serving, last_size, last_activity = None, None, 0, time.time()
+    proc, serving, last_size, last_activity, warming = None, None, 0, time.time(), False
     while True:
         try:
             conn = connect()
             while True:
                 r = row(conn)
                 gen, state, database, addons, stop = r if r else (None, 'free', None, None, False)
-                if proc and (stop or state != 'serving' or gen != serving):   # released, stopped or reassigned
+                if proc and (stop or state not in ('serving', 'starting') or gen != serving):   # released, stopped or reassigned
                     os.killpg(proc.pid, signal.SIGTERM)
                     try:
                         proc.wait(timeout=30)
@@ -80,10 +94,14 @@ def main():
                         drop(database)
                     set_state(conn, 'free', stop=False, database=None, addons=None, project=None)
                     continue
-                if not proc and state == 'serving' and not stop:
+                if not proc and state in ('serving', 'starting') and not stop:
                     out = open(LOG, 'ab')
                     proc = subprocess.Popen(command(database, addons), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
                     serving, last_activity, last_size = gen, time.time(), os.path.getsize(LOG)
+                    set_state(conn, 'starting', touch=True)   # 'serving' once warmed up (below)
+                    warming = True
+                if proc and warming and proc.poll() is None and warm_up():
+                    warming = False
                     set_state(conn, 'serving', touch=True)
                 if proc:
                     size = os.path.getsize(LOG)   # crons are off: a new log line is a request
