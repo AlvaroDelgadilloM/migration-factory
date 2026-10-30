@@ -94,10 +94,21 @@ jobs:
                    {'name': 'consulta con parámetros', 'path': '/index.html?a=1&b=2'}]
           open('/tmp/jm/plan.jmx', 'w', encoding='utf-8').write(perf.jmeter_plan(cases, 2, 5))"
           (cd /tmp/jm/www && python -m http.server 8099 > /dev/null 2>&1 &)
+      - uses: actions/cache@v4   # JMeter is not downloaded on every run (archive.apache.org throttles and hung the job)
+        with: {path: /tmp/jm-dist, key: jmeter-5.6.3}
       - name: Ejecutar con Apache JMeter 5.6.3
         run: |
-          curl -fsSL -o /tmp/jm/jmeter.tgz https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
-          tar -xzf /tmp/jm/jmeter.tgz -C /tmp/jm
+          sum=5978a1a35edb5a7d428e270564ff49d2b1b257a65e17a759d259a9283fc17093e522fe46f474a043864aea6910683486340706d745fcdf3db1505fd71e689083
+          mkdir -p /tmp/jm-dist
+          if ! echo "$sum  /tmp/jm-dist/jmeter.tgz" | sha512sum -c --quiet - 2>/dev/null; then
+            for host in https://dlcdn.apache.org https://downloads.apache.org https://archive.apache.org/dist; do
+              curl -fsSL --connect-timeout 20 --max-time 240 -o /tmp/jm-dist/jmeter.tgz "$host/jmeter/binaries/apache-jmeter-5.6.3.tgz" \
+                && echo "$sum  /tmp/jm-dist/jmeter.tgz" | sha512sum -c --quiet - && break
+              echo "no se pudo bajar de $host"; rm -f /tmp/jm-dist/jmeter.tgz
+            done
+          fi
+          echo "$sum  /tmp/jm-dist/jmeter.tgz" | sha512sum -c -
+          tar -xzf /tmp/jm-dist/jmeter.tgz -C /tmp/jm
           /tmp/jm/apache-jmeter-5.6.3/bin/jmeter -n -t /tmp/jm/plan.jmx -JHOST=localhost -JPORT=8099 -JUSERS=2 -JSECONDS=5 -l /tmp/jm/r.jtl
           total=$(($(wc -l < /tmp/jm/r.jtl) - 1)); ok=$(grep -c ',true,' /tmp/jm/r.jtl || true)
           echo "peticiones: $total, correctas: $ok"
