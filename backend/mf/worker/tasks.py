@@ -119,7 +119,7 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'datastage_migrate':
             from ..models import DataStageMigration
             s.get(DataStageMigration, job.subject_id).state = state
-        elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code'):
+        elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows'):
             from ..models import OdooMigration
             s.get(OdooMigration, job.subject_id).state = state
         elif job.kind in ('preview', 'apply'):
@@ -157,7 +157,7 @@ def run_job(job_id: str):
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
                    'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
                    'http_compare': do_http_compare,
-                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code}[job.kind](job, ctx)
+                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code, 'odoo_flows': do_odoo_flows}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -1530,6 +1530,38 @@ def do_odoo_code(job: Job, ctx: Context):
     if failed:
         return ('partial_success', 'MODULES_NOT_INSTALLABLE', f"No instalan en Odoo 19: {', '.join(failed)}")
     return None if not broken else ('partial_success', 'MODULE_TESTS_FAILED', f"Instalan pero fallan sus pruebas en Odoo 19: {', '.join(broken)}")
+
+
+def do_odoo_flows(job: Job, ctx: Context):
+    """Odoo business flows (Pruebas): the project's checks against its latest code port, on a new Odoo 19 (mf.odoo.flows)."""
+    from ..models import OdooFlowSuite, OdooMigration
+    from ..odoo import jobs as oj
+    with session() as db:
+        om = db.get(OdooMigration, job.subject_id)
+        project = db.get(Project, om.project_id)
+        om.state = 'running'
+        db.commit()
+        code = db.get(OdooMigration, om.analysis_id) if om.analysis_id else None
+        suite = db.scalar(select(OdooFlowSuite).where(OdooFlowSuite.project_id == project.id))
+        addons19 = Path(get_settings().odoo_addons_dir) / 'custom' / str(code.id).replace('-', '')[:12] / '19.0' if code else None
+        if not code or not addons19.is_dir():
+            raise StepFailure('CODE_PORT_REQUIRED', 'Falta el código portado: vuelva a «Portar código a 19» en la pantalla Código')
+        set_phase(ctx, 'source', 5)
+        src, *_ = _materialize(db, db.get(Repository, project.repository_id), None, ctx.workdir / 'source', ctx, require_maven=False)
+        set_phase(ctx, 'flows', 20)
+        res = oj.run_flows(ctx, Path(src), str(addons19), list(code.modules or []), _odoo_upload(db, project).get('odooSql') or [],
+                           suite.content if suite else '', om.id, lambda m: ctx.emit('info', 'odoo', m), ctx.cancel.is_set,
+                           get_settings().odoo_hop_timeout_seconds)
+        checks = res.get('checks') or []
+        om.summary = {'codeRun': str(code.id), 'stage': res['stage'], 'state': res['state'], 'checks': checks,
+                      'counts': {'total': len(checks), 'ok': sum(1 for c in checks if c['ok'])}, 'logTail': res.get('logTail', '')}
+        db.commit()
+    if res['stage'] != 'flows':
+        return ('partial_success', 'FLOWS_NOT_RUN', 'No se pudieron instalar los módulos para correr los flujos; ver el log')
+    if res['checks'] is None:
+        return ('partial_success', 'FLOWS_SCRIPT_ERROR', 'El script de flujos no terminó (error de Python); ver el log')
+    bad = [c['check'] for c in checks if not c['ok']]
+    return None if not bad else ('partial_success', 'FLOWS_FAILED', f"{len(bad)} flujo(s) fallan: {', '.join(bad[:5])}")
 
 
 def do_datastage_migrate(job: Job, ctx: Context):

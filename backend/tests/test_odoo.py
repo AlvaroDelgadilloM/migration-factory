@@ -138,6 +138,31 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     dl = client.get(f"{API}/artifacts/{c['summary']['artifacts']['ported']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content[:2] == b'PK'
 
+    # Pruebas: the project's business flows, against that code port
+    from mf.config import get_settings
+    url = f'{API}/projects/{pid}/odoo-flows'
+    f = client.get(url, headers=token('ana.arquitecta')).json()
+    assert f['isTemplate'] and "check('los módulos portados están instalados'" in f['content']
+    bad = client.put(url, headers=token('ana.arquitecta'), json={'content': 'def x(:\n  pass'})
+    assert bad.status_code == 422 and bad.json()['code'] == 'FLOWS_SYNTAX' and bad.json()['details']['line'] == 1
+    ok = client.put(url, headers=token('ana.arquitecta'), json={'content': "check('uno', lambda: 1)"}).json()
+    assert not ok['isTemplate'] and ok['updatedBy'] == 'ana.arquitecta'
+    monkeypatch.setattr(get_settings(), 'odoo_addons_dir', tmp_path / 'addons')
+    (tmp_path / 'addons' / 'custom' / c['id'].replace('-', '')[:12] / '19.0').mkdir(parents=True)
+    got = {}
+
+    def run_flows(ctx, src, addons19, rows, sql_files, content, om_id, log, cancelled, timeout):
+        got.update({'addons': addons19, 'content': content, 'modules': [r['name'] for r in rows], 'sql': list(sql_files)})
+        return {'stage': 'flows', 'state': 'failed', 'checks': [{'check': 'uno', 'ok': True, 'got': '1'},
+                                                                {'check': 'dos', 'ok': False, 'error': 'AssertionError: x'}]}
+    monkeypatch.setattr(oj, 'run_flows', run_flows)
+    r = client.post(f'{API}/projects/{pid}/odoo-flow-runs', headers=token('ana.arquitecta')).json()
+    run_job(r['jobId'])
+    fr = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert got['content'] == "check('uno', lambda: 1)" and got['modules'] == ['my_sale'] and got['addons'].endswith('/19.0')
+    assert fr['mode'] == 'flows' and fr['state'] == 'partial_success' and fr['summary']['counts'] == {'total': 2, 'ok': 1}
+    assert client.get(f'{API}/projects/{pid}', headers=token('ana.arquitecta')).json()['progress']['phase'] == 'tested'
+
 
 def test_odoo_jobs_get_their_own_time_limit():
     from mf.jobs import timeout_for   # a whole chain outlives the 30 min of short jobs (RQ killed a real migration at 32 min)

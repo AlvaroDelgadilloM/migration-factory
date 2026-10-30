@@ -84,7 +84,8 @@ def scenario(a):
 def code(a):
     """Custom module code (and its external SQL): port + install check of each module on a new Odoo 19."""
     from mf.worker.runner import run
-    res = oj.port_code(ctx(), run, Path(a.addons), uuid.uuid4(), print, lambda: False, 3 * 3600, a.sql or [])
+    om = uuid.uuid4()
+    res = oj.port_code(ctx(), run, Path(a.addons), om, print, lambda: False, 3 * 3600, a.sql or [])
     print('base:', res['base']['state'], res['base']['modules'])
     for r in res['rows']:
         t = r['install'].get('tests') or {}
@@ -110,6 +111,12 @@ def code(a):
     for spec in a.expect_sql or []:
         name, cat = spec.split('=')
         assert got.get(name) == cat, (name, got.get(name), cat)
+    if a.flows:   # the business flows through the platform's path (Pruebas): runner, odoo shell, results
+        fl = oj.run_flows(ctx(), Path(a.addons), res['addons19'], res['rows'], a.sql or [], Path(a.flows).read_text(), om, print,
+                          lambda: False, 3 * 3600)
+        for c in fl['checks'] or []:
+            print(('OK   ' if c['ok'] else 'FALLA'), c['check'], '·', c.get('got') or c.get('error'))
+        assert fl['stage'] == 'flows' and fl['checks'] and all(c['ok'] for c in fl['checks']), (fl['stage'], fl.get('logTail', '')[-3000:])
 
 
 def port(a):
@@ -142,6 +149,7 @@ def main(argv):
     k.add_argument('addons')
     k.add_argument('--sql', action='append')
     k.add_argument('--expect-sql', action='append')
+    k.add_argument('--flows')
     q = sub.add_parser('port')
     q.add_argument('addons')
     q.add_argument('out')

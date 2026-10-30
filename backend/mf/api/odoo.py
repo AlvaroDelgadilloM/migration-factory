@@ -127,6 +127,58 @@ def migrate(project_id: uuid.UUID, request: Request, db: Session = Depends(get_d
     return _start(db, me, p, 'migrate', request, analysis)
 
 
+class OdooFlowsIn(Dto):
+    content: str = Field(max_length=200_000)
+
+
+def _flows_out(suite, template: str) -> dict:
+    return {'content': suite.content if suite else template, 'isTemplate': suite is None,
+            'updatedBy': suite.updated_by if suite else None, 'updatedAt': suite.updated_at.isoformat() if suite else None}
+
+
+@router.get('/projects/{project_id}/odoo-flows')
+def get_flows(project_id: uuid.UUID, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """The project's business flows (Pruebas), or the template to start from."""
+    from ..models import OdooFlowSuite
+    from ..odoo.flows import TEMPLATE
+    _project(db, me, project_id, 'view')
+    return _flows_out(db.scalar(select(OdooFlowSuite).where(OdooFlowSuite.project_id == project_id)), TEMPLATE)
+
+
+@router.put('/projects/{project_id}/odoo-flows')
+def save_flows(project_id: uuid.UUID, body: OdooFlowsIn, request: Request, db: Session = Depends(get_db),
+               me: Principal = Depends(current_principal)):
+    """Saved only if it is valid Python (it is compiled here, never run: it runs in the isolated Odoo 19 runner)."""
+    from ..models import OdooFlowSuite
+    from ..odoo.flows import TEMPLATE
+    _project(db, me, project_id, 'execute')
+    try:
+        compile(body.content, 'flujos.py', 'exec')
+    except SyntaxError as e:
+        raise ApiError(422, 'FLOWS_SYNTAX', f'Error de sintaxis en la línea {e.lineno}: {e.msg}', {'line': e.lineno}) from None
+    suite = db.scalar(select(OdooFlowSuite).where(OdooFlowSuite.project_id == project_id))
+    if suite is None:
+        suite = OdooFlowSuite(project_id=project_id, content='', updated_by=me.subject)
+        db.add(suite)
+    suite.content, suite.updated_by, suite.updated_at = body.content, me.subject, now()
+    audit.record(db, actor=me.subject, action='odoo.flows.save', entity_type='project', entity_id=project_id, project_id=project_id,
+                 details={'bytes': len(body.content)}, request=request)
+    db.commit()
+    return _flows_out(suite, TEMPLATE)
+
+
+@router.post('/projects/{project_id}/odoo-flow-runs', status_code=202)
+def run_flows(project_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """The flows against the latest code port, on a new Odoo 19 with demo data."""
+    p = _project(db, me, project_id, 'execute')
+    code = db.scalar(select(OdooMigration).where(OdooMigration.project_id == p.id, OdooMigration.mode == 'code',
+                                                 OdooMigration.state.in_(('succeeded', 'partial_success')))
+                     .order_by(OdooMigration.created_at.desc()).limit(1))
+    if code is None:
+        raise ApiError(409, 'CODE_PORT_REQUIRED', 'Primero porte el código a 19 (pantalla Código): los flujos corren sobre ese código')
+    return _start(db, me, p, 'flows', request, code)
+
+
 @router.get('/projects/{project_id}/odoo-migrations', response_model=list[OdooMigrationOut])
 def list_runs(project_id: uuid.UUID, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     _project(db, me, project_id, 'view')

@@ -1,4 +1,4 @@
-exec(open('/flows/common.py').read())
+# Business flows of the example (helpers: backend/mf/odoo/flow_helpers.py, prepended by run.sh and by the platform's Pruebas).
 from odoo.exceptions import UserError
 P = env['res.partner']
 def customer360():
@@ -71,4 +71,3 @@ def reporting():
     assert rows and rows[0]['customer_tier'] == 'gold', rows
     return rows[0]
 check('legacy_reporting: vista SQL con nivel del cliente', reporting)
-done()

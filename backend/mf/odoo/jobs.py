@@ -291,5 +291,37 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
     for r in rows:
         r['install'] = installs.get(r['name'])
     return {'rows': rows, 'portWarnings': warnings, 'base': installs['base'], 'ported': ported, 'diff': oc.diff(src, ported),
-            'externalSql': ext,
+            'externalSql': ext, 'addons19': addons,
             'report': json.dumps({'modules': rows, 'portWarnings': warnings, 'externalSql': ext}, ensure_ascii=False, indent=2)}
+
+
+def run_flows(ctx, src: Path, addons19: str, rows: list[dict], sql_files, content: str, om_id, log, cancelled, timeout: int) -> dict:
+    """The project's business flows (mf.odoo.flows) on a new Odoo 19 with demo data: the standard dependencies, the project's
+    external SQL, the ported modules (the code port's own copy), then the script with odoo shell. The database is dropped after."""
+    from . import flows
+    names = sorted(r['name'] for r in rows)
+    core = sorted({d for r in rows for d in r['depends'] if d not in names}) or ['base']
+    db = f"mf_{str(om_id).replace('-', '')[:12]}_flows"
+    chain.ensure_control()
+    chain.drop_db(db)
+    out = {'database': db, 'checks': None}
+    try:
+        log(f"Odoo 19 nuevo con datos demo: {', '.join(core)}")
+        r = chain.wait(chain.enqueue('19.0', db, install=core), timeout, cancelled)
+        if r['state'] != 'succeeded':
+            return out | {'stage': 'base', 'state': r['state'], 'logTail': r['logTail'][-6000:]}
+        external_sql(src, sql_files, db, log)
+        log(f"instalar {len(names)} módulo(s) portados")
+        r = chain.wait(chain.enqueue('19.0', db, [addons19], install=names), timeout, cancelled)
+        if r['state'] != 'succeeded':
+            return out | {'stage': 'install', 'state': r['state'], 'logTail': r['logTail'][-6000:]}
+        log('flujos de negocio con odoo shell')
+        r = chain.wait(chain.enqueue('19.0', db, [addons19], shell=flows.script(content, names)), timeout, cancelled)
+        checks = flows.results(r['logTail'])
+        state = 'succeeded' if checks is not None and all(c['ok'] for c in checks) else 'failed'
+        if checks is not None:
+            log(f"{sum(c['ok'] for c in checks)}/{len(checks)} flujos bien")
+        return out | {'stage': 'flows', 'state': state, 'checks': checks,
+                      'logTail': '' if checks is not None else r['logTail'][-6000:]}
+    finally:
+        chain.drop_db(db)

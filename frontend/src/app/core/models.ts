@@ -99,7 +99,7 @@ export interface OdooModule {
 }
 export interface OdooHop { version: string; state: string; exitCode: number | null; errors: number | null; baseVersion: string | null; logTail: string }
 export interface OdooRun {
-  id: string; projectId: string; jobId: string | null; mode: 'analyze' | 'migrate' | 'code'; state: string; analysisId: string | null;
+  id: string; projectId: string; jobId: string | null; mode: 'analyze' | 'migrate' | 'code' | 'flows'; state: string; analysisId: string | null;
   summary: Record<string, any>; modules: OdooModule[]; decisions: Record<string, { action: string; reason: string; by: string; at: string }>;
   hops: OdooHop[]; reconciliation: { check: string; label: string; before: string[] | null; after: string[] | null; state: string }[];
   createdBy: string; createdAt: string; job: any;

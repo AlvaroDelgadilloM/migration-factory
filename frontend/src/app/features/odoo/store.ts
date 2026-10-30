@@ -21,6 +21,8 @@ export class OdooStore {
   /** a ZIP with module code and no database: no analysis or migration, the result is the ported code (Código) */
   readonly codeOnly = computed(() => !this.uploaded()['odooDump'] && !!(this.uploaded()['odooModules'] ?? []).length);
   /** latest custom module code run (inventory, port to 19, install check) */
+  /** latest business-flows run (Pruebas) */
+  readonly flows = computed(() => (this.list.data() ?? []).find(r => r.mode === 'flows' && !['queued', 'running'].includes(r.state)) ?? null);
   readonly code = computed(() => (this.list.data() ?? []).find(r => r.mode === 'code' && !['queued', 'running'].includes(r.state)) ?? null);
   /** blocking modules of the latest analysis still without the architect's decision */
   readonly pending = computed(() => {
@@ -47,7 +49,7 @@ export class OdooStore {
 
   reload() { return this.list.reload(); }
 
-  async start(mode: 'analyze' | 'migrate' | 'code') {
+  async start(mode: 'analyze' | 'migrate' | 'code' | 'flows') {
     const id = this.ctx.projectId();
     if (!id) return;
     this.error.set(null);

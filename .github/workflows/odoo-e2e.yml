@@ -120,7 +120,9 @@ jobs:
         run: python backend/tests/e2e/odoo_chain.py scenario demo16 /tmp/dumps/demo16.sql --start 16.0
       - name: Escenario code (port 12 → 19 e instalación en Odoo 19)
         if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',code,'))
-        run: python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules --sql db/init/01-create-lab.sql --expect-sql legacy_migration_audit=KEEP
+        run: |
+          python backend/tests/e2e/odoo_chain.py code examples/odoo-legacy-modules --sql db/init/01-create-lab.sql --expect-sql legacy_migration_audit=KEEP \
+            --flows backend/tests/e2e/odoo_flows/flow_legacy.py
       - name: Escenario codecomplex (8 módulos con dependencias + SQL externo clasificado y probado en Odoo 19)
         if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',codecomplex,'))
         run: |
@@ -128,7 +130,7 @@ jobs:
             --sql database/init/01-create-db.sql --sql database/init/02-legacy-ext.sql \
             --expect-sql invoice_audit=REWRITE --expect-sql quality_event=MOVE_TO_ORM --expect-sql credit_snapshot=DEPRECATE \
             --expect-sql integration_message=KEEP --expect-sql commission_ledger=KEEP --expect-sql mv_commission_monthly=KEEP \
-            --expect-sql trg_message_processed=KEEP --expect-sql v_pending_messages=DEPRECATE
+            --expect-sql trg_message_processed=KEEP --expect-sql v_pending_messages=DEPRECATE --flows backend/tests/e2e/odoo_flows/flow_complex.py
       - name: Escenario flows (el código portado de los ejemplos en un Odoo 19 oficial, con flujos de negocio)
         if: (success() || failure()) && (env.ONLY == 'all' || contains(format(',{0},', env.ONLY), ',flows,'))
         env:

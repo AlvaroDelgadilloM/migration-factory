@@ -1,3 +1,4 @@
+# ruff: noqa: F821 — a script for `odoo shell` (env comes from the shell), read as text by mf.odoo.flows; never imported
 # Business-flow checks run with `odoo shell` on Odoo 19 (env is the shell's environment). Each check is recorded; nothing stops
 # at the first failure. Synthetic data only.
 import json, traceback

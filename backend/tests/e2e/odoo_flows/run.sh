@@ -12,7 +12,7 @@ odoo() { docker run -i --rm --network host -v "$addons":/mnt/extra-addons:ro -v 
 odoo odoo -d "$db" -i "$mods" --with-demo --test-enable --test-tags "$(echo "$mods" | sed 's/[^,]*/\/&/g')" --stop-after-init 2>&1 \
   | grep -E " CRITICAL |failed, .* error\(s\) of" | tee /tmp/flows-install.log
 grep -qE " CRITICAL |[1-9][0-9]* failed|[1-9][0-9]* error\(s\)" /tmp/flows-install.log && exit 1
-odoo odoo shell -d "$db" --no-http < "$here/$flow" 2>&1 | grep '^MF_FLOW ' | sed 's/^MF_FLOW //' > /tmp/flows-result.json
+{ cat "$here/../../../mf/odoo/flow_helpers.py"; echo "MODULES = '$mods'.split(',')"; cat "$here/$flow"; echo; echo "done()"; } | odoo odoo shell -d "$db" --no-http 2>&1 | grep '^MF_FLOW ' | sed 's/^MF_FLOW //' > /tmp/flows-result.json
 python3 - <<'PY'
 import json, sys
 r = json.load(open('/tmp/flows-result.json'))

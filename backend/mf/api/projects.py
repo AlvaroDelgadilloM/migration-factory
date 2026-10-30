@@ -34,7 +34,8 @@ def progress(db, p: Project, last_scan) -> dict:
         om = latest(OdooMigration)
         if om:
             step, done = {'analyze': ('Análisis de la base', 'analyzed'), 'code': ('Port de código a 19', 'migrated'),
-                          'migrate': ('Migración a Odoo 19', 'migrated')}.get(om.mode, (om.mode, 'analyzed'))
+                          'migrate': ('Migración a Odoo 19', 'migrated'),
+                          'flows': ('Flujos de negocio en Odoo 19', 'tested')}.get(om.mode, (om.mode, 'analyzed'))
             runs.append((om.created_at, step, om.state, done))
     elif p.migration_type == 'DATASTAGE_AIRFLOW':
         dm = latest(DataStageMigration)

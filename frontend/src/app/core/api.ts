@@ -127,9 +127,15 @@ export class Api {
     return this.send<DataStageMigration>('POST', `/datastage-migrations/${id}/reconciliations`, result);
   }
   odooRuns(projectId: string) { return this.get<OdooRun[]>(`/projects/${projectId}/odoo-migrations`); }
-  startOdoo(projectId: string, mode: 'analyze' | 'migrate' | 'code') {
-    const path = { analyze: 'odoo-analyses', migrate: 'odoo-migrations', code: 'odoo-code' }[mode];
+  startOdoo(projectId: string, mode: 'analyze' | 'migrate' | 'code' | 'flows') {
+    const path = { analyze: 'odoo-analyses', migrate: 'odoo-migrations', code: 'odoo-code', flows: 'odoo-flow-runs' }[mode];
     return this.send<{ odooMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/${path}`, {});
+  }
+  odooFlows(projectId: string) {
+    return this.get<{ content: string; isTemplate: boolean; updatedBy: string | null; updatedAt: string | null }>(`/projects/${projectId}/odoo-flows`);
+  }
+  saveOdooFlows(projectId: string, content: string) {
+    return this.send<{ content: string; isTemplate: boolean; updatedBy: string | null; updatedAt: string | null }>('PUT', `/projects/${projectId}/odoo-flows`, { content });
   }
   decideOdoo(id: string, module: string, action: 'uninstall' | 'apply' | 'ignore' | 'pending', reason: string) {
     return this.send<OdooRun>('PATCH', `/odoo-migrations/${id}/decisions`, { module, action, reason });

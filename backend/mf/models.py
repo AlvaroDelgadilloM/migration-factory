@@ -453,7 +453,7 @@ class OdooMigration(Entity, Base):
     __tablename__ = 'odoo_migration'
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
-    mode: Mapped[str] = mapped_column(String(10), default='analyze')       # analyze | migrate
+    mode: Mapped[str] = mapped_column(String(10), default='analyze')       # analyze | migrate | code | flows
     state: Mapped[str] = mapped_column(String(20), default='queued')
     analysis_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)              # migrate: the analysis it follows
     summary: Mapped[dict] = mapped_column(Json, default=dict)
@@ -462,6 +462,16 @@ class OdooMigration(Entity, Base):
     hops: Mapped[list] = mapped_column(Json, default=list, server_default='[]')
     reconciliation: Mapped[list] = mapped_column(Json, default=list, server_default='[]')
     created_by: Mapped[str] = mapped_column(String(255))
+
+
+class OdooFlowSuite(Entity, Base):
+    """Business flows of an Odoo project (Pruebas): checks written in Python against the ported modules, run by `odoo shell` in an
+    isolated Odoo 19 (mf.odoo.flows). One per project; its runs are OdooMigration rows with mode 'flows'."""
+    __tablename__ = 'odoo_flow_suite'
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), unique=True)
+    content: Mapped[str] = mapped_column(Text, default='')
+    updated_by: Mapped[str] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class DataStageMigration(Entity, Base):

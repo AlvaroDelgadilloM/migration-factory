@@ -100,7 +100,7 @@ export class Shell {
   dsScreens = DS_SCREENS;
   isDs = computed(() => this.ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW');
   isOdoo = computed(() => this.ctx.project()?.migrationType === 'ODOO');
-  odooScreens: [string, string, string][] = [['odoo', 'Resumen', 'pi-chart-bar'], ['odoo/modulos', 'Módulos', 'pi-th-large'], ['odoo/codigo', 'Código', 'pi-code']];
+  odooScreens: [string, string, string][] = [['odoo', 'Resumen', 'pi-chart-bar'], ['odoo/modulos', 'Módulos', 'pi-th-large'], ['odoo/codigo', 'Código', 'pi-code'], ['odoo/pruebas', 'Pruebas', 'pi-check-square']];
   private url = signal('');
   /** the progress bar belongs to the five Java/Camel step screens, not to settings or tests */
   onProjectScreen = computed(() => /^\/p\/[^/]+\/(inventory|findings|plan|execution|diff|validation)/.test(this.url()));

@@ -1,4 +1,4 @@
-exec(open('/flows/common.py').read())
+# Business flows of the example (helpers: backend/mf/odoo/flow_helpers.py, prepended by run.sh and by the platform's Pruebas).
 P = env['res.partner']
 def credit():
     p = P.create({'name': 'MF cliente crédito', 'x_credit_limit': 50000, 'x_legacy_segment': 'gold'})
@@ -54,4 +54,3 @@ def reporting():
     assert audit == 2, audit
     return f'reporte {len(rows)} fila(s), auditoría externa {audit}'
 check('legacy_reporting: vista SQL de ventas y tabla externa de auditoría', reporting)
-done()

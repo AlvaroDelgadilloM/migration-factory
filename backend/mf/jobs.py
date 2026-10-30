@@ -13,13 +13,13 @@ from .models import IdempotencyRecord, Job, JobEvent, Outbox, now
 log = logging.getLogger('mf.jobs')
 QUEUE = 'mf-jobs'
 LONG_QUEUE = 'mf-long'  # workspace migrations and modernizations: own worker, never delay scans/executions
-LONG_KINDS = {'workspace_migrate', 'modernize', 'datastage_migrate', 'http_compare', 'odoo_analyze', 'odoo_migrate', 'odoo_code'}
+LONG_KINDS = {'workspace_migrate', 'modernize', 'datastage_migrate', 'http_compare', 'odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows'}
 
 
 def timeout_for(kind: str | None) -> int:
     """Wall-clock limit of a job, the same for the queue (RQ) and the worker's deadline."""
     s = get_settings()
-    if kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code'):
+    if kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows'):
         return s.odoo_job_timeout_seconds
     return s.workspace_timeout_seconds if kind in ('workspace_migrate', 'http_compare') else s.job_timeout_seconds
 
