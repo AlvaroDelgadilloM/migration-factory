@@ -179,6 +179,7 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     monkeypatch.setattr(chain, 'previews', lambda: [{'slot': 1, 'state': 'serving', 'project': pid, 'omId': seen_preview['om'],
                                                      'lastActivity': None, 'startedAt': None}, {'slot': 2, 'state': 'free', 'project': None,
                                                                                                 'omId': None, 'lastActivity': None, 'startedAt': None}])
+    monkeypatch.setattr(chain, 'ensure_control', lambda: None)
     released = []
     monkeypatch.setattr(chain, 'preview_release', lambda slot, project=None: released.append((slot, project)))
     pv = client.get(f'{API}/projects/{pid}/odoo-preview', headers=token('ana.arquitecta')).json()

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from .. import audit, jobs
 from ..auth import Principal, authorize, current_principal
 from ..db import get_db
+from ..config import get_settings
 from ..errors import ApiError
 from ..models import Job, OdooMigration, now
 from ..schemas import Dto, JobOut
@@ -198,7 +199,9 @@ def get_preview(project_id: uuid.UUID, db: Session = Depends(get_db), me: Princi
     from ..odoo import chain
     p = _project(db, me, project_id, 'view')
     try:
-        slots = chain.previews()
+        chain.ensure_control()   # the slots' table exists before the first preview
+        slots = chain.previews() or [{'slot': n + 1, 'state': 'free', 'project': None, 'omId': None, 'lastActivity': None, 'startedAt': None}
+                                     for n in range(len([x for x in get_settings().odoo_preview_ports.split(',') if x.strip()]))]
     except Exception:  # noqa: BLE001 — odoo-db unreachable (profile off): no previews
         return {'available': False, 'preview': None, 'slots': []}
     mine = next((s for s in slots if s['project'] == str(p.id)), None)
