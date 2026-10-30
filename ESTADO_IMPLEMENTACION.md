@@ -690,6 +690,14 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   filas semilla) se clasifica contra el código de los módulos —KEEP, MIGRATE, REWRITE, MOVE_TO_ORM, DEPRECATE, MANUAL_REVIEW, con
   el motivo; p. ej. REWRITE si guarda IDs de `account.invoice`— y se ejecuta sentencia por sentencia en el Odoo 19 nuevo antes de
   instalar los módulos (sin `CREATE DATABASE` ni metacomandos de psql; un objeto repetido en varios archivos cuenta una vez).
+- **Pruebas (flujos de negocio)** (`mf/odoo/flows.py`, pantalla Pruebas, job `odoo_flows`): el equipo escribe sus flujos en
+  Python (`check(nombre, función)`, plantilla para empezar, sintaxis revisada al guardar) y la plataforma los corre con
+  `odoo shell` contra el último código portado, en un Odoo 19 nuevo con datos demo, el SQL externo del proyecto y los módulos
+  instalados (ejecutor aislado, tarea `shell`); resultado por flujo (OK/FALLA con lo que devolvió o el error) y etapa
+  «probado» en la Cartera. Un flujo de negocio encontró un defecto real del port —SQL directo que no veía lo recién creado
+  porque desde 13.0 el ORM difiere las escrituras— y la regla `flush_all()` antes de cada SQL directo lo corrige. Verificado
+  en el VPS con «Descargas 1» (7/7) y en `odoo-e2e.yml` (escenarios code y codecomplex por la plataforma; escenario flows con
+  un Odoo 19 oficial).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
   8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
