@@ -715,6 +715,12 @@ def run(source: Path, war: Path, out: Path, container: str = '', data: Path | No
     if data and (data / 'casos.json').is_file():
         extra = json.loads((data / 'casos.json').read_text(encoding='utf-8'))
         cases += extra['cases'] if isinstance(extra, dict) else extra
+    if not cases and wave:  # a wave of WebSockets, queues or scheduled jobs only: nothing to compare over HTTP, not an error
+        return {'status': 'NOT_APPLICABLE', 'mode': mode, 'container': container, 'wave': wave, 'internalModules': internal,
+                'modules': sorted(tested), 'totals': {'cases': 0, 'same': 0, 'different': 0, 'accepted': 0, 'notExecutable': 0},
+                'cases': [], 'generatedCases': 0,
+                'reason': f"La ola {wave} no publica servicios REST ni SOAP en este contenedor ({', '.join(sorted(tested)) or 'sin módulos'}): "
+                          'sus WebSockets, colas o tareas se validan con la matriz de pruebas o en el ambiente de pruebas'}
     if not cases:
         raise AutoTestError('No se encontraron servicios REST ni SOAP publicados en este contenedor')
     log(f'{len(cases)} casos generados')

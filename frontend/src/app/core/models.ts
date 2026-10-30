@@ -75,7 +75,7 @@ export interface HttpRunSummary { status?: string; totals?: { cases: number; sam
   differencesByKind?: Record<string, number>; screenshots?: number; screenshotProblem?: string | null; cases?: HttpCaseResult[];
   artifacts?: { evidence: string; responses: string; performance?: string; jmeterPlan?: string };
   // automatic test from a migration (mf.tomcat_war.autotest)
-  mode?: 'HUMO' | 'DATOS' | 'SMOKE'; container?: string; wave?: string | null; internalModules?: string[];
+  mode?: 'HUMO' | 'DATOS' | 'SMOKE'; container?: string; wave?: string | null; internalModules?: string[]; reason?: string;
   // automatic test of a migrated project (mf.runtime_test)
   runtime?: string; basePath?: string; endpoints?: { route: string; method: string; path: string }[]; variables?: string[]; modules?: string[]; generatedCases?: number; externalCalls?: string[];
   startup?: Record<'original' | 'migrado', { started: number | null; total: number | null; failed: string[] }>;

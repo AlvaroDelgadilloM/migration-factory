@@ -186,6 +186,7 @@ casos.json              casos extra con el formato de la batería</pre>
             Endpoints que Camel publicó en <code>{{ s.basePath || '/' }}</code>: @for (e of eps; track $index) { <code>{{ e.method }} {{ e.path }}</code>{{ $last ? '' : ', ' }} }.
             @if (s.variables?.length) { Variables usadas: {{ s.variables!.join(', ') }}. }</p>
         }
+        @if (s.status === 'NOT_APPLICABLE') { <p><b>No aplica.</b> {{ s.reason }}</p> }
         @if (s.startup; as st) {
           <p>{{ s.mode === 'DATOS' ? 'Con el paquete de datos de prueba.' : 'Prueba de humo: bases vacías y sistemas externos simulados (sin datos del cliente).' }}
             Contenedor <b>{{ s.container || 'todos' }}</b>@if (s.wave) { · ola <b>{{ s.wave }}</b> }.

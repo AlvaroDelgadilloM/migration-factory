@@ -1242,6 +1242,10 @@ def do_http_compare(job: Job, ctx: Context):
             set_phase(ctx, 'compare', 10)
             summary = http_run.run(original, migrated, run.cases, out, run.screenshots, get_settings().test_timeout_seconds,
                                    log=lambda m: ctx.emit('info', 'compare', m))
+        if summary.get('status') == 'NOT_APPLICABLE':  # a wave without HTTP services: no cases, no evidence, not a failure
+            run.summary = summary
+            db.commit()
+            return None
         set_phase(ctx, 'artifacts', 90)
         ev = _store(db, run.project_id, 'evidence', f'pruebas-{str(run.id)[:8]}-evidencia.zip', (out / 'evidence.zip').read_bytes(), 'application/zip', commit=False)
         rs = _store(db, run.project_id, 'report-json', f'pruebas-{str(run.id)[:8]}-responses.json', (out / 'responses.json').read_text(encoding='utf-8'),

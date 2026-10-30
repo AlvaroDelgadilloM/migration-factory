@@ -145,7 +145,22 @@ def load(base: str, cases: list, users: int, seconds: int, warmup: int, timeout:
             'errors': errors, 'errorRate': round(errors / total, 4) if total else None,
             'noResponse': statuses.get(0, 0), 'statuses': {str(k): v for k, v in sorted(statuses.items())},
             'failedCases': dict(failed.most_common(10)),
-            'memoryMb': {'max': max(mem), 'avg': round(sum(mem) / len(mem), 1)} if mem else None, 'slowestCases': slow}
+            'memoryMb': {'max': max(mem), 'avg': round(sum(mem) / len(mem), 1)} if mem else None, 'slowestCases': slow,
+            'perCase': {name: {'n': len(v), 'p50': _percentile(v, 50), 'p95': _percentile(v, 95)} for name, v in sorted(per_case.items())}}
+
+
+def by_case(original: dict, migrated: dict) -> list:
+    """Each service on both sides, the ones the migration slowed down most first (difference of medians): which service
+    makes a regression, not only the totals."""
+    o, m = original.get('perCase') or {}, migrated.get('perCase') or {}
+    rows = []
+    for name in sorted(set(o) & set(m)):
+        a, b = o[name], m[name]
+        if a['p50'] is None or b['p50'] is None:
+            continue
+        rows.append({'name': name, 'n': [a['n'], b['n']], 'p50': [a['p50'], b['p50']], 'p95': [a['p95'], b['p95']],
+                     'deltaMs': round(b['p50'] - a['p50'], 1), 'ratio': round(b['p50'] / a['p50'], 2) if a['p50'] else None})
+    return sorted(rows, key=lambda r: -r['deltaMs'])
 
 
 def compare(original: dict, migrated: dict, tolerance: float) -> dict:
@@ -178,6 +193,13 @@ def markdown(result: dict) -> str:
     if o.get('memoryMb') and m.get('memoryMb'):
         out.append(f"| Memoria máxima del proceso | {o['memoryMb']['max']} MB | {m['memoryMb']['max']} MB |")
     out += [''] + ([f'- {r}' for r in result['comparison']['reasons']] or ['Sin regresiones dentro de la tolerancia.'])
+    rows = result.get('byCase') or []
+    if rows:
+        out += ['', '## Por servicio', '', 'Mediana y p95 de cada servicio a cada lado; primero los que más se alejan del original '
+                '(los 15 con más diferencia; el resto en performance.json).', '',
+                '| Servicio | p50 original | p50 migrado | Diferencia | p95 original | p95 migrado | Peticiones (orig. / migr.) |', '|---|---|---|---|---|---|---|']
+        out += [f"| {r['name']} | {r['p50'][0]} ms | {r['p50'][1]} ms | {r['deltaMs']:+} ms | {r['p95'][0]} ms | {r['p95'][1]} ms | {r['n'][0]} / {r['n'][1]} |"
+                for r in rows[:15]]
     if result.get('excluded'):
         out += ['', f"## Casos fuera de la medición ({len(result['excluded'])} de {result['casesTotal']})", '',
                 f"Tardan más de {result['slowMs']} ms o no responden en algún lado: miden la espera a un sistema externo, no la migración.", '']
@@ -262,6 +284,7 @@ def run(original: dict, migrated: dict, cases: list, out: Path, users: int, seco
     b = load(migrated['url'], cases, users, seconds, warmup, pid=migrated.get('pid'), log=log, side='migrated')
     result = {'check': 'performance', 'users': users, 'seconds': seconds, 'warmup': warmup, 'cases': len(cases), 'casesTotal': all_cases,
               'excluded': excluded, 'slowMs': slow_ms, 'original': a, 'migrated': b, 'comparison': compare(a, b, tolerance),
+              'byCase': by_case(a, b),
               'scope': ('Comparación en la misma máquina, uno después del otro, con los mismos casos'
                         + (' y los datos de prueba del cliente.' if mode == 'DATOS' else ', bases vacías y sistemas externos simulados (prueba de humo).')
                         + ' Detecta regresiones del migrado frente al original; no mide la capacidad de producción.')}

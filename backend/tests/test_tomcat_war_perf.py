@@ -54,6 +54,16 @@ def test_a_slower_or_failing_migrated_side_is_not_a_pass(tmp_path):
     saved = json.loads((tmp_path / 'b/reports/performance.json').read_text(encoding='utf-8'))
     assert saved['comparison']['status'] == 'FAIL' and 'no mide la capacidad de producción' in saved['scope']
     assert '| p95 |' in (tmp_path / 'b/reports/performance.md').read_text(encoding='utf-8')
+    assert '## Por servicio' in (tmp_path / 'b/reports/performance.md').read_text(encoding='utf-8')
+    assert {r['name'] for r in saved['byCase']} == {'puntos', 'perfil'} and all(r['deltaMs'] > 0 for r in saved['byCase'])
+
+
+def test_the_service_that_makes_a_regression_comes_first():
+    """Posadas, wave 1 on the platform: -25 % throughput and only totals in the report. Each service on both sides tells which one."""
+    side = lambda **p50: {'perCase': {n: {'n': 100, 'p50': v, 'p95': v * 3} for n, v in p50.items()}}
+    rows = perf.by_case(side(puntos=10.0, perfil=12.0, catalogo=8.0), side(puntos=11.0, perfil=40.0, catalogo=7.5))
+    assert [r['name'] for r in rows] == ['perfil', 'puntos', 'catalogo']
+    assert rows[0]['deltaMs'] == 28.0 and rows[0]['ratio'] == 3.33 and rows[0]['p95'] == [36.0, 120.0]
 
 
 def test_the_performance_option_only_applies_to_a_migration_and_is_bounded():
