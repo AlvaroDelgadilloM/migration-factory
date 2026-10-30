@@ -144,7 +144,11 @@ def preview(a):
     src = Path(a.addons)
     ext = oj.external_sql(src, a.sql or [], None, print)
     port = oc.port_steps(src, ctx().workdir / 'ported', run, ctx(), print, ext=ext)
-    final = port['snapshots']['19.0']
+    import shutil
+    flat = ctx().workdir / 'flat'   # one folder with the modules, as the platform keeps them (jobs.ported_addons)
+    for name, m in oc.modules(port['snapshots']['19.0']).items():
+        shutil.copytree(m['path'], flat / name)
+    final = flat
     rows = [{'name': n, 'depends': list(m['manifest'].get('depends', []))} for n, m in oc.modules(final).items()]
     om = uuid.uuid4()
     res = oj.preview(ctx(), run, 'e2e-project', om, src, backup=None, addons19=str(final), rows=rows, sql_files=a.sql or [],
@@ -164,6 +168,7 @@ def preview(a):
                                                                     headers={'Content-Type': 'application/json'}), timeout=60).read())
     assert (ans.get('result') or {}).get('uid'), ans
     print('login como', res['login'], 'uid', ans['result']['uid'], '· módulos', res['modules'])
+    assert not oj.missing_modules(res['database'], res['modules']), oj.missing_modules(res['database'], res['modules'])
     chain.preview_release(res['slot'])
     for _ in range(40):
         if not chain.query('postgres')(f"select 1 from pg_database where datname = '{res['database']}'"):

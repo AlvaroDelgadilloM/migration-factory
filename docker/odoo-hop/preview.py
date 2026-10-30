@@ -50,8 +50,13 @@ def set_state(conn, state, touch=False, **cols):
 
 
 def drop(database):
-    with connect('postgres') as c, c.cursor() as cur:
-        cur.execute('drop database if exists "%s" with (force)' % database.replace('"', ''))
+    # not `with connect(...)`: since psycopg2 2.9 that opens a transaction even in autocommit, and DROP DATABASE cannot run in one
+    c = connect('postgres')
+    try:
+        with c.cursor() as cur:
+            cur.execute('drop database if exists "%s" with (force)' % database.replace('"', ''))
+    finally:
+        c.close()
 
 
 def main():
@@ -93,8 +98,9 @@ def main():
                         with conn.cursor() as cur:
                             cur.execute('update mf_preview set stop = true where slot = %s', (SLOT,))
                 time.sleep(3)
-        except psycopg2.Error:
-            time.sleep(5)   # odoo-db not ready, or the control table not created yet (the worker creates it)
+        except psycopg2.Error as e:   # odoo-db not ready, or the control table not created yet (the worker creates it)
+            print('preview slot %s: %s' % (SLOT, str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__), flush=True)
+            time.sleep(5)
 
 
 if __name__ == '__main__':

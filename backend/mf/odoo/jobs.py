@@ -282,6 +282,8 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
         db = f'mf_{tag}_i{i}'
         chain.copy_db(base, db)
         r = chain.wait(chain.enqueue('19.0', db, [str(check)], install=[name], tests=[name]), timeout, cancelled)
+        if r['state'] == 'succeeded' and missing_modules(db, [name]):   # not found: Odoo only warns
+            r = r | {'state': 'failed', 'logTail': f'{name} no quedó instalado (Odoo no lo encontró o no es instalable)\n' + r['logTail']}
         chain.drop_db(db)
         tests = oc.test_results(r['logTail'])
         installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:], 'tests': tests}
@@ -293,6 +295,12 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
     return {'rows': rows, 'portWarnings': warnings, 'base': installs['base'], 'ported': ported, 'diff': oc.diff(src, ported),
             'externalSql': ext, 'addons19': addons,
             'report': json.dumps({'modules': rows, 'portWarnings': warnings, 'externalSql': ext}, ensure_ascii=False, indent=2)}
+
+
+def missing_modules(database: str, names: list[str]) -> list[str]:
+    """Odoo asked to install a module it cannot find only warns and ends well: check they are installed."""
+    installed = {m['name'] for m in chain.installed_modules(database)}
+    return sorted(set(names) - installed)
 
 
 def run_flows(ctx, src: Path, addons19: str, rows: list[dict], sql_files, content: str, om_id, log, cancelled, timeout: int) -> dict:
@@ -313,8 +321,10 @@ def run_flows(ctx, src: Path, addons19: str, rows: list[dict], sql_files, conten
         external_sql(src, sql_files, db, log)
         log(f"instalar {len(names)} módulo(s) portados")
         r = chain.wait(chain.enqueue('19.0', db, [addons19], install=names), timeout, cancelled)
-        if r['state'] != 'succeeded':
-            return out | {'stage': 'install', 'state': r['state'], 'logTail': r['logTail'][-6000:]}
+        missing = missing_modules(db, names) if r['state'] == 'succeeded' else names
+        if missing:
+            return out | {'stage': 'install', 'state': 'failed',
+                          'logTail': f"No quedaron instalados: {', '.join(missing)}\n" + r['logTail'][-6000:]}
         log('flujos de negocio con odoo shell')
         r = chain.wait(chain.enqueue('19.0', db, [addons19], shell=flows.script(content, names)), timeout, cancelled)
         checks = flows.results(r['logTail'])
@@ -369,8 +379,9 @@ def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | Non
                 external_sql(src, sql_files, db, log)
             if names:
                 r = chain.wait(chain.enqueue('19.0', db, [addons] if addons else [], install=names), timeout, cancelled)
-                if r['state'] != 'succeeded':
-                    raise OdooJobError('PREVIEW_INSTALL_FAILED', 'Los módulos portados no instalaron: ' + r['logTail'][-800:])
+                missing = missing_modules(db, names) if r['state'] == 'succeeded' else names
+                if missing:
+                    raise OdooJobError('PREVIEW_INSTALL_FAILED', f"No quedaron instalados: {', '.join(missing)}. " + r['logTail'][-800:])
         password = secrets.token_urlsafe(12)
         script = (f"admin = env.ref('base.user_admin')\nadmin.write({{'password': {password!r}, 'active': True}})\n"
                   "env['ir.mail_server'].sudo().search([]).write({'active': False})\n"
