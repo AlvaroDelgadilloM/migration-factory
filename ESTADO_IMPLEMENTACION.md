@@ -698,6 +698,14 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   porque desde 13.0 el ORM difiere las escrituras— y la regla `flush_all()` antes de cada SQL directo lo corrige. Verificado
   en el VPS con «Descargas 1» (7/7) y en `odoo-e2e.yml` (escenarios code y codecomplex por la plataforma; escenario flows con
   un Odoo 19 oficial).
+- **Odoo 19 para probar a mano** (pantalla Pruebas → «Levantar Odoo 19», `mf/odoo/jobs.preview`, `docker/odoo-hop/preview.py`):
+  dos espacios (`odoo-preview-1/2`, puertos 3242/3243, publicados como la interfaz) que sirven la base migrada del proyecto o,
+  si es solo código, una base nueva con datos demo, su SQL externo y sus módulos portados (se comprueba que todos queden
+  instalados). Usuario administrador con contraseña nueva por instancia (solo la ve quien puede ejecutar en el proyecto; no
+  aparece en los listados), sin tareas programadas, sin correo saliente y sin gestor de bases; «Apagar» o 4 h sin uso detienen
+  Odoo y borran la base. Verificado en `odoo-e2e.yml` (escenario preview: login real y base borrada al apagar) y en el VPS
+  («Descargas 1»: puerto 3242 accesible desde fuera, login correcto). Corregido en el camino: la opción de correo de Odoo 19 es
+  `--smtp`; `with connection` de psycopg2 2.9 abre transacción aunque haya autocommit (el DROP DATABASE fallaba en silencio).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
   8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
