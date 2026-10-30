@@ -24,15 +24,18 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; } .ok { background: #e7f6ec; color: #067647; } .bad { background: #fdecea; color: #b42318; }
     pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
     .small { font-size: 12.5px; } .muted { color: var(--mf-muted); } .err { color: #b42318; }
-    button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }`],
+    button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }
+    details.card > summary { cursor: pointer; } details.card[open] > summary { margin-bottom: 12px; }
+    details .card { border: 0; padding: 0; margin: 12px 0 0; }`],
   template: `
-    <mf-page-header title="Pruebas" crumb="ODOO 12 → 19" subtitle="Flujos de negocio contra el código portado, en un Odoo 19 nuevo con datos demo.">
-      <mf-action label="Ejecutar flujos" icon="pi pi-play" [busy]="os.busy()" [disabledReason]="runReason()" (run)="os.start('flows')" />
-    </mf-page-header>
+    <mf-page-header title="Pruebas" crumb="ODOO 12 → 19" subtitle="El proyecto migrado en un Odoo 19 para usarlo, y flujos automáticos opcionales." />
     @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
     <section class="card">
       <h2>Odoo 19 para probar a mano @if (pv()?.preview; as p) { <mf-status [value]="p.state === 'serving' ? 'running' : p.state" /> }</h2>
-      @if (pv()?.preview; as p) {
+      @if (starting(); as jobId) {
+        <p class="small muted">Preparando Odoo 19: base, módulos y usuario administrador. Tarda unos minutos; la página se actualiza sola.</p>
+        <mf-job-log [jobId]="jobId" (finished)="startFinished()" />
+      } @else if (pv()?.preview; as p) {
         @if (p.state === 'preparing' && p.jobId) {
           <p class="small muted">Preparando el espacio {{ p.slot }}: base, módulos y usuario administrador…</p>
           <mf-job-log [jobId]="p.jobId" (finished)="loadPreview()" />
@@ -55,7 +58,10 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
         <mf-action label="Levantar Odoo 19" icon="pi pi-server" [busy]="pvBusy()" [disabledReason]="previewReason()" (run)="startPreview()" />
       }
       @if (pvError(); as e) { <p class="small err">{{ e.code }}: {{ e.message }}</p> }
+      @if (!starting() && !pv()?.preview && lastPreviewFailed(); as f) { <p class="small err">El último intento falló: {{ f }}</p> }
     </section>
+    <details class="card" [open]="flowsOpen()">
+      <summary><strong>Flujos automáticos (opcional)</strong> <span class="small muted">— pruebas de negocio escritas en Python que se corren solas contra el código portado</span></summary>
     @if (running(); as r) {
       <section class="card"><h2>Ejecutando flujos</h2>@if (r.jobId) { <mf-job-log [jobId]="r.jobId" (finished)="os.reload()" /> }</section>
     }
@@ -96,8 +102,10 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
         @if (!os.code()) {
           <p-message severity="info"><span>Primero porte el código en <a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'codigo']">Código</a>: los flujos corren sobre ese código.</span></p-message>
         }
+        <p class="bar"><mf-action label="Ejecutar flujos" icon="pi pi-play" [busy]="os.busy()" [disabledReason]="runReason()" (run)="os.start('flows')" /></p>
       </section>
-    </mf-state>`,
+    </mf-state>
+    </details>`,
 })
 export class OdooFlows {
   os = inject(OdooStore);
@@ -115,6 +123,13 @@ export class OdooFlows {
   running = computed(() => { const r = this.os.running(); return r?.mode === 'flows' ? r : null; });
   private loadedFor: string | null = null;
   pv = signal<Awaited<ReturnType<Api['odooPreview']>> | null>(null);
+  starting = signal<string | null>(null);   // job of the preview being prepared, from the click until it serves
+  /** the flows section starts open only if the project already uses it (saved flows or a run) */
+  flowsOpen = computed(() => !this.isTemplate() || !!this.os.flows() || !!this.running());
+  lastPreviewFailed = computed(() => {
+    const r = (this.os.list.data() ?? []).find(x => x.mode === 'preview');
+    return r && ['failed', 'timed_out'].includes(r.state) ? `${r.job?.errorCode ?? r.state}: ${r.job?.errorMessage ?? ''}` : null;
+  });
   pvBusy = signal(false);
   pvError = signal<UiError | null>(null);
 
@@ -134,7 +149,7 @@ export class OdooFlows {
     const id = this.os.ctx.projectId();
     if (!id) return;
     this.pvBusy.set(true); this.pvError.set(null);
-    try { await this.api.startOdooPreview(id, `${location.protocol}//${location.hostname}`); await this.loadPreview(); await this.os.reload(); }
+    try { const r = await this.api.startOdooPreview(id, `${location.protocol}//${location.hostname}`); this.starting.set(r.jobId); }
     catch (e) { this.pvError.set(UiError.from(e)); } finally { this.pvBusy.set(false); }
   }
   async stopPreview() {
@@ -144,6 +159,7 @@ export class OdooFlows {
     try { await this.api.stopOdooPreview(id); setTimeout(() => this.loadPreview(), 4000); this.pv.update(v => v ? { ...v, preview: null } : v); }
     catch (e) { this.pvError.set(UiError.from(e)); } finally { this.pvBusy.set(false); }
   }
+  async startFinished() { this.starting.set(null); await this.loadPreview(); await this.os.reload(); }
   url(port: string | null) { return `${location.protocol}//${location.hostname}:${port}/web/login`; }
   copy(text: string) { navigator.clipboard?.writeText(text); }
   execReason() { return this.os.ctx.can('execute') ? null : `Su rol (${this.os.ctx.role()}) no permite ejecutar`; }
@@ -151,6 +167,7 @@ export class OdooFlows {
     const v = this.pv();
     if (!this.os.ctx.can('execute')) return `Su rol (${this.os.ctx.role()}) no permite ejecutar`;
     if (v && !v.available) return 'Odoo no está habilitado en este servidor';
+    if (this.starting()) return 'Preparando…';
     if (this.os.running()) return 'Hay un análisis, una migración o un port en curso';
     if (!this.os.code() && !this.os.migration()) return 'Primero porte el código (Código) o migre la base (Resumen)';
     if (v && v.slots.length && v.slots.every(s => s.busy)) return `Los ${v.slots.length} espacios están ocupados: espere a que otro proyecto apague el suyo`;
