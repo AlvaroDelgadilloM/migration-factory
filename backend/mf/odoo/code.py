@@ -124,6 +124,7 @@ RULES = [
     ('13.0', INVOICE, 'py', r'\.number\b', '.name'),
     ('13.0', INVOICE, 'xml', r'(<field name="model">)account\.invoice(</field>)', r'\1account.move\2'),
     ('13.0', INVOICE, 'xml', r'ref="account\.invoice_form"', 'ref="account.view_move_form"'),
+    ('13.0', INVOICE, 'xml', r'(<field name="res_model">)account\.invoice(</field>)', r'\1account.move\2'),
     ('13.0', INVOICE, 'xml', r'(<field name="name">)account\.invoice\.', r'\1account.move.'),
     ('13.0', INVOICE, 'xml', r'ref="account\.invoice_tree"', 'ref="account.view_invoice_tree"'),
     ('13.0', INVOICE, 'xml', r"""@name=(['"])reference\1""", r"@name=\1ref\1"),
@@ -134,6 +135,15 @@ RULES = [
     ('13.0', r'name="(customer|supplier)"', 'xml', r'<field name="(customer|supplier)">\s*(False|0)\s*</field>\n?', ''),
     ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="model">)stock\.production\.lot(</field>)', r'\1stock.lot\2'),
     ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="name">)stock\.production\.lot\.', r'\1stock.lot.'),
+    ('16.0', r'stock\.production\.lot', 'xml', r'(<field name="res_model">)stock\.production\.lot(</field>)', r'\1stock.lot\2'),
+    # 13.0 merged the opportunity and lead forms of crm into crm_lead_view_form (an inherited view with the old id stops installing)
+    ('13.0', r'crm\.crm_case_form_view_(oppor|leads)', 'xml', r'ref="crm\.crm_case_form_view_(?:oppor|leads)"', 'ref="crm.crm_lead_view_form"'),
+    # 16.0: a task has several assignees (user_ids); the form no longer has user_id (only in views of project.task)
+    ('16.0', r'<field name="model">project\.task</field>', 'xml', r"""@name=(['"])user_id\1""", r'@name=\1user_ids\1'),
+    # 14.0 renamed crm.lead.planned_revenue to expected_revenue (views that place fields after it stop installing)
+    ('14.0', r'crm\.lead|planned_revenue', 'xml', r"""(@name=|name=)(['"])planned_revenue\2""", r'\1\2expected_revenue\2'),
+    ('14.0', r'crm\.lead', 'py', r"""\.planned_revenue\b""", '.expected_revenue'),
+    ('14.0', r'crm\.lead', 'py', r"""(['"])planned_revenue\1""", r'\1expected_revenue\1'),
     ('17.0', r'\sstates="', 'xml', r'<[^<>]*\sstates="[^"]*"[^<>]*>', _states_to_invisible),
     ('16.0', r'stock\.production\.lot', 'py', r"""(['"])stock\.production\.lot\1""", r"\1stock.lot\1"),
 ]
