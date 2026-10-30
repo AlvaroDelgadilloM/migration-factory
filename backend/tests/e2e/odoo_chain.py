@@ -169,14 +169,25 @@ def preview(a):
     assert (ans.get('result') or {}).get('uid'), ans
     print('login como', res['login'], 'uid', ans['result']['uid'], '· módulos', res['modules'])
     assert not oj.missing_modules(res['database'], res['modules']), oj.missing_modules(res['database'], res['modules'])
+    gone = lambda: not chain.query('postgres')(f"select 1 from pg_database where datname = '{res['database']}'")  # noqa: E731
     chain.preview_release(res['slot'])
     for _ in range(40):
-        if not chain.query('postgres')(f"select 1 from pg_database where datname = '{res['database']}'"):
+        if gone():
             break
         time.sleep(3)
     else:
         raise AssertionError('el espacio no borró su base al apagarse')
-    print('apagado: base borrada, espacio libre')
+    print('apagado con «Apagar»: base borrada, espacio libre')
+    if a.idle:   # nobody uses it: the slot's supervisor stops it on its own after MF_PREVIEW_IDLE seconds
+        res = oj.preview(ctx(), run, 'e2e-project', uuid.uuid4(), src, backup=None, addons19=str(final), rows=rows, sql_files=a.sql or [],
+                         base_url='http://127.0.0.1', log=print, cancelled=lambda: False, timeout=3 * 3600)
+        start = time.time()
+        while not gone():
+            assert time.time() - start < a.idle * 4 + 300, f'no se apagó sola en {int(time.time() - start)} s'
+            time.sleep(10)
+        state = chain.previews()[0]['state']
+        assert state == 'free', state
+        print(f'apagado por inactividad a los {int(time.time() - start)} s (límite {a.idle} s): base borrada, espacio libre')
 
 
 def main(argv):
@@ -199,6 +210,7 @@ def main(argv):
     v = sub.add_parser('preview')
     v.add_argument('addons')
     v.add_argument('--sql', action='append')
+    v.add_argument('--idle', type=int, default=0)
     q = sub.add_parser('port')
     q.add_argument('addons')
     q.add_argument('out')

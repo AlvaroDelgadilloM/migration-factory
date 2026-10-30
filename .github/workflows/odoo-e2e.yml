@@ -151,9 +151,9 @@ jobs:
           MF_ODOO_PREVIEW_PORTS: '8069'
         run: |
           docker run -d --name preview-1 --network host --entrypoint python3 -e MF_ODOO_DB_HOST=127.0.0.1 \
-            -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" -e MF_PREVIEW_SLOT=1 -v /tmp/hop-logs:/hop-logs \
+            -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" -e MF_PREVIEW_SLOT=1 -e MF_PREVIEW_IDLE=90 -v /tmp/hop-logs:/hop-logs \
             -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:19.0" /opt/mf/preview.py
-          python backend/tests/e2e/odoo_chain.py preview examples/odoo-complex-lab --sql backups/odoo12_complex_custom_backup.sql \
+          python backend/tests/e2e/odoo_chain.py preview examples/odoo-complex-lab --sql backups/odoo12_complex_custom_backup.sql --idle 90 \
             || { docker logs preview-1 | tail -40; tail -60 /tmp/hop-logs/preview.log; exit 1; }
       - name: Logs de los ejecutores
         if: failure()
