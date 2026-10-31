@@ -106,7 +106,7 @@ export const RULE_STATUS: Record<string, string> = {
     <ng-template #row let-c="c">
       <div class="change"><p-tag [severity]="sev[c.severity].s" [value]="sev[c.severity].label" /> <strong>{{ c.title }}</strong>
         <small>{{ c.action }} {{ c.count }} uso(s) en {{ c.apps.length }} aplicación(es): {{ c.apps.slice(0, 6).join(', ') }}{{ c.apps.length > 6 ? '…' : '' }}.
-          {{ status[c.status] }}@if (c.since) { desde {{ c.since }} }.
+          {{ status[c.status] }}{{ c.since ? ' desde ' + c.since : '' }}.
           @if (c.source) { <a [href]="c.source" target="_blank" rel="noopener">Nota de Oracle</a> }</small></div>
     </ng-template>`,
 })

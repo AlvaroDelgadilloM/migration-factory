@@ -47,7 +47,7 @@ const APP_STATE: Record<string, { label: string; s: 'danger' | 'warn' | 'success
           <h3>Qué debe cambiar</h3>
           @for (f of a.findings; track f.rule) {
             <div class="f"><p-tag [severity]="sev[f.severity].s" [value]="sev[f.severity].label" /> <strong>{{ f.title }}</strong> · {{ f.count }} uso(s)
-              <small>{{ f.action }} {{ status[f.status] }}@if (f.since) { desde {{ f.since }} }.
+              <small>{{ f.action }} {{ status[f.status] }}{{ f.since ? ' desde ' + f.since : '' }}.
                 @if (f.source) { <a [href]="f.source" target="_blank" rel="noopener">Nota de Oracle</a> }</small>
               <small>Dónde: {{ f.where.join(', ') }}{{ f.locations > f.where.length ? ' y más' : '' }}</small></div>
           } @empty { <p class="muted">Sin cambios detectados.</p> }
