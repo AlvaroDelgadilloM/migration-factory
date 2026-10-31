@@ -25,12 +25,16 @@ def progress(db, p: Project, last_scan) -> dict:
     """Where the project is, for Cartera, from its latest run of any kind: phase (pending | running | analyzed | migrated |
     tested | failed), the step it is in and that run's state. A Java project's latest scan, migration (by waves or Tomcat
     WAR, or a plan's execution) or automatic test; an Odoo project's analysis, code port or migration; a DataStage run."""
-    from ..models import DataStageMigration, Execution, HttpTestRun, OdooMigration, WorkspaceMigration
+    from ..models import ApexMigration, DataStageMigration, Execution, HttpTestRun, OdooMigration, WorkspaceMigration
 
     def latest(model):
         return db.scalar(select(model).where(model.project_id == p.id).order_by(model.created_at.desc()).limit(1))
     runs = []  # (created_at, step, state, phase when it ends well)
-    if p.migration_type == 'ODOO':
+    if p.migration_type == 'APEX':
+        am = latest(ApexMigration)
+        if am:
+            runs.append((am.created_at, 'Análisis de aplicaciones', am.state, 'analyzed'))
+    elif p.migration_type == 'ODOO':
         om = db.scalar(select(OdooMigration).where(OdooMigration.project_id == p.id, OdooMigration.mode != 'preview')  # a preview
                        .order_by(OdooMigration.created_at.desc()).limit(1))                                     # is not a stage
         if om:
@@ -132,7 +136,7 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
             kind = (upload.structure or {}).get('migrationType') or ('DATASTAGE_AIRFLOW' if (upload.structure or {}).get('dsxFiles') else 'JAVA_CAMEL')
             if body.migration_type != kind:
                 raise ApiError(422, 'UPLOAD_TYPE_MISMATCH', 'El ZIP no corresponde al tipo de migración (DSX para DataStage, respaldo de la '
-                                                            'base para Odoo, Maven para Java/Camel)')
+                                                            'base para Odoo, exports .sql para APEX, Maven para Java/Camel)')
             repo = Repository(source_type='zip', provider='zip', upload_id=upload.id)
     except UnsafeInput as e:
         raise ApiError(422, e.code, str(e)) from None
@@ -159,7 +163,7 @@ def create_project(body: ProjectCreate, request: Request, db: Session = Depends(
 
 @router.get('/projects', response_model=Page[ProjectOut])
 def list_projects(q: str | None = None, limit: int = limit_param(), cursor: str | None = None,
-                  migration_type: str | None = Query(None, alias='migrationType', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$'),
+                  migration_type: str | None = Query(None, alias='migrationType', pattern=r'^(JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO|APEX)$'),
                   db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     stmt = select(Project).order_by(Project.name, Project.id)
     ids = visible_project_ids(db, me)
@@ -289,6 +293,8 @@ def create_scan(project_id: uuid.UUID, body: ScanCreate, request: Request, idemp
         raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'Proyecto DataStage → Airflow: use POST /projects/{id}/datastage-migrations')
     if p.migration_type == 'ODOO':
         raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'Proyecto Odoo: use POST /projects/{id}/odoo-migrations')
+    if p.migration_type == 'APEX':
+        raise ApiError(409, 'WRONG_MIGRATION_TYPE', 'Proyecto Oracle APEX: use POST /projects/{id}/apex-analyses')
     endpoint = f'POST /projects/{project_id}/scans'
     payload = body.model_dump(mode='json')
     replay = jobs.idempotent_replay(db, me.subject, idempotency_key, endpoint, payload)

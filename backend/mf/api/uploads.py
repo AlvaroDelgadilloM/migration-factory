@@ -52,6 +52,21 @@ def odoo_db_files(zip_path, files) -> tuple[str | None, list[str]]:
     return dump, extra
 
 
+def apex_exports(zip_path, files) -> list[dict]:
+    """The APEX application exports of a ZIP: only the first bytes of each .sql, nothing is extracted."""
+    import zipfile
+    from ..apex.analysis import HEAD_BYTES, parse_head
+    found = []
+    with zipfile.ZipFile(zip_path) as z:
+        for name in files:
+            if name.lower().endswith('.sql'):
+                with z.open(name) as f:
+                    head = parse_head(Path(name).name, f.read(HEAD_BYTES))
+                if head:
+                    found.append(head)
+    return found
+
+
 def odoo_modules(files) -> list[str]:
     """Odoo addons in the ZIP (folders with a manifest): custom module code to inventory and port to 19."""
     return sorted({f.rsplit('/', 2)[-2] for f in files if '/' in f and f.endswith(('/__manifest__.py', '/__openerp__.py'))})
@@ -111,7 +126,7 @@ def _kinds(files) -> str:
 
 @router.post('/uploads', response_model=UploadOut, status_code=201)
 async def upload_zip(request: Request, x_filename: str = Header('project.zip', max_length=255),
-                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$'),
+                     x_migration_type: str = Header('JAVA_CAMEL', pattern=r'^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO|APEX)$'),
                      content_length: int | None = Header(None), db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     """Body = the ZIP bytes (Content-Type: application/zip). Size enforced while streaming, structure validated before storing."""
     s = get_settings()
@@ -141,8 +156,19 @@ async def upload_zip(request: Request, x_filename: str = Header('project.zip', m
             if mode == 'AUTO':  # the platform decides from the content: .dsx = DataStage, a database dump = Odoo, else Maven
                 probe = inspect_zip(Path(tmp), require_maven=False)
                 mode = 'DATASTAGE_AIRFLOW' if any(f.lower().endswith('.dsx') for f in probe['files']) else \
+                    'APEX' if apex_exports(Path(tmp), probe['files']) else \
                     'ODOO' if odoo_db_files(Path(tmp), probe['files'])[0] or (odoo_modules(probe['files']) and not any(
                         f == 'pom.xml' or f.endswith('/pom.xml') for f in probe['files'])) else 'JAVA_CAMEL'
+            if mode == 'APEX':
+                structure = probe or inspect_zip(Path(tmp), require_maven=False)
+                apps = apex_exports(Path(tmp), structure['files'])
+                if not apps:
+                    raise UnsafeInput('NO_APEX_EXPORT', 'El ZIP no trae exports de aplicaciones Oracle APEX (archivos .sql que empiezan con import_begin); '
+                                                        f'trae: {_kinds(structure["files"])}.')
+                structure.pop('files')
+                structure |= {'migrationType': 'APEX', 'apexApps': apps[:200]}
+                blobs().write_file(key, Path(tmp))
+                raise _Stored(structure)
             if mode == 'ODOO':
                 structure = probe or inspect_zip(Path(tmp), require_maven=False)
                 (dump, extra_sql), mods = odoo_db_files(Path(tmp), structure['files']), odoo_modules(structure['files'])

@@ -372,6 +372,11 @@ def _mark_subject_cancelled(db, job):
         d = db.get(DataStageMigration, job.subject_id)
         if d and d.state == 'queued':
             d.state = 'cancelled'
+    elif job.kind == 'apex_analyze':
+        from ..models import ApexMigration
+        a = db.get(ApexMigration, job.subject_id)
+        if a and a.state == 'queued':
+            a.state = 'cancelled'
     elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows', 'odoo_preview'):
         from ..models import OdooMigration
         o = db.get(OdooMigration, job.subject_id)

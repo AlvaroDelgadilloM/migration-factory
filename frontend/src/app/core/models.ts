@@ -91,6 +91,32 @@ export interface ManualResult { results: (HttpAnswer & { label: string; url: str
 // Java / Spring versions each migration target accepts (GET /target-versions)
 export type TargetVersions = S['TargetVersions'];
 
+/** Oracle APEX: analysis of the application exports and plan of jumps (mf.api.apex). */
+export interface ApexFinding {
+  rule: string; title: string; action: string; severity: 'BLOCK' | 'REVIEW' | 'INFO'; status: string; since: string | null; source: string | null;
+  count: number; locations: number; where: string[];
+}
+export interface ApexApp {
+  file: string; appId: string; name: string; owner: string; release: string; version: string; compatibilityMode: string | null; theme: string | null;
+  stats: Record<string, number>; plugins: { name: string; displayName: string; type: string; version: string | null; uses: number }[];
+  findings: ApexFinding[]; authentication: string[]; hosts: string[]; status: 'BLOCK' | 'REVIEW' | 'OK'; counts: Record<string, number>;
+  schema: { owner: string; referenced: number; defined: number; missing: number; missingSample: string[]; schemas: string[] };
+}
+export interface ApexChange {
+  rule: string; title: string; action: string; severity: 'BLOCK' | 'REVIEW' | 'INFO'; status: string; since: string | null; source: string | null; count: number; apps: string[];
+}
+export interface ApexPlan {
+  source: string | null; target: string; mode: string; baseline: ApexChange[];
+  hops: { version: string; from: string; changes: ApexChange[]; counts: Record<string, number> }[];
+}
+export interface ApexRun {
+  id: string; projectId: string; jobId: string | null; mode: string; state: string; target: string; planMode: string; apps: ApexApp[]; plan: ApexPlan;
+  summary: { apps: number; sourceVersions: string[]; totals: Record<string, number>; plugins: number; blocked: number; review: number; withSchema: number;
+             artifacts?: { report?: string; data?: string } };
+  createdBy: string; createdAt: string; job: any;
+}
+export interface ApexVersions { versions: string[]; yearly: string[]; note: string }
+
 /** Odoo 12 -> 19 database migration run (mf.api.odoo): analyze (modules classified) or migrate (hops, reconciliation). */
 export interface OdooModule {
   name: string; author: string; version?: string; origin: 'CORE' | 'OCA' | 'THIRD_PARTY'; outcome: 'OK' | 'WARN' | 'BLOCK'; reason: string;

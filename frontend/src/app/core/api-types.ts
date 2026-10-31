@@ -1379,6 +1379,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/odoo-flows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Flows
+         * @description The project's business flows (Pruebas), or the template to start from.
+         */
+        get: operations["get_flows_api_v1_projects__project_id__odoo_flows_get"];
+        /**
+         * Save Flows
+         * @description Saved only if it is valid Python (it is compiled here, never run: it runs in the isolated Odoo 19 runner).
+         */
+        put: operations["save_flows_api_v1_projects__project_id__odoo_flows_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/odoo-flow-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Flows
+         * @description The flows against the latest code port, on a new Odoo 19 with demo data.
+         */
+        post: operations["run_flows_api_v1_projects__project_id__odoo_flow_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/odoo-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Preview
+         * @description An Odoo 19 people can use: the migrated database, or the ported code with demo data, in a free preview slot.
+         */
+        post: operations["start_preview_api_v1_projects__project_id__odoo_previews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/odoo-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preview
+         * @description The project's preview, live (from the slots' control table): where to open it and, for who can execute, the admin login.
+         */
+        get: operations["get_preview_api_v1_projects__project_id__odoo_preview_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Stop Preview
+         * @description Turn the project's preview off: its slot stops Odoo and drops the preview database.
+         */
+        delete: operations["stop_preview_api_v1_projects__project_id__odoo_preview_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/odoo-migrations/{om_id}": {
         parameters: {
             query?: never;
@@ -1416,10 +1504,139 @@ export interface paths {
         patch: operations["decide_api_v1_odoo_migrations__om_id__decisions_patch"];
         trace?: never;
     };
+    "/api/v1/apex/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Versions
+         * @description The APEX releases the analysis knows, and the ones a yearly plan goes through.
+         */
+        get: operations["versions_api_v1_apex_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/apex-analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze */
+        post: operations["analyze_api_v1_projects__project_id__apex_analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/apex-migrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_projects__project_id__apex_migrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/apex-migrations/{run_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan
+         * @description The same analysis towards another version, or with every release as a jump.
+         */
+        get: operations["plan_api_v1_apex_migrations__run_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApexAnalysisIn */
+        ApexAnalysisIn: {
+            /**
+             * Target
+             * @default 26.1
+             */
+            target: string;
+            /**
+             * Planmode
+             * @default yearly
+             * @enum {string}
+             */
+            planMode: "yearly" | "all";
+        };
+        /** ApexMigrationOut */
+        ApexMigrationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Jobid */
+            jobId: string | null;
+            /** Mode */
+            mode: string;
+            /** State */
+            state: string;
+            /** Target */
+            target: string;
+            /** Planmode */
+            planMode: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Apps */
+            apps: unknown[];
+            /** Plan */
+            plan: {
+                [key: string]: unknown;
+            };
+            /** Createdby */
+            createdBy: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            job?: components["schemas"]["JobOut"] | null;
+        };
         /** ArtifactOut */
         ArtifactOut: {
             /**
@@ -2420,6 +2637,11 @@ export interface components {
              */
             reason: string;
         };
+        /** OdooFlowsIn */
+        OdooFlowsIn: {
+            /** Content */
+            content: string;
+        };
         /** OdooMigrationOut */
         OdooMigrationOut: {
             /**
@@ -2462,6 +2684,14 @@ export interface components {
              */
             createdAt: string;
             job?: components["schemas"]["JobOut"] | null;
+        };
+        /** OdooPreviewIn */
+        OdooPreviewIn: {
+            /**
+             * Baseurl
+             * @default http://localhost
+             */
+            baseUrl: string;
         };
         /** Page[ArtifactOut] */
         Page_ArtifactOut_: {
@@ -2746,12 +2976,12 @@ export interface components {
              * @default JAVA_CAMEL
              * @enum {string}
              */
-            migrationType: "JAVA_CAMEL" | "DATASTAGE_AIRFLOW" | "ODOO";
+            migrationType: "JAVA_CAMEL" | "DATASTAGE_AIRFLOW" | "ODOO" | "APEX";
             /**
              * Targetruntime
              * @enum {string}
              */
-            targetRuntime: "spring" | "quarkus" | "airflow" | "odoo19";
+            targetRuntime: "spring" | "quarkus" | "airflow" | "odoo19" | "apex";
             /** Repositoryurl */
             repositoryUrl?: string | null;
             /** Defaultbranch */
@@ -6126,6 +6356,200 @@ export interface operations {
             };
         };
     };
+    get_flows_api_v1_projects__project_id__odoo_flows_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_flows_api_v1_projects__project_id__odoo_flows_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OdooFlowsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_flows_api_v1_projects__project_id__odoo_flow_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_preview_api_v1_projects__project_id__odoo_previews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OdooPreviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preview_api_v1_projects__project_id__odoo_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_preview_api_v1_projects__project_id__odoo_preview_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_run_api_v1_odoo_migrations__om_id__get: {
         parameters: {
             query?: never;
@@ -6179,6 +6603,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OdooMigrationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    versions_api_v1_apex_versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    analyze_api_v1_projects__project_id__apex_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApexAnalysisIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_projects__project_id__apex_migrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApexMigrationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_api_v1_apex_migrations__run_id__plan_get: {
+        parameters: {
+            query: {
+                target: string;
+                mode?: "yearly" | "all";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

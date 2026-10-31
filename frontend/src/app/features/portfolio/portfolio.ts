@@ -39,6 +39,7 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       <article><i class="pi pi-sync" aria-hidden="true"></i><b>{{ countType('JAVA_CAMEL') }}</b> Java / Camel</article>
       <article><i class="pi pi-share-alt" aria-hidden="true"></i><b>{{ countType('DATASTAGE_AIRFLOW') }}</b> DataStage → Airflow</article>
       <article><i class="pi pi-database" aria-hidden="true"></i><b>{{ countType('ODOO') }}</b> Odoo 12 → 19</article>
+      <article><i class="pi pi-window-maximize" aria-hidden="true"></i><b>{{ countType('APEX') }}</b> Oracle APEX</article>
     </div>
     <div class="phases" role="group" aria-label="Proyectos por etapa">
       @for (ph of phaseOrder; track ph) {
@@ -184,6 +185,8 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
           @if (form.migrationType === 'JAVA_CAMEL') {
             <label for="rt">Runtime objetivo</label>
             <p-select inputId="rt" name="rt" [options]="runtimes" optionLabel="label" optionValue="value" [(ngModel)]="form.targetRuntime" />
+          } @else if (form.migrationType === 'APEX') {
+            <small class="muted">Destino: la versión que elija en el proyecto. El análisis lee los exports .sql contra las notas de versión de Oracle; no necesita base de datos.</small>
           } @else if (form.migrationType === 'ODOO') {
             <small class="muted">Destino: Odoo 19 Community — la base con OpenUpgrade salto por salto y, si el ZIP los trae, los módulos a la medida portados versión por versión.</small>
           } @else {
@@ -244,12 +247,12 @@ export class Portfolio {
   dialog = false;
   step = signal(1);
   stepTitles = ['Origen', 'Tipo', 'Datos'];
-  typeFilter = signal<'ALL' | 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO'>('ALL');
+  typeFilter = signal<'ALL' | 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO' | 'APEX'>('ALL');
   typeOptions = [{ label: 'Todos', value: 'ALL' }, { label: 'Java / Camel', value: 'JAVA_CAMEL' }, { label: 'DataStage → Airflow', value: 'DATASTAGE_AIRFLOW' },
-                 { label: 'Odoo 12 → 19', value: 'ODOO' }];
-  typeIcon: Record<string, string> = { DATASTAGE_AIRFLOW: 'pi-share-alt', ODOO: 'pi-database', JAVA_CAMEL: 'pi-sync' };
-  home(t?: string | null) { return t === 'DATASTAGE_AIRFLOW' ? 'ds' : t === 'ODOO' ? 'odoo' : 'inventory'; }
-  runtimeLabel: Record<string, string> = { spring: 'Spring Boot', quarkus: 'Quarkus', airflow: 'Apache Airflow', odoo19: 'Odoo 19 Community' };
+                 { label: 'Odoo 12 → 19', value: 'ODOO' }, { label: 'Oracle APEX', value: 'APEX' }];
+  typeIcon: Record<string, string> = { DATASTAGE_AIRFLOW: 'pi-share-alt', ODOO: 'pi-database', APEX: 'pi-window-maximize', JAVA_CAMEL: 'pi-sync' };
+  home(t?: string | null) { return t === 'DATASTAGE_AIRFLOW' ? 'ds' : t === 'ODOO' ? 'odoo' : t === 'APEX' ? 'apex' : 'inventory'; }
+  runtimeLabel: Record<string, string> = { spring: 'Spring Boot', quarkus: 'Quarkus', airflow: 'Apache Airflow', apex: 'Oracle APEX', odoo19: 'Odoo 19 Community' };
   creating = signal(false);
   createError = signal<UiError | null>(null);
   form = this.emptyForm();
@@ -274,6 +277,7 @@ export class Portfolio {
   migrationTypes = [
     { value: 'JAVA_CAMEL', label: 'Java / Camel', hint: 'JBoss o Fuse con Camel 2 → Camel 4 (Spring Boot, Quarkus o Tomcat).' },
     { value: 'DATASTAGE_AIRFLOW', label: 'DataStage → Airflow', hint: 'Exportaciones DSX de IBM DataStage → DAGs de Apache Airflow.' },
+    { value: 'APEX', label: 'Oracle APEX', hint: 'Aplicaciones APEX entre versiones: análisis de los exports .sql y plan de saltos hasta la versión de destino.' },
     { value: 'ODOO', label: 'Odoo 12 → 19', hint: 'Odoo Community 12 → 19: la base con OpenUpgrade (respaldo ZIP de Odoo o pg_dump) y los módulos a la medida.' },
   ];
   short = short;
@@ -310,15 +314,15 @@ export class Portfolio {
   constructor() { this.load(); }
 
   emptyForm() {
-    return { migrationType: 'JAVA_CAMEL' as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO', sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
+    return { migrationType: 'JAVA_CAMEL' as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO' | 'APEX', sourceType: '' as SourceType | '', name: '', targetRuntime: 'spring', description: '',
              localPath: '', repositoryUrl: '', defaultBranch: 'main', credentialRef: '' };
   }
   typeChanged() {
-    this.form.targetRuntime = this.form.migrationType === 'DATASTAGE_AIRFLOW' ? 'airflow' : this.form.migrationType === 'ODOO' ? 'odoo19' : 'spring';
+    this.form.targetRuntime = this.form.migrationType === 'DATASTAGE_AIRFLOW' ? 'airflow' : this.form.migrationType === 'ODOO' ? 'odoo19' : this.form.migrationType === 'APEX' ? 'apex' : 'spring';
   }
   /** Type found in the uploaded ZIP (.dsx = DataStage, pom.xml = Java/Camel); git and local sources choose it by hand. */
   detected = computed(() => this.uploadedType());
-  private uploadedType = computed(() => (this.uploaded()?.structure?.['migrationType'] as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO' | undefined) ?? null);
+  private uploadedType = computed(() => (this.uploaded()?.structure?.['migrationType'] as 'JAVA_CAMEL' | 'DATASTAGE_AIRFLOW' | 'ODOO' | 'APEX' | undefined) ?? null);
   private applyDetected() {
     const t = this.uploadedType();
     if (t && this.form.sourceType === 'zip') { this.form.migrationType = t; this.typeChanged(); }
@@ -330,6 +334,10 @@ export class Portfolio {
   typeLabel(t: string | null | undefined) { return this.migrationTypes.find(x => x.value === t)?.label ?? '—'; }
   detectedText(u: Upload) {
     const st = u.structure as Record<string, any>;
+    if (st['migrationType'] === 'APEX') {
+      const apps = (st['apexApps'] ?? []) as { name: string }[];
+      return `Oracle APEX · ${apps.length} aplicación(es): ${apps.slice(0, 5).map(a => a.name).join(', ')}${apps.length > 5 ? '…' : ''}`;
+    }
     if (st['migrationType'] === 'ODOO') {
       const mods = (st['odooModules'] ?? []) as string[];
       const db = st['odooDump'] ? `respaldo ${st['odooDump']}${st['filestore'] ? ' con filestore' : ' (sin filestore: los adjuntos en disco no viajan)'}` : 'sin respaldo de base';

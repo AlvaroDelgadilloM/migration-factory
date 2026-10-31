@@ -104,7 +104,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^(JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$"
+                  "pattern": "^(JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO|APEX)$"
                 },
                 {
                   "type": "null"
@@ -3139,7 +3139,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "pattern": "^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO)$",
+              "pattern": "^(AUTO|JAVA_CAMEL|DATASTAGE_AIRFLOW|ODOO|APEX)$",
               "default": "JAVA_CAMEL",
               "title": "X-Migration-Type"
             }
@@ -4800,6 +4800,274 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/odoo-flows": {
+      "get": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Get Flows",
+        "description": "The project's business flows (Pruebas), or the template to start from.",
+        "operationId": "get_flows_api_v1_projects__project_id__odoo_flows_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Save Flows",
+        "description": "Saved only if it is valid Python (it is compiled here, never run: it runs in the isolated Odoo 19 runner).",
+        "operationId": "save_flows_api_v1_projects__project_id__odoo_flows_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OdooFlowsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/odoo-flow-runs": {
+      "post": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Run Flows",
+        "description": "The flows against the latest code port, on a new Odoo 19 with demo data.",
+        "operationId": "run_flows_api_v1_projects__project_id__odoo_flow_runs_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/odoo-previews": {
+      "post": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Start Preview",
+        "description": "An Odoo 19 people can use: the migrated database, or the ported code with demo data, in a free preview slot.",
+        "operationId": "start_preview_api_v1_projects__project_id__odoo_previews_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OdooPreviewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/odoo-preview": {
+      "get": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Get Preview",
+        "description": "The project's preview, live (from the slots' control table): where to open it and, for who can execute, the admin login.",
+        "operationId": "get_preview_api_v1_projects__project_id__odoo_preview_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "odoo"
+        ],
+        "summary": "Stop Preview",
+        "description": "Turn the project's preview off: its slot stops Odoo and drops the preview database.",
+        "operationId": "stop_preview_api_v1_projects__project_id__odoo_preview_delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/odoo-migrations/{om_id}": {
       "get": {
         "tags": [
@@ -4896,10 +5164,307 @@
           }
         }
       }
+    },
+    "/api/v1/apex/versions": {
+      "get": {
+        "tags": [
+          "apex"
+        ],
+        "summary": "Versions",
+        "description": "The APEX releases the analysis knows, and the ones a yearly plan goes through.",
+        "operationId": "versions_api_v1_apex_versions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/apex-analyses": {
+      "post": {
+        "tags": [
+          "apex"
+        ],
+        "summary": "Analyze",
+        "operationId": "analyze_api_v1_projects__project_id__apex_analyses_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApexAnalysisIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/apex-migrations": {
+      "get": {
+        "tags": [
+          "apex"
+        ],
+        "summary": "List Runs",
+        "operationId": "list_runs_api_v1_projects__project_id__apex_migrations_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApexMigrationOut"
+                  },
+                  "title": "Response List Runs Api V1 Projects  Project Id  Apex Migrations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/apex-migrations/{run_id}/plan": {
+      "get": {
+        "tags": [
+          "apex"
+        ],
+        "summary": "Plan",
+        "description": "The same analysis towards another version, or with every release as a jump.",
+        "operationId": "plan_api_v1_apex_migrations__run_id__plan_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{2}\\.\\d$",
+              "title": "Target"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "yearly",
+                "all"
+              ],
+              "type": "string",
+              "default": "yearly",
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApexAnalysisIn": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "pattern": "^\\d{2}\\.\\d$",
+            "title": "Target",
+            "default": "26.1"
+          },
+          "planMode": {
+            "type": "string",
+            "enum": [
+              "yearly",
+              "all"
+            ],
+            "title": "Planmode",
+            "default": "yearly"
+          }
+        },
+        "type": "object",
+        "title": "ApexAnalysisIn"
+      },
+      "ApexMigrationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "jobId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobid"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "planMode": {
+            "type": "string",
+            "title": "Planmode"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "apps": {
+            "items": {},
+            "type": "array",
+            "title": "Apps"
+          },
+          "plan": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Plan"
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "jobId",
+          "mode",
+          "state",
+          "target",
+          "planMode",
+          "summary",
+          "apps",
+          "plan",
+          "createdBy",
+          "createdAt"
+        ],
+        "title": "ApexMigrationOut"
+      },
       "ArtifactOut": {
         "properties": {
           "id": {
@@ -7468,6 +8033,20 @@
         ],
         "title": "OdooDecisionIn"
       },
+      "OdooFlowsIn": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 200000,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "OdooFlowsIn"
+      },
       "OdooMigrationOut": {
         "properties": {
           "id": {
@@ -7573,6 +8152,19 @@
           "createdAt"
         ],
         "title": "OdooMigrationOut"
+      },
+      "OdooPreviewIn": {
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^https?://[A-Za-z0-9.\\-]+$",
+            "title": "Baseurl",
+            "default": "http://localhost"
+          }
+        },
+        "type": "object",
+        "title": "OdooPreviewIn"
       },
       "Page_ArtifactOut_": {
         "properties": {
@@ -8275,7 +8867,8 @@
             "enum": [
               "JAVA_CAMEL",
               "DATASTAGE_AIRFLOW",
-              "ODOO"
+              "ODOO",
+              "APEX"
             ],
             "title": "Migrationtype",
             "default": "JAVA_CAMEL"
@@ -8286,7 +8879,8 @@
               "spring",
               "quarkus",
               "airflow",
-              "odoo19"
+              "odoo19",
+              "apex"
             ],
             "title": "Targetruntime"
           },

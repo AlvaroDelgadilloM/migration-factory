@@ -119,6 +119,9 @@ def finish(job_id, state, code=None, message=None):
         elif job.kind == 'datastage_migrate':
             from ..models import DataStageMigration
             s.get(DataStageMigration, job.subject_id).state = state
+        elif job.kind == 'apex_analyze':
+            from ..models import ApexMigration
+            s.get(ApexMigration, job.subject_id).state = state
         elif job.kind in ('odoo_analyze', 'odoo_migrate', 'odoo_code', 'odoo_flows', 'odoo_preview'):
             from ..models import OdooMigration
             s.get(OdooMigration, job.subject_id).state = state
@@ -157,7 +160,7 @@ def run_job(job_id: str):
         outcome = {'scan': do_scan, 'preview': do_execution, 'apply': do_execution, 'pull_request': do_pull_request,
                    'modernize': do_modernize, 'workspace_migrate': do_workspace_migrate,
                    'http_compare': do_http_compare,
-                   'datastage_migrate': do_datastage_migrate, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code, 'odoo_flows': do_odoo_flows, 'odoo_preview': do_odoo_preview}[job.kind](job, ctx)
+                   'datastage_migrate': do_datastage_migrate, 'apex_analyze': do_apex_analyze, 'odoo_analyze': do_odoo_analyze, 'odoo_migrate': do_odoo_migrate, 'odoo_code': do_odoo_code, 'odoo_flows': do_odoo_flows, 'odoo_preview': do_odoo_preview}[job.kind](job, ctx)
         state, code, msg = outcome if outcome else ('succeeded', None, None)
         finish(job_id, state, code, msg)  # never a fixed 'succeeded': derived from the phases (doc 16 §8)
     except Cancelled:
@@ -1482,6 +1485,36 @@ def do_odoo_migrate(job: Job, ctx: Context):
             raise StepFailure(e.code, str(e)) from None
     st = res['reconciliationStatus']
     return None if st == 'EQUAL' else ('partial_success', 'RECONCILIATION_' + st, 'La conciliación antes/después tiene diferencias o no aplica')
+
+
+def do_apex_analyze(job: Job, ctx: Context):
+    """Oracle APEX, phase 1: every application export of the project read and classified (mf.apex.analysis). Nothing runs on a database."""
+    import json as _json
+    from ..apex import analysis
+    from ..models import ApexMigration
+    with session() as db:
+        am = db.get(ApexMigration, job.subject_id)
+        repo = db.get(Repository, db.get(Project, am.project_id).repository_id)
+        am.state = 'running'
+        db.commit()
+        set_phase(ctx, 'source', 5)
+        src, *_ = _materialize(db, repo, None, ctx.workdir / 'source', ctx, require_maven=False)
+        set_phase(ctx, 'analyze', 20)
+        res = analysis.analyze(Path(src), lambda m: ctx.emit('info', 'apex', m))
+        if not res['apps']:
+            raise StepFailure('NO_APEX_EXPORT', 'El ZIP del proyecto no trae exports de aplicaciones Oracle APEX')
+        plan = analysis.plan(res['apps'], am.target, am.plan_mode)
+        set_phase(ctx, 'artifacts', 90)
+        tag = str(am.id)[:8]
+        arts = {'report': _store(db, am.project_id, 'report-md', f'analisis-apex-{tag}.md', analysis.markdown(res, plan), 'text/markdown; charset=utf-8', ctx, commit=False),
+                'data': _store(db, am.project_id, 'report-json', f'analisis-apex-{tag}.json', _json.dumps(res | {'plan': plan}, ensure_ascii=False, indent=2),
+                               'application/json', ctx, commit=False)}
+        am.apps, am.plan = res['apps'], plan
+        am.summary = res['summary'] | {'artifacts': {k: str(v.id) for k, v in arts.items()}}
+        db.commit()
+        blocked = res['summary']['blocked']
+    ctx.emit('info', 'apex', f"{len(res['apps'])} aplicaciones analizadas; {blocked} con cambios que bloquean")
+    return ('partial_success', 'APEX_BLOCKERS', f'{blocked} aplicación(es) con cambios que bloquean') if blocked else None
 
 
 def do_odoo_code(job: Job, ctx: Context):

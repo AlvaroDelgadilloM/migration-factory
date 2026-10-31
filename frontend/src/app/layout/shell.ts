@@ -36,9 +36,14 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
           <div class="project-card">
             <small>Proyecto</small>
             <strong [title]="ctx.project()?.name ?? ''">{{ ctx.project()?.name ?? '…' }}</strong>
-            @if (ctx.project()) { <span class="type-chip" [class.ds]="isDs() || isOdoo()" [class.java]="!isDs() && !isOdoo()">{{ isDs() ? 'DataStage → Airflow' : isOdoo() ? 'Odoo 12 → 19' : 'Java / Camel' }}</span> }
+            @if (ctx.project()) { <span class="type-chip" [class.ds]="isDs() || isOdoo() || isApex()" [class.java]="!isDs() && !isOdoo() && !isApex()">{{ isDs() ? 'DataStage → Airflow' : isOdoo() ? 'Odoo 12 → 19' : isApex() ? 'Oracle APEX' : 'Java / Camel' }}</span> }
           </div>
-          @if (isOdoo()) {
+          @if (isApex()) {
+            @for (s of apexScreens; track s[0]) {
+              <a [routerLink]="['/p', ctx.projectId(), ...s[0].split('/')]" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+                <i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
+            }
+          } @else if (isOdoo()) {
             @for (s of odooScreens; track s[0]) {
               <a [routerLink]="['/p', ctx.projectId(), ...s[0].split('/')]" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
                 <i [class]="'pi ' + s[2]" aria-hidden="true"></i> {{ s[1] }}</a>
@@ -87,7 +92,7 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
         </span>
       </header>
       <main id="main" tabindex="-1">
-        @if (ctx.projectId() && !isDs() && !isOdoo() && onProjectScreen()) { <mf-flow-progress /> }
+        @if (ctx.projectId() && !isDs() && !isOdoo() && !isApex() && onProjectScreen()) { <mf-flow-progress /> }
         <router-outlet />
       </main>
     </div>`,
@@ -100,6 +105,8 @@ export class Shell {
   dsScreens = DS_SCREENS;
   isDs = computed(() => this.ctx.project()?.migrationType === 'DATASTAGE_AIRFLOW');
   isOdoo = computed(() => this.ctx.project()?.migrationType === 'ODOO');
+  isApex = computed(() => this.ctx.project()?.migrationType === 'APEX');
+  apexScreens: [string, string, string][] = [['apex', 'Resumen', 'pi-chart-bar'], ['apex/aplicaciones', 'Aplicaciones', 'pi-th-large']];
   odooScreens: [string, string, string][] = [['odoo', 'Resumen', 'pi-chart-bar'], ['odoo/modulos', 'Módulos', 'pi-th-large'], ['odoo/codigo', 'Código', 'pi-code'], ['odoo/pruebas', 'Pruebas', 'pi-check-square']];
   private url = signal('');
   /** the progress bar belongs to the five Java/Camel step screens, not to settings or tests */

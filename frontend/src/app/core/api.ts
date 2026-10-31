@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
   Artifact, AuditEvent, Catalog, DiffFile, DiffFileDetail, Execution, Finding, FindingDetail, LogEvent, Member, Module,
-  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, TargetVersions, Upload, Validation, OdooRun } from './models';
+  Browse, Capabilities, ChangeEntry, EffortEstimate, ExecutionResult, DataPackage, HttpCase, HttpTestRun, HttpTestSource, ManualResult, Modernization, WorkspaceMigration, DataStageMigration, ModernizationRule, Page, Permissions, Plan, Profile, Project, Route, Scan, TargetVersions, Upload, Validation, OdooRun, ApexPlan, ApexRun, ApexVersions } from './models';
 
 const B = '/api/v1';
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -126,6 +126,12 @@ export class Api {
   uploadDataStageReconciliation(id: string, result: unknown) {
     return this.send<DataStageMigration>('POST', `/datastage-migrations/${id}/reconciliations`, result);
   }
+  apexRuns(projectId: string) { return this.get<ApexRun[]>(`/projects/${projectId}/apex-migrations`); }
+  apexVersions() { return this.get<ApexVersions>('/apex/versions'); }
+  startApexAnalysis(projectId: string, target: string, planMode: 'yearly' | 'all') {
+    return this.send<{ apexMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/apex-analyses`, { target, planMode });
+  }
+  apexPlan(id: string, target: string, mode: 'yearly' | 'all') { return this.get<ApexPlan>(`/apex-migrations/${id}/plan`, { target, mode }); }
   odooRuns(projectId: string) { return this.get<OdooRun[]>(`/projects/${projectId}/odoo-migrations`); }
   startOdoo(projectId: string, mode: 'analyze' | 'migrate' | 'code' | 'flows') {
     const path = { analyze: 'odoo-analyses', migrate: 'odoo-migrations', code: 'odoo-code', flows: 'odoo-flow-runs' }[mode];

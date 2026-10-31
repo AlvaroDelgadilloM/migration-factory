@@ -9,6 +9,8 @@ export const routes: Routes = [
     path: '', component: Shell, canActivate: [authGuard], children: [
       { path: '', pathMatch: 'full', redirectTo: 'portfolio' },
       { path: 'portfolio', title: 'Cartera', loadComponent: () => import('./features/portfolio/portfolio').then(m => m.Portfolio) },
+      { path: 'p/:projectId/apex', title: 'Resumen · Oracle APEX', loadComponent: () => import('./features/apex/overview').then(m => m.ApexOverview) },
+      { path: 'p/:projectId/apex/aplicaciones', title: 'Aplicaciones · Oracle APEX', loadComponent: () => import('./features/apex/apps').then(m => m.ApexApps) },
       { path: 'p/:projectId/odoo', title: 'Resumen · Odoo', loadComponent: () => import('./features/odoo/overview').then(m => m.OdooOverview) },
       { path: 'p/:projectId/odoo/pruebas', title: 'Pruebas · Odoo', loadComponent: () => import('./features/odoo/flows').then(m => m.OdooFlows) },
       { path: 'p/:projectId/odoo/codigo', title: 'Código · Odoo', loadComponent: () => import('./features/odoo/code').then(m => m.OdooCode) },

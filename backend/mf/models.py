@@ -464,6 +464,22 @@ class OdooMigration(Entity, Base):
     created_by: Mapped[str] = mapped_column(String(255))
 
 
+class ApexMigration(Entity, Base):
+    """Oracle APEX between versions (mf.apex). mode analyze: each application export read and classified against the release notes,
+    with the plan of jumps to `target`; nothing runs on a database."""
+    __tablename__ = 'apex_migration'
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('project.id', ondelete='CASCADE'), index=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    mode: Mapped[str] = mapped_column(String(10), default='analyze')
+    state: Mapped[str] = mapped_column(String(20), default='queued')
+    target: Mapped[str] = mapped_column(String(10))
+    plan_mode: Mapped[str] = mapped_column(String(10), default='yearly')        # yearly | all
+    summary: Mapped[dict] = mapped_column(Json, default=dict)
+    apps: Mapped[list] = mapped_column(Json, default=list)
+    plan: Mapped[dict] = mapped_column(Json, default=dict)
+    created_by: Mapped[str] = mapped_column(String(255))
+
+
 class OdooFlowSuite(Entity, Base):
     """Business flows of an Odoo project (Pruebas): checks written in Python against the ported modules, run by `odoo shell` in an
     isolated Odoo 19 (mf.odoo.flows). One per project; its runs are OdooMigration rows with mode 'flows'."""
