@@ -6,10 +6,11 @@ import { Api } from '../../core/api';
 import { ActionButton, JobLog, PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { OdooStore } from './store';
 
-const STATUS: Record<string, string> = { AUTO: 'Automático', MANUAL: 'Manual', REVIEW: 'Revisar' };
+const STATUS: Record<string, string> = { AUTO: 'Automático', MANUAL: 'Manual', REVIEW: 'Revisar', VERIFIED: 'Verificado en 19', REVIEWED: 'Revisado' };
 const INSTALL: Record<string, string> = { succeeded: 'Instala en 19', failed: 'No instala en 19', skipped: 'Sin probar', cancelled: 'Cancelado', timed_out: 'Sin ejecutor' };
 
-interface Finding { pattern: string; file: string; line: number; text: string; since: string; target: string; note: string; status: string }
+interface Finding { pattern: string; file: string; line: number; text: string; since: string; target: string; note: string; status: string;
+  key?: string; review?: { comment: string; by: string; at: string } }
 interface CodeModule { name: string; version: string; depends: string[]; findings: Finding[]; counts: Record<string, number>;
   install?: { state: string; errors: number; logTail: string; tests?: { total: number; failed: number; errors: number; failures?: string[]; smoke?: string[] } } }
 
@@ -25,7 +26,9 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
     h2 { font-size: 17px; margin: 0 0 6px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
     .t-AUTO, .t-succeeded { background: #e7f6ec; color: #067647; } .t-MANUAL, .t-failed { background: #fdecea; color: #b42318; }
-    .t-REVIEW, .t-skipped { background: #fff4e5; color: #b54708; }
+    .t-REVIEW, .t-skipped { background: #fff4e5; color: #b54708; } .t-VERIFIED, .t-REVIEWED { background: #eef4ff; color: #3538cd; }
+    .rev { display: flex; gap: 6px; margin-top: 6px; } .rev input { flex: 1; min-width: 10rem; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--mf-line); border-radius: 6px; }
+    .linkish { background: none; border: 0; color: var(--mf-primary, #3538cd); cursor: pointer; font-size: 12.5px; padding: 0; }
     .c-KEEP { background: #e7f6ec; color: #067647; } .c-MIGRATE, .c-MOVE_TO_ORM { background: #eef4ff; color: #3538cd; }
     .c-REWRITE, .c-MANUAL_REVIEW { background: #fff4e5; color: #b54708; } .c-DEPRECATE { background: #f2f4f7; color: #475467; }
     .tag + .tag { margin-left: 6px; }
@@ -53,9 +56,13 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
             <article><b>{{ c.summary['counts']?.AUTO }}</b>cambios automáticos</article>
             <article><b>{{ c.summary['counts']?.MANUAL }}</b>manuales pendientes</article>
             <article><b>{{ c.summary['counts']?.REVIEW }}</b>a revisar</article>
+            @if (c.summary['counts']?.VERIFIED) { <article><b>{{ c.summary['counts']?.VERIFIED }}</b>verificados en Odoo 19</article> }
+            @if (c.summary['counts']?.REVIEWED) { <article><b>{{ c.summary['counts']?.REVIEWED }}</b>revisados por una persona</article> }
           </div>
           <p class="small muted">Automático: la herramienta de OCA lo cambió y ya no aparece en el código portado. Manual: sigue en el código
-            portado. Revisar: necesita una persona aunque compile (SQL directo, tablas fuera del ORM, semántica). «Instala en 19»: el módulo
+            portado. Revisar: necesita una persona aunque compile (SQL directo, tablas fuera del ORM, semántica). Verificado en 19: la
+            plataforma lo comprobó en el Odoo 19 de prueba (el SQL directo se analiza con EXPLAIN sin ejecutarlo; las vistas SQL y tablas
+            externas, con la prueba funcional). Revisado: una persona lo marcó, con su comentario. «Instala en 19»: el módulo
             portado se instaló en un Odoo 19 nuevo con sus dependencias; no reemplaza las pruebas funcionales.</p>
           @if (c.summary['base']?.state && c.summary['base'].state !== 'succeeded') {
             <p-message severity="error">No se pudo crear el Odoo 19 base ({{ c.summary['base'].modules?.join(', ') }}); no se probó ningún módulo.</p-message>
@@ -82,7 +89,16 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
               @for (f of shown(m); track f.file + f.line + f.pattern) {
                 <tr><td><span [class]="'tag t-' + f.status">{{ status(f.status) }}</span></td>
                   <td><code>{{ f.file }}:{{ f.line }}</code></td>
-                  <td><code>{{ f.text }}</code>@if (f.note) { <div class="small muted">{{ f.note }}</div> }</td>
+                  <td><code>{{ f.text }}</code>@if (f.note) { <div class="small muted">{{ f.note }}</div> }
+                    @if (f.review; as rv) { <div class="small">Revisado por {{ rv.by }} ({{ rv.at }}): {{ rv.comment }}
+                      <button type="button" class="linkish" (click)="os.review(f.key!, false)">Deshacer</button></div> }
+                    @else if (f.key && (f.status === 'MANUAL' || f.status === 'REVIEW')) {
+                      @if (reviewing() === f.key) {
+                        <div class="rev"><input #cm aria-label="Qué revisó" placeholder="Qué revisó (queda registrado)" maxlength="1000" />
+                          <mf-action label="Marcar revisado" icon="pi pi-check" (run)="mark(f.key!, cm.value)" />
+                          <button type="button" class="linkish" (click)="reviewing.set(null)">Cancelar</button></div>
+                      } @else { <button type="button" class="linkish" (click)="reviewing.set(f.key!)">Marcar revisado</button> }
+                    }</td>
                   <td class="small">{{ f.target }}@if (f.since !== '—') { <span class="muted"> (desde {{ f.since }})</span> }</td></tr>
               } @empty { <tr><td colspan="4" class="muted">Nada que mostrar con este filtro.</td></tr> }
             </table></div>
@@ -120,7 +136,9 @@ export class OdooCode {
   filters = [{ label: 'Manuales y a revisar', value: 'PENDING' }, { label: 'Todos', value: 'ALL' }];
   running = computed(() => { const r = this.os.running(); return r?.mode === 'code' ? r : null; });
   modules = computed(() => (this.os.code()?.modules ?? []) as unknown as CodeModule[]);
-  shown(m: CodeModule) { return this.filter() === 'ALL' ? m.findings : m.findings.filter(f => f.status !== 'AUTO'); }
+  shown(m: CodeModule) { return this.filter() === 'ALL' ? m.findings : m.findings.filter(f => f.status !== 'AUTO' && f.status !== 'VERIFIED'); }
+  reviewing = signal<string | null>(null);
+  async mark(key: string, comment: string) { if (await this.os.review(key, true, comment)) this.reviewing.set(null); }
   sqlCats = ['KEEP', 'MIGRATE', 'REWRITE', 'MOVE_TO_ORM', 'DEPRECATE', 'MANUAL_REVIEW'];
   usedBy(o: { uses?: { module: string; how: string }[] }) {
     const how: Record<string, string> = { model: 'modelo', write: 'escribe', read: 'lee', call: 'llama', refresh: 'refresca' };

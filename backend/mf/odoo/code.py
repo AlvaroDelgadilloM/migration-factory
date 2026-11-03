@@ -6,6 +6,7 @@ is AUTO (the tool removed it), MANUAL (still there) or REVIEW (always needs a pe
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import shutil
 import subprocess
@@ -96,7 +97,14 @@ def inventory(src: Path, ported: Path | None) -> list[dict]:
         for f in scan(m['path']):
             kinds, rx, since, target, note, review = PATTERNS[f['pattern']]
             status = 'REVIEW' if review else ('MANUAL' if left is None or (f['pattern'], f['file']) in left else 'AUTO')
-            findings.append(f | {'since': since, 'target': target, 'note': note, 'status': status})
+            if f['pattern'] == 'api_one' and name in after:   # converted by api_one_to_loop: its marker is in the ported method
+                src_lines = (m['path'] / f['file']).read_text(encoding='utf-8', errors='replace').splitlines()
+                meth = re.match(r'\s*def (\w+)', src_lines[f['line']] if f['line'] < len(src_lines) else '')
+                ported = after[name]['path'] / f['file']
+                if meth and ported.exists() and f'MF_API_ONE: {meth[1]}' in ported.read_text(encoding='utf-8', errors='replace'):
+                    status, note = 'AUTO', 'Convertido a «for record in self» (el método no devolvía valor ni llamaba a super).'
+            key = hashlib.sha1(f"{name}|{f['file']}|{f['pattern']}|{f['text']}".encode()).hexdigest()[:16]   # stable across ports
+            findings.append(f | {'since': since, 'target': target, 'note': note, 'status': status, 'key': key})
         man = m['manifest']
         rows.append({'name': name, 'version': man.get('version', ''), 'depends': list(man.get('depends', [])),
                      'findings': findings, 'counts': {s: sum(1 for f in findings if f['status'] == s) for s in ('AUTO', 'MANUAL', 'REVIEW')}})
@@ -258,6 +266,44 @@ def flush_before_sql(d: Path) -> list[str]:
     return notes
 
 
+def api_one_to_loop(d: Path) -> list[str]:
+    """@api.one ran the method once per record (13.0 removed it): a method without a returned value and without super() becomes a
+    loop over self with its body on `record`. The others stay for a person (what they return, or how super() is called, changes).
+    Runs before the OCA tool's step to 13.0, which drops the decorator and with it the trace of which methods had it."""
+    notes = []
+    for f in sorted(d.rglob('*.py')):
+        lines = f.read_text(encoding='utf-8', errors='replace').splitlines(keepends=True)
+        out, i, changed = [], 0, False
+        while i < len(lines):
+            m = re.match(r'^(\s*)@api\.one\s*$', lines[i])
+            d_ = re.match(r'^(\s*)def (\w+)\(self[^)]*\):\s*$', lines[i + 1]) if m and i + 1 < len(lines) else None
+            if not (m and d_ and d_[1] == m[1]):
+                out.append(lines[i])
+                i += 1
+                continue
+            indent, name = m[1], d_[2]
+            j = i + 2
+            while j < len(lines) and (not lines[j].strip() or len(lines[j]) - len(lines[j].lstrip()) > len(indent)):
+                j += 1
+            body = lines[i + 2:j]
+            text = ''.join(body)
+            if re.search(r'\breturn\s+\S', text) or 'super(' in text:
+                out.extend(lines[i:j])   # left as it was: a person decides
+                notes.append(f'[revisar] {f.relative_to(d)} · {name}(): @api.one con return o super(), no se convierte solo')
+                i = j
+                continue
+            inner = indent + '    '
+            out.append(lines[i + 1])
+            out.append(f'{inner}for record in self:  # MF_API_ONE: {name} — Migration Factory: era @api.one (una vez por registro)\n')
+            for b in body:
+                out.append(('    ' + re.sub(r'\bself\b', 'record', b)) if b.strip() else b)
+            notes.append(f'regla de la plataforma: {f.relative_to(d)} · {name}(): @api.one → for record in self')
+            changed, i = True, j
+        if changed:
+            f.write_text(''.join(out), encoding='utf-8')
+    return notes
+
+
 def fix_external_tables(d: Path, ext: list[dict]) -> list[str]:
     """A model on an external table (_auto = False, _table = 'x') whose table the project's SQL creates in another schema: Odoo looks
     for it in public and fails ("has no table"). The model gets an init() that exposes it there as a view (simple views are
@@ -311,6 +357,8 @@ def port_steps(src: Path, out: Path, run, ctx, log, start='12.0', target='19.0',
     for v in [v for v in VERSIONS if float(start) < float(v) <= float(target)]:
         d = out / v
         shutil.copytree(prev, d)
+        if v == '13.0':
+            notes += [f'[13.0] {n}' for n in api_one_to_loop(d)]
         notes += _tool(d, prev_v, v, run, ctx, log)
         notes += apply_rules(d, v)
         notes += data_scripts(prev, d, v)
@@ -380,6 +428,30 @@ def test_results(log: str) -> dict | None:
     return {'total': total, 'failed': failed, 'errors': errors, 'failures': fails, 'smoke': smoke}
 
 
+def sql_queries(module_dir: Path) -> list[dict]:
+    """The literal SQL of every cr.execute(...) in the module (file relative to the module, line of the call), read with ast: never
+    run here. Built strings (f-strings, concatenations) are not reconstructed."""
+    out = []
+    for f in sorted(module_dir.rglob('*.py')):
+        try:
+            tree = ast.parse(f.read_text(encoding='utf-8', errors='replace'))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'execute' and node.args
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                out.append({'file': str(f.relative_to(module_dir)), 'line': node.lineno, 'sql': node.args[0].value})
+    return out
+
+
+def explainable(sql: str) -> str | None:
+    """The query to EXPLAIN (parameters as NULL), or None for statements EXPLAIN does not take (DDL, REFRESH, …)."""
+    s = sql.strip().rstrip(';')
+    if not re.match(r'(?is)^(with\b.*?\b)?(select|insert|update|delete)\b', s):
+        return None
+    return re.sub(r'%\(\w+\)s|%s', 'NULL', s)
+
+
 def diff(src: Path, ported: Path) -> str:
     """Unified diff of the port, original → ported, for review."""
     import difflib
@@ -436,6 +508,16 @@ if __name__ == '__main__':  # self-check on a tiny module
         assert install_order([{'name': 'b', 'depends': ['a']}, {'name': 'a', 'depends': ['sale']}]) == ['a', 'b']
         assert custom_deps([{'name': 'b', 'depends': ['a']}, {'name': 'a', 'depends': []}], 'b') == ['b', 'a']
         assert safe_tree(src.parent) == []
+        (src / 'q.py').write_text("def f(self):\n    self.env.cr.execute('SELECT id FROM t WHERE a > %s', (1,))\n    self.env.cr.execute('REFRESH MATERIALIZED VIEW v')\n")
+        qs = sql_queries(src)
+        assert [(q['file'], q['line']) for q in qs] == [('m.py', 3), ('q.py', 2), ('q.py', 3)], qs
+        assert explainable(qs[1]['sql']) == 'SELECT id FROM t WHERE a > NULL' and explainable(qs[2]['sql']) is None
+        one = Path(t) / 'one' / 'm'
+        one.mkdir(parents=True)
+        (one / 'p.py').write_text("class P:\n    @api.one\n    def a(self):\n        self.x = 1\n\n    @api.one\n    def b(self):\n        return self.x\n")
+        api_one_to_loop(one.parent)
+        conv = (one / 'p.py').read_text()
+        assert 'for record in self:  # MF_API_ONE: a' in conv and '            record.x = 1' in conv and conv.count('    @api.one\n') == 1, conv
         flush_before_sql(ported.parent)
         body = (ported / 'm.py').read_text()
         assert body.count('flush_all()') == 1 and body.index('flush_all()') < body.index('execute('), body

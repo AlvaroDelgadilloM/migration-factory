@@ -247,6 +247,50 @@ def external_sql(src: Path, sql_files, database: str | None, log) -> list[dict]:
     return objs
 
 
+def verify_findings(row: dict, source: Path | None) -> None:
+    """What the Odoo 19 check proved turns «a revisar» into VERIFIED (or MANUAL, with the error): the module's literal SQL planned
+    on Odoo 19, and its SQL views / external tables read by the functional test. Counts recomputed. A query is matched by its file
+    and text (the port can move lines); one the port rewrote stays «a revisar»."""
+    from . import code as oc
+    inst = row.get('install') or {}
+    src_sql = {(q['file'], q['line']): q['sql'] for q in oc.sql_queries(source)} if source else {}
+    tests = inst.get('tests') or {}
+    works = inst.get('state') == 'succeeded' and tests.get('total') and not tests.get('failed') and not tests.get('errors')
+    for f in row['findings']:
+        if f['status'] != 'REVIEW':
+            continue
+        if f['pattern'] == 'raw_sql':
+            chk = (inst.get('sql') or {}).get((f['file'], src_sql.get((f['file'], f['line']))))
+            if chk and chk['state'] == 'ok':
+                f['status'], f['note'] = 'VERIFIED', 'SQL comprobado en Odoo 19 (EXPLAIN, sin ejecutarlo): ' + chk['detail']
+            elif chk and chk['state'] == 'error':
+                f['status'], f['note'] = 'MANUAL', 'El SQL no es válido en Odoo 19: ' + chk['detail']
+        elif f['pattern'] in ('sql_view', 'external_table') and works:
+            f['status'], f['note'] = 'VERIFIED', 'Verificado en Odoo 19: el módulo instala y la prueba funcional lee el modelo'
+    row['counts'] = {s: sum(1 for f in row['findings'] if f['status'] == s) for s in STATUSES}
+
+
+STATUSES = ('AUTO', 'MANUAL', 'REVIEW', 'VERIFIED', 'REVIEWED')
+
+
+def apply_reviews(rows: list[dict], decisions: dict) -> None:
+    """A person's «revisado» (decisions['review:<key>'], with comment) on a pending finding: status REVIEWED (the previous one kept
+    in 'was'); undone, it goes back. Counts recomputed."""
+    for r in rows:
+        for f in r['findings']:
+            d = decisions.get(f"review:{f.get('key')}")
+            if d and f['status'] in ('MANUAL', 'REVIEW'):
+                f['was'], f['status'], f['review'] = f['status'], 'REVIEWED', d
+            elif not d and f['status'] == 'REVIEWED':
+                f['status'] = f.pop('was')
+                f.pop('review', None)
+        r['counts'] = {s: sum(1 for f in r['findings'] if f['status'] == s) for s in STATUSES}
+
+
+def totals(rows: list[dict]) -> dict:
+    return {k: sum(r['counts'].get(k, 0) for r in rows) for k in STATUSES}
+
+
 def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_files=()) -> dict:
     """Custom module code: inventory, automatic port to 19 (OCA odoo-module-migrator) and an install check of every ported module
     on a new Odoo 19 database (odoo-hop-19 runner, the code on the shared read-only volume). Nothing of the uploaded code runs in
@@ -284,14 +328,25 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
         r = chain.wait(chain.enqueue('19.0', db, [str(check)], install=[name], tests=[name]), timeout, cancelled)
         if r['state'] == 'succeeded' and missing_modules(db, [name]):   # not found: Odoo only warns
             r = r | {'state': 'failed', 'logTail': f'{name} no quedó instalado (Odoo no lo encontró o no es instalable)\n' + r['logTail']}
+        sql_checks = {}
+        if r['state'] == 'succeeded':   # its literal SQL planned (never run) on that Odoo 19, with the module and the external SQL
+            for q in oc.sql_queries(Path(addons) / name):
+                e = oc.explainable(q['sql'])
+                sql_checks[(q['file'], q['sql'])] = ({'state': 'skipped', 'detail': 'no es consulta (DDL/REFRESH): la valida la instalación'}
+                                                      if e is None else
+                                                      {'state': 'error', 'detail': err} if (err := chain.explain(db, e)) else
+                                                      {'state': 'ok', 'detail': 'tablas y columnas existen en Odoo 19'})
         chain.drop_db(db)
         tests = oc.test_results(r['logTail'])
-        installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:], 'tests': tests}
+        installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:], 'tests': tests, 'sql': sql_checks}
         log(f"instalar {name} en Odoo 19: {r['state']}" + (f" · pruebas: {tests['total'] - tests['failed'] - tests['errors']}/{tests['total']} bien"
                                                            if tests else ''))
     chain.drop_db(base)
+    sources = oc.modules(src)
     for r in rows:
         r['install'] = installs.get(r['name'])
+        verify_findings(r, sources[r['name']]['path'] if r['name'] in sources else None)
+        r['install'] = r['install'] and {k: v for k, v in r['install'].items() if k != 'sql'}
     return {'rows': rows, 'portWarnings': warnings, 'base': installs['base'], 'ported': ported, 'diff': oc.diff(src, ported),
             'externalSql': ext, 'addons19': addons,
             'report': json.dumps({'modules': rows, 'portWarnings': warnings, 'externalSql': ext}, ensure_ascii=False, indent=2)}

@@ -155,6 +155,9 @@ export class Api {
   decideOdoo(id: string, module: string, action: 'uninstall' | 'apply' | 'ignore' | 'pending', reason: string) {
     return this.send<OdooRun>('PATCH', `/odoo-migrations/${id}/decisions`, { module, action, reason });
   }
+  reviewOdoo(id: string, key: string, reviewed: boolean, comment: string) {
+    return this.send<OdooRun>('PATCH', `/odoo-migrations/${id}/reviews`, { key, reviewed, comment });
+  }
   dataStageMigrations(projectId: string) { return this.get<DataStageMigration[]>(`/projects/${projectId}/datastage-migrations`); }
   startDataStageMigration(projectId: string, body: unknown) {
     return this.send<{ dataStageMigrationId: string; jobId: string }>('POST', `/projects/${projectId}/datastage-migrations`, body, { 'Idempotency-Key': this.key() });

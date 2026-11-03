@@ -1549,6 +1549,11 @@ def do_odoo_code(job: Job, ctx: Context):
                 'diff': _store(db, om.project_id, 'patch', f'port-odoo19-{tag}.diff', res['diff'], 'text/x-diff; charset=utf-8', ctx, commit=False),
                 'report': _store(db, om.project_id, 'report-json', f'inventario-odoo19-{tag}.json', res['report'], 'application/json', ctx, commit=False)}
         rows = res['rows']
+        prev = db.scalars(select(OdooMigration).where(OdooMigration.project_id == om.project_id, OdooMigration.mode == 'code',
+                                                      OdooMigration.id != om.id).order_by(OdooMigration.created_at.desc())).first()
+        keys = {f"review:{f['key']}" for r in rows for f in r['findings'] if f['status'] in ('MANUAL', 'REVIEW')}
+        om.decisions = {k: v for k, v in ((prev and prev.decisions) or {}).items() if k in keys}   # still pending: the review carries over
+        oj.apply_reviews(rows, om.decisions)
         failed = [r['name'] for r in rows if (r.get('install') or {}).get('state') != 'succeeded']
         tested = [(r.get('install') or {}).get('tests') for r in rows]
         broken = [r['name'] for r, t in zip(rows, tested) if t and (t['failed'] or t['errors'])]
@@ -1557,7 +1562,7 @@ def do_odoo_code(job: Job, ctx: Context):
         om.summary = {'from': '12.0', 'to': '19.0', 'portWarnings': res['portWarnings'], 'base': res['base'], 'externalSql': ext,
                       'externalSqlCounts': {c: sum(1 for o in ext if o['category'] == c) for c in
                                             ('KEEP', 'MIGRATE', 'REWRITE', 'MOVE_TO_ORM', 'DEPRECATE', 'MANUAL_REVIEW')},
-                      'counts': {k: sum(r['counts'][k] for r in rows) for k in ('AUTO', 'MANUAL', 'REVIEW')} | {'modules': len(rows),
+                      'counts': oj.totals(rows) | {'modules': len(rows),
                                  'installed': len(rows) - len(failed), 'testsPassed': sum(1 for t in tested if t and not t['failed'] and not t['errors']),
                                  'tested': sum(1 for t in tested if t)},
                       'artifacts': {k: str(v.id) for k, v in arts.items()}}

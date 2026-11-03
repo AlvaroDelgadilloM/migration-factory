@@ -119,6 +119,16 @@ def previews() -> list[dict]:
              'startedAt': b.isoformat() if b else None} for s, st, p, o, a, b in rows]
 
 
+def explain(database: str, sql: str) -> str | None:
+    """None if PostgreSQL can plan the query on that database (tables and columns exist), else its error. Never executes it."""
+    try:
+        with connect(database) as c:
+            c.execute('EXPLAIN ' + sql)
+        return None
+    except Exception as e:  # noqa: BLE001 — the error is the answer
+        return str(e).strip().splitlines()[0][:300]
+
+
 def server_version() -> str:
     with connect() as c:
         return c.execute('show server_version').fetchone()[0].split()[0]

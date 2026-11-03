@@ -125,8 +125,9 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
         ported = ctx.workdir / 'ported'
         (ported / 'my_sale').mkdir(parents=True)
         (ported / 'my_sale' / '__manifest__.py').write_text("{'version': '19.0.1.0.0'}")
-        rows = [{'name': 'my_sale', 'version': '12.0.1.0.0', 'depends': ['sale'], 'counts': {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0},
-                 'findings': [], 'install': {'state': 'failed', 'errors': 1, 'logTail': 'ERROR x'}}]
+        rows = [{'name': 'my_sale', 'version': '12.0.1.0.0', 'depends': ['sale'], 'counts': {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 1},
+                 'findings': [{'pattern': 'raw_sql', 'file': 'models/sale.py', 'line': 3, 'text': "cr.execute('x')", 'status': 'REVIEW',
+                               'key': '0123456789abcdef'}], 'install': {'state': 'failed', 'errors': 1, 'logTail': 'ERROR x'}}]
         return {'rows': rows, 'portWarnings': [], 'base': {'state': 'succeeded'}, 'ported': ported, 'diff': '--- a\n+++ b\n', 'report': '{}'}
     monkeypatch.setattr(oj, 'port_code', port_code)
     r = client.post(f'{API}/projects/{pid}/odoo-code', headers=token('ana.arquitecta')).json()
@@ -134,7 +135,22 @@ def test_odoo_module_code_inventory_port_and_install_check(client, token, monkey
     c = client.get(f"{API}/odoo-migrations/{r['odooMigrationId']}", headers=token('ana.arquitecta')).json()
     assert seen['src'] == ['addons/my_sale/__manifest__.py', 'addons/my_sale/models/sale.py'], seen
     assert seen['sql'] == ['backups/custom.sql']
-    assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {'AUTO': 1, 'MANUAL': 0, 'REVIEW': 0, 'modules': 1, 'installed': 0, 'testsPassed': 0, 'tested': 0}
+    assert c['mode'] == 'code' and c['state'] == 'partial_success' and c['summary']['counts'] == {
+        'AUTO': 0, 'MANUAL': 0, 'REVIEW': 1, 'VERIFIED': 0, 'REVIEWED': 0, 'modules': 1, 'installed': 0, 'testsPassed': 0, 'tested': 0}
+    # a person marks the pending finding as reviewed (audited, with what was checked); a new port keeps it
+    rv = f"{API}/odoo-migrations/{c['id']}/reviews"
+    assert client.patch(rv, headers=token('ana.arquitecta'), json={'key': '0123456789abcdef', 'comment': 'corto'}).status_code == 422
+    assert client.patch(rv, headers=token('ana.arquitecta'), json={'key': 'ffffffffffffffff', 'comment': 'no existe ese'}).status_code == 404
+    m = client.patch(rv, headers=token('ana.arquitecta'), json={'key': '0123456789abcdef', 'comment': 'la tabla existe en 19, probado'}).json()
+    assert m['modules'][0]['findings'][0]['status'] == 'REVIEWED' and m['modules'][0]['findings'][0]['review']['by'] == 'ana.arquitecta'
+    assert m['summary']['counts']['REVIEWED'] == 1 and m['summary']['counts']['REVIEW'] == 0
+    r2 = client.post(f'{API}/projects/{pid}/odoo-code', headers=token('ana.arquitecta')).json()
+    run_job(r2['jobId'])
+    c2 = client.get(f"{API}/odoo-migrations/{r2['odooMigrationId']}", headers=token('ana.arquitecta')).json()
+    assert c2['modules'][0]['findings'][0]['status'] == 'REVIEWED' and c2['summary']['counts']['REVIEWED'] == 1
+    u = client.patch(f"{API}/odoo-migrations/{c2['id']}/reviews", headers=token('ana.arquitecta'), json={'key': '0123456789abcdef', 'reviewed': False}).json()
+    assert u['modules'][0]['findings'][0]['status'] == 'REVIEW' and u['summary']['counts']['REVIEWED'] == 0
+    c = c2
     dl = client.get(f"{API}/artifacts/{c['summary']['artifacts']['ported']}/download", headers=token('ana.arquitecta'))
     assert dl.status_code == 200 and dl.content[:2] == b'PK'
 
@@ -211,3 +227,18 @@ def test_odoo_backup_zip_has_dump_manifest_and_the_uploaded_filestore(monkeypatc
     with zipfile.ZipFile(out) as z:
         assert sorted(z.namelist()) == ['dump.sql', 'filestore/ab/abcdef', 'manifest.json']
         assert json.loads(z.read('manifest.json'))['version'] == '19.0' and z.read('filestore/ab/abcdef') == b'x'
+
+
+def test_odoo_findings_verified_on_19(tmp_path):
+    """Literal SQL planned on Odoo 19 by text (the port moves lines), SQL views read by the functional test."""
+    from mf.odoo import jobs as oj
+    (tmp_path / 'models').mkdir()
+    (tmp_path / 'models' / 'a.py').write_text("def f(self):\n    self.env.cr.execute('SELECT 1 FROM t')\n    self.env.cr.execute('SELECT x FROM gone')\n")
+    find = lambda line, pattern='raw_sql': {'pattern': pattern, 'file': 'models/a.py', 'line': line, 'status': 'REVIEW', 'note': ''}  # noqa: E731
+    row = {'findings': [find(2), find(3), find(1, 'sql_view')],
+           'install': {'state': 'succeeded', 'tests': {'total': 2, 'failed': 0, 'errors': 0},
+                       'sql': {('models/a.py', 'SELECT 1 FROM t'): {'state': 'ok', 'detail': 'ok'},
+                               ('models/a.py', 'SELECT x FROM gone'): {'state': 'error', 'detail': 'relation "gone" does not exist'}}}}
+    oj.verify_findings(row, tmp_path)
+    assert [f['status'] for f in row['findings']] == ['VERIFIED', 'MANUAL', 'VERIFIED'] and 'gone' in row['findings'][1]['note']
+    assert row['counts']['VERIFIED'] == 2 and row['counts']['MANUAL'] == 1

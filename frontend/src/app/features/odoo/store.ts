@@ -69,4 +69,16 @@ export class OdooStore {
       return true;
     } catch (e) { this.error.set(UiError.from(e)); return false; }
   }
+
+  /** A pending finding of the code port marked as reviewed by a person (with what was checked), or undone. */
+  async review(key: string, reviewed: boolean, comment = '') {
+    const c = this.code();
+    if (!c) return false;
+    this.error.set(null);
+    try {
+      const updated = await this.api.reviewOdoo(c.id, key, reviewed, comment);
+      this.list.data.update(l => l ? l.map(r => r.id === updated.id ? updated : r) : l);
+      return true;
+    } catch (e) { this.error.set(UiError.from(e)); return false; }
+  }
 }

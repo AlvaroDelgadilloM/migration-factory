@@ -255,6 +255,45 @@ def get_run(om_id: uuid.UUID, db: Session = Depends(get_db), me: Principal = Dep
     return _out(db, om)
 
 
+class OdooReviewIn(Dto):
+    key: Annotated[str, Field(pattern=r'^[0-9a-f]{16}$')]   # the finding's key (mf.odoo.code.inventory)
+    reviewed: bool = True
+    comment: str = Field(default='', max_length=1000)
+
+
+@router.patch('/odoo-migrations/{om_id}/reviews', response_model=OdooMigrationOut)
+def review(om_id: uuid.UUID, body: OdooReviewIn, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """A person marks a pending finding of a code port as reviewed, with a comment (role «plan»), or undoes it. Audited; the next
+    port of the same code keeps it while the finding is still there."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from ..odoo import jobs as oj
+    om = db.get(OdooMigration, om_id)
+    if om is None or om.mode != 'code':
+        raise ApiError(404, 'NOT_FOUND', 'Port de código no encontrado')
+    authorize(db, me, om.project_id, 'plan')
+    f = next((f for r in om.modules or [] for f in r['findings'] if f.get('key') == body.key), None)
+    if f is None or f['status'] not in ('MANUAL', 'REVIEW', 'REVIEWED'):
+        raise ApiError(404, 'NOT_FOUND', 'Ese hallazgo no está pendiente en este port')
+    if body.reviewed and len(body.comment.strip()) < 10:
+        raise ApiError(422, 'VALIDATION_ERROR', 'Indique qué revisó (al menos 10 caracteres): queda registrado')
+    decisions = dict(om.decisions or {})
+    if body.reviewed:
+        decisions[f'review:{body.key}'] = {'comment': body.comment.strip(), 'by': me.subject, 'at': now().isoformat(timespec='seconds')}
+    else:
+        decisions.pop(f'review:{body.key}', None)
+    rows = [dict(r, findings=[dict(x) for x in r['findings']]) for r in om.modules]
+    oj.apply_reviews(rows, decisions)
+    om.decisions, om.modules = decisions, rows
+    om.summary = dict(om.summary or {}, counts=dict((om.summary or {}).get('counts') or {}, **oj.totals(rows)))
+    flag_modified(om, 'modules')
+    audit.record(db, actor=me.subject, action='odoo.review.' + ('mark' if body.reviewed else 'undo'), entity_type='odoo_migration',
+                 entity_id=om.id, project_id=om.project_id,
+                 details={'module': next(r['name'] for r in rows if any(x.get('key') == body.key for x in r['findings'])),
+                          'file': f['file'], 'line': f['line'], 'pattern': f['pattern'], 'comment': body.comment.strip()}, request=request)
+    db.commit()
+    return _out(db, om)
+
+
 @router.patch('/odoo-migrations/{om_id}/decisions', response_model=OdooMigrationOut)
 def decide(om_id: uuid.UUID, body: OdooDecisionIn, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
     """The architect's decision on a blocking module (role «plan»): uninstall it before migrating, with the reason."""
