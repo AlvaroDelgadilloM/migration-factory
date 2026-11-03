@@ -706,6 +706,12 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   Odoo y borran la base. Verificado en `odoo-e2e.yml` (escenario preview: login real y base borrada al apagar) y en el VPS
   («Descargas 1»: puerto 3242 accesible desde fuera, login correcto). Corregido en el camino: la opción de correo de Odoo 19 es
   `--smtp`; `with connection` de psycopg2 2.9 abre transacción aunque haya autocommit (el DROP DATABASE fallaba en silencio).
+  Apagado automático verificado en `odoo-e2e.yml` (90 s de inactividad: se apaga solo y borra la base). El espacio «calienta»
+  Odoo (login y sus estilos) antes de dar el enlace, y en cada arranque borra los estilos generados que apuntan a archivos
+  inexistentes (tras un reinicio Odoo respondía 500 y el login salía sin campos, solo con el logo); la carpeta de datos se
+  conserva entre reinicios y se comparte con odoo-hop-19. Reglas de port nuevas por el laboratorio «native + custom» del
+  usuario (8 módulos, 8/8 instalan y pasan pruebas en el VPS): `res_model` de acciones, vista de CRM `crm_lead_view_form` (13.0),
+  `planned_revenue` → `expected_revenue` (14.0), `user_id` → `user_ids` en tareas (16.0).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
   8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
