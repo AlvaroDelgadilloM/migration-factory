@@ -200,6 +200,9 @@ services:
     <<: *odoo-hop
     build: {context: ., dockerfile: docker/odoo-hop.Dockerfile, args: {ODOO: "19.0", OU_COMMIT: "bf12c3cee6097145e53efa589b0d99a7e64d6a87"}}
     image: migration-factory/odoo-hop:19.0-bf12c3ce-5dfe3b48
+    # its data directory is shared with the preview slots: files made while preparing a preview (assets, images) are there for it
+    tmpfs: ["/hop-logs:mode=1777"]
+    volumes: [odoo-addons:/odoo-addons:ro, odoo19-data:/var/lib/odoo]
 
   # Odoo 19 previews (Pruebas → «Levantar Odoo 19»): the migrated project served for people to use in a browser, one per slot.
   # Same image as hop 19, another entrypoint (docker/odoo-hop/preview.py). Published like the UI; admin password per preview.
@@ -212,6 +215,8 @@ services:
       MF_ODOO_DB_PASSWORD: ${MF_ODOO_DB_PASSWORD:-}
       MF_PREVIEW_SLOT: "1"
       MF_PREVIEW_IDLE: ${MF_ODOO_PREVIEW_IDLE:-14400}
+    tmpfs: ["/hop-logs:mode=1777"]
+    volumes: [odoo-addons:/odoo-addons:ro, odoo19-data:/var/lib/odoo]   # kept across restarts, shared with odoo-hop-19
     networks: [odoo, edge]
     ports: ["${MF_UI_BIND:-127.0.0.1}:${MF_ODOO_PREVIEW_PORT_1:-3242}:8069"]
 
@@ -245,6 +250,7 @@ networks:
   odoo: {internal: true}   # odoo-db and the hop runners: no internet
 
 volumes:
+  odoo19-data: {}   # data directory (filestore, sessions) of odoo-hop-19 and the preview slots
   pgdata: {}
   redisdata: {}
   artifacts: {}

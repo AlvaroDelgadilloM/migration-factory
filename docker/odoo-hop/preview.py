@@ -63,6 +63,24 @@ def set_state(conn, state, touch=False, **cols):
         cur.execute('update mf_preview set %s where slot = %%s' % sets, [state] + list(cols.values()) + [SLOT])
 
 
+def purge_assets(database):
+    """Generated asset bundles are attachments whose files live in the data directory of the Odoo that made them: after a restart, or
+    when another container prepared the database, the records point to missing files and Odoo answers 500 instead of rebuilding
+    them (the login showed only the logo). Deleting the records makes this Odoo rebuild them."""
+    c = psycopg2.connect(dbname=database, **DB)
+    c.autocommit = True
+    try:
+        with c.cursor() as cur:
+            cur.execute("delete from ir_attachment where url like '/web/assets/%%'")
+    finally:
+        c.close()
+
+
+def drop_files(database):
+    import shutil
+    shutil.rmtree('/var/lib/odoo/filestore/%s' % database.replace('/', ''), ignore_errors=True)
+
+
 def drop(database):
     # not `with connect(...)`: since psycopg2 2.9 that opens a transaction even in autocommit, and DROP DATABASE cannot run in one
     c = connect('postgres')
@@ -74,7 +92,7 @@ def drop(database):
 
 
 def main():
-    proc, serving, last_size, last_activity, warming = None, None, 0, time.time(), False
+    proc, serving, last_size, last_activity, warming, warm_tries = None, None, 0, time.time(), False, 0
     while True:
         try:
             conn = connect()
@@ -89,20 +107,24 @@ def main():
                         os.killpg(proc.pid, signal.SIGKILL)
                         proc.wait()
                     proc, serving = None, None
-                if stop:   # stop: the database goes away and the slot is free again
+                if stop:   # stop: the database (and its files) go away and the slot is free again
                     if database:
                         drop(database)
+                        drop_files(database)
                     set_state(conn, 'free', stop=False, database=None, addons=None, project=None)
                     continue
                 if not proc and state in ('serving', 'starting') and not stop:
+                    purge_assets(database)
                     out = open(LOG, 'ab')
                     proc = subprocess.Popen(command(database, addons), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
                     serving, last_activity, last_size = gen, time.time(), os.path.getsize(LOG)
                     set_state(conn, 'starting', touch=True)   # 'serving' once warmed up (below)
-                    warming = True
-                if proc and warming and proc.poll() is None and warm_up():
-                    warming = False
-                    set_state(conn, 'serving', touch=True)
+                    warming, warm_tries = True, 0
+                if proc and warming and proc.poll() is None:
+                    warm_tries += 1   # bounded: a warm-up that never succeeds must not keep the slot busy (and "in use") forever
+                    if warm_up() or warm_tries > 60:
+                        warming = False
+                        set_state(conn, 'serving', touch=True)
                 if proc:
                     size = os.path.getsize(LOG)   # crons are off: a new log line is a request
                     if size != last_size:

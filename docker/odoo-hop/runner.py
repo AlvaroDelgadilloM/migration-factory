@@ -71,9 +71,24 @@ def cancelled(conn, task_id):
         return bool(row and row[0])
 
 
+def clean_filestore(conn):
+    """The data directory is shared with the preview slots (odoo-hop-19): files of databases that no longer exist are removed."""
+    root = '/var/lib/odoo/filestore'
+    if not os.path.isdir(root):
+        return
+    with conn.cursor() as cur:
+        cur.execute('select datname from pg_database')
+        alive = {r[0] for r in cur.fetchall()}
+    import shutil
+    for name in os.listdir(root):
+        if name not in alive:
+            shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+
+
 def run(conn, task_id, database, extra_paths, install=None, test_tags=None, shell=None):
     """Any failure of the runner itself ends the task as failed with its traceback (it never stays 'running')."""
     try:
+        clean_filestore(conn)
         execute(conn, task_id, database, extra_paths, install, test_tags, shell)
     except Exception:  # noqa: BLE001
         import traceback
