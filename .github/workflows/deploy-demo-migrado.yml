@@ -52,6 +52,7 @@ jobs:
           tar -czf - migrado/docker-compose.yml scripts/probar.py | $SSH "mkdir -p demos/pedidos-migrado && cd demos/pedidos-migrado && tar -xzf - && mv -f migrado/docker-compose.yml . && rmdir migrado && mkdir -p entrada && chmod 777 entrada"
           $SSH "EXECUTION=$EXECUTION bash -s" <<'EOF'
           set -euo pipefail
+          {  # bloque completo: bash lo lee entero antes de ejecutar, así ningún docker se come el resto del script por stdin
           cd demos/pedidos-migrado
           API=http://127.0.0.1:3240/api/v1
           TOKEN=$(curl -sf -X POST -H 'Content-Type: application/json' -d '{"username":"admin"}' $API/auth/dev-login | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
@@ -64,16 +65,16 @@ jobs:
           M="docker compose -p pedidos-migrado"
           probe() {  # $1 host  $2 evidence  $3 entrada
             docker run --rm --network migration-factory_egress -v "$PWD/probar.py:/probar.py:ro" -v "$3:/entrada" -v "$PWD/evidencia:/ev" \
-              python:3.12-alpine sh -c "for i in \$(seq 1 60); do python -c \"import urllib.request; urllib.request.urlopen('http://$1:8080/pedidos/api/salud', timeout=5)\" 2>/dev/null && break; sleep 5; done; python -u /probar.py http://$1:8080/pedidos /ev/$2 --entrada /entrada"
+              python:3.12-alpine sh -c "for i in \$(seq 1 60); do python -c \"import urllib.request; urllib.request.urlopen('http://$1:8080/pedidos/api/salud', timeout=5)\" 2>/dev/null && break; sleep 5; done; python -u /probar.py http://$1:8080/pedidos /ev/$2 --entrada /entrada" </dev/null
           }
-          fresh() { $J up -d --force-recreate --renew-anon-volumes db mq; for i in $(seq 1 30); do $J exec -T db pg_isready -U pedidos -d pedidos >/dev/null && break; sleep 2; done; }
+          fresh() { $J up -d --force-recreate --renew-anon-volumes db mq; for i in $(seq 1 30); do $J exec -T db pg_isready -U pedidos -d pedidos </dev/null >/dev/null && break; sleep 2; done; }
           rm -rf evidencia && mkdir -p evidencia
           echo "== 1) JBoss original (la versión migrada detenida)"
           $M down 2>/dev/null || true
-          $J stop jboss; fresh; $J up -d --force-recreate jboss
+          $J stop jboss </dev/null; fresh; $J up -d --force-recreate jboss </dev/null
           legacy=0; probe pedidos-jboss legado "$(cd ../jboss-pedidos && pwd)/entrada" || legacy=$?
           echo "== 2) Versión migrada (JBoss detenido)"
-          $J stop jboss; fresh
+          $J stop jboss </dev/null; fresh
           PEDIDOS_BIND=0.0.0.0 $M up -d --force-recreate
           migrado=0; probe pedidos-migrado migrado "$PWD/entrada" || migrado=$?
           echo "== las dos arriba (misma base: para recorrerlas en la demo)"
@@ -82,6 +83,7 @@ jobs:
           tar -czf evidencia.tgz evidencia
           echo "legado=$legacy migrado=$migrado"
           [ "$legacy" = 0 ] && [ "$migrado" = 0 ]
+          }
           EOF
       - name: Evidencia
         if: always()
