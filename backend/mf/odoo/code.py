@@ -294,7 +294,7 @@ def api_one_to_loop(d: Path) -> list[str]:
                 continue
             inner = indent + '    '
             out.append(lines[i + 1])
-            out.append(f'{inner}for record in self:  # MF_API_ONE: {name} — Migration Factory: era @api.one (una vez por registro)\n')
+            out.append(f'{inner}for record in self:  # MF_API_ONE: {name} — Migration Factory: era api.one, una vez por registro\n')   # no «@api.one»: the OCA tool deletes those lines
             for b in body:
                 out.append(('    ' + re.sub(r'\bself\b', 'record', b)) if b.strip() else b)
             notes.append(f'regla de la plataforma: {f.relative_to(d)} · {name}(): @api.one → for record in self')
@@ -518,6 +518,7 @@ if __name__ == '__main__':  # self-check on a tiny module
         api_one_to_loop(one.parent)
         conv = (one / 'p.py').read_text()
         assert 'for record in self:  # MF_API_ONE: a' in conv and '            record.x = 1' in conv and conv.count('    @api.one\n') == 1, conv
+        assert 'for record in self' in re.sub(r'.*@api.one.*\n', '', conv)   # survives the OCA tool's 13.0 rule
         flush_before_sql(ported.parent)
         body = (ported / 'm.py').read_text()
         assert body.count('flush_all()') == 1 and body.index('flush_all()') < body.index('execute('), body
