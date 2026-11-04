@@ -415,6 +415,8 @@ def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | Non
         busy = ', '.join(f"{p['slot']}: {p['state']}" for p in chain.previews())
         raise OdooJobError('NO_PREVIEW_SLOT', f'No hay espacios libres para levantar Odoo 19 ({busy}); apague uno en la pantalla Pruebas')
     db = f'mf_preview_{slot}'
+    files = Path(s.odoo_addons_dir) / 'preview' / f'{slot}-filestore'   # the backup's attachments, on their way to the slot
+    shutil.rmtree(files, ignore_errors=True)
     try:
         # the slot serves its own copy of the code, so a new port of the project does not change what is running
         addons = None
@@ -428,6 +430,8 @@ def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | Non
             with zipfile.ZipFile(backup) as z, z.open('dump.sql') as fin, open(ctx.workdir / 'dump.sql', 'wb') as fout:
                 shutil.copyfileobj(fin, fout, 1 << 20)
             restore(ctx, run, ctx.workdir / 'dump.sql', db)
+            n = extract_filestore(backup, files)
+            log(f'{n} archivo(s) de adjuntos en el respaldo' if n else 'el respaldo no trae archivos de adjuntos (filestore)')
         else:
             names = sorted(r['name'] for r in rows)
             core = sorted({d for r in rows for d in r['depends'] if d not in names}) or ['base']
@@ -444,7 +448,14 @@ def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | Non
                 if missing:
                     raise OdooJobError('PREVIEW_INSTALL_FAILED', f"No quedaron instalados: {', '.join(missing)}. " + r['logTail'][-800:])
         password = secrets.token_urlsafe(12)
-        script = (f"admin = env.ref('base.user_admin')\nadmin.write({{'password': {password!r}, 'active': True}})\n"
+        # the attachments go into this database's filestore (data directory shared with the slots) and are counted against the
+        # records that point to a file; the slot's supervisor deletes them with the database
+        script = (f"import os, shutil, odoo\nsrc, dst = {str(files)!r}, odoo.tools.config.filestore(env.cr.dbname)\n"
+                  "if os.path.isdir(src):\n    shutil.rmtree(dst, ignore_errors=True)\n    shutil.copytree(src, dst)\n"
+                  "names = [a['store_fname'] for a in env['ir.attachment'].sudo().with_context(active_test=False).search_read("
+                  "[('store_fname', '!=', False), ('url', 'not like', '/web/assets/%')], ['store_fname'])]\n"
+                  "print('MF_FILES %d %d' % (len(names), sum(1 for n in names if not os.path.isfile(os.path.join(dst, n)))))\n"
+                  f"admin = env.ref('base.user_admin')\nadmin.write({{'password': {password!r}, 'active': True}})\n"
                   "env['ir.mail_server'].sudo().search([]).write({'active': False})\n"
                   f"env['ir.config_parameter'].sudo().set_param('web.base.url', {base_url.rstrip('/') + ':' + ports[slot - 1]!r})\n"
                   "env.cr.commit()\nprint('MF_PREVIEW ' + admin.login)\n")
@@ -452,10 +463,36 @@ def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | Non
         login = next((line.split(' ', 1)[1].strip() for line in r['logTail'].splitlines() if line.startswith('MF_PREVIEW ')), None)
         if not login:
             raise OdooJobError('PREVIEW_ADMIN_FAILED', 'No se pudo preparar el usuario administrador: ' + r['logTail'][-800:])
+        att = next(({'total': int(t), 'missing': int(m)} for line in r['logTail'].splitlines() if line.startswith('MF_FILES ')
+                    for t, m in [line.split()[1:3]]), None)
+        if att and att['total']:
+            log(f"adjuntos con archivo: {att['total'] - att['missing']}/{att['total']}")
         chain.preview_serve(slot, db, addons)
         log(f'Odoo 19 en el espacio {slot} (puerto {ports[slot - 1]})')
         return {'slot': slot, 'port': ports[slot - 1], 'login': login, 'password': password, 'database': db,
-                'source': 'migrated' if backup else 'code', 'modules': sorted(r['name'] for r in rows)}
+                'source': 'migrated' if backup else 'code', 'modules': sorted(r['name'] for r in rows), 'attachments': att}
     except Exception:
         chain.preview_release(slot)
         raise
+    finally:
+        shutil.rmtree(files, ignore_errors=True)   # copied into the slot's filestore by then
+
+
+def extract_filestore(backup: Path, dest: Path) -> int:
+    """The filestore/ of an Odoo backup ZIP into dest (only safe relative paths). Number of files."""
+    import zipfile
+    n = 0
+    with zipfile.ZipFile(backup) as z:
+        for i in z.infolist():
+            parts = i.filename.split('/')
+            if parts[0] != 'filestore' or i.is_dir() or '..' in parts or i.filename.startswith('/') or len(parts) < 2:
+                continue
+            out = dest.joinpath(*parts[1:])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with z.open(i) as fin, open(out, 'wb') as fout:
+                shutil.copyfileobj(fin, fout, 1 << 20)
+            os.chmod(out, 0o644)
+            n += 1
+    for d in [dest, *[p for p in dest.rglob('*') if p.is_dir()]] if n else []:
+        os.chmod(d, 0o755)   # read by the Odoo user of odoo-hop-19
+    return n

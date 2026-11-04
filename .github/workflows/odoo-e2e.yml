@@ -86,14 +86,14 @@ jobs:
           /tmp/omm/bin/pip install -q --no-deps "https://codeload.github.com/OCA/odoo-module-migrator/tar.gz/$OMM"
       - name: Siete ejecutores de saltos
         run: |
-          mkdir -p /tmp/hop-logs /tmp/odoo-addons && chmod 777 /tmp/hop-logs && chmod 755 /tmp/odoo-addons
+          mkdir -p /tmp/hop-logs /tmp/odoo-addons /tmp/odoo19-data && chmod 777 /tmp/hop-logs /tmp/odoo19-data && chmod 755 /tmp/odoo-addons
           L="$(jq -r .openupgradelibCommit rules/odoo/hops.json)"
           for row in $(jq -r '.hops[] | "\(.version)=\(.openupgrade)"' rules/odoo/hops.json); do
             v="${row%%=*}"; c="${row##*=}"
             echo "::group::Imagen $v"
             docker build --progress=plain -f docker/odoo-hop.Dockerfile --build-arg ODOO="$v" --build-arg OU_COMMIT="$c" --build-arg OUL_COMMIT="$L" -t "mf-odoo-hop:$v" .
             docker run -d --name "hop-$v" --network host -e MF_ODOO_DB_HOST=127.0.0.1 -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" \
-              -v /tmp/hop-logs:/hop-logs -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:$v"
+              -v /tmp/hop-logs:/hop-logs -v /tmp/odoo-addons:/tmp/odoo-addons:ro $([ "$v" = 19.0 ] && echo -v /tmp/odoo19-data:/var/lib/odoo) "mf-odoo-hop:$v"
             echo "::endgroup::"
           done
           docker image prune -f > /dev/null; df -h / | tail -1
@@ -152,8 +152,10 @@ jobs:
         run: |
           docker run -d --name preview-1 --network host --entrypoint python3 -e MF_ODOO_DB_HOST=127.0.0.1 \
             -e MF_ODOO_DB_PASSWORD="$MF_ODOO_DB_PASSWORD" -e MF_PREVIEW_SLOT=1 -e MF_PREVIEW_IDLE=90 -v /tmp/hop-logs:/hop-logs \
-            -v /tmp/odoo-addons:/tmp/odoo-addons:ro "mf-odoo-hop:19.0" /opt/mf/preview.py
+            -v /tmp/odoo-addons:/tmp/odoo-addons:ro -v /tmp/odoo19-data:/var/lib/odoo "mf-odoo-hop:19.0" /opt/mf/preview.py
           python backend/tests/e2e/odoo_chain.py preview examples/odoo-complex-lab --sql backups/odoo12_complex_custom_backup.sql --idle 90 \
+            || { docker logs preview-1 | tail -40; tail -60 /tmp/hop-logs/preview.log; exit 1; }
+          python backend/tests/e2e/odoo_chain.py preview-migrated /tmp/odoo19-data \
             || { docker logs preview-1 | tail -40; tail -60 /tmp/hop-logs/preview.log; exit 1; }
       - name: Logs de los ejecutores
         if: failure()

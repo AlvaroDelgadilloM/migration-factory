@@ -211,7 +211,7 @@ def get_preview(project_id: uuid.UUID, db: Session = Depends(get_db), me: Princi
         sm = run.summary or {}
         preview = {'slot': mine['slot'], 'state': mine['state'] if run.state not in ('queued', 'running') else 'preparing',
                    'port': sm.get('port'), 'from': sm.get('from'), 'lastActivity': mine['lastActivity'], 'startedAt': mine['startedAt'],
-                   'login': sm.get('login'), 'database': sm.get('database'), 'jobId': str(run.job_id) if run.job_id else None,
+                   'login': sm.get('login'), 'database': sm.get('database'), 'attachments': sm.get('attachments'), 'jobId': str(run.job_id) if run.job_id else None,
                    'password': sm.get('password') if me.is_admin or authorize_ok(db, me, p.id, 'execute') else None}
     return {'available': True, 'preview': preview, 'slots': [{'slot': s['slot'], 'busy': s['state'] != 'free'} for s in slots]}
 

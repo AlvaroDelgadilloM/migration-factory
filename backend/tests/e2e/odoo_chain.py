@@ -190,6 +190,61 @@ def preview(a):
         print(f'apagado por inactividad a los {int(time.time() - start)} s (límite {a.idle} s): base borrada, espacio libre')
 
 
+def preview_migrated(a):
+    """A preview of a migrated database: an Odoo 19 database with an attachment, its backup ZIP made by the platform (oj.backup,
+    with the uploaded filestore), served in a slot; the attachment's content read back over HTTP as the admin."""
+    import base64
+    import http.cookiejar
+    import json as _json
+    import urllib.request
+    import zipfile
+    from mf.worker.runner import run
+    db, data = 'mf_e2e_att', b'MF adjunto e2e'
+    chain.drop_db(db)
+    r = chain.wait(chain.enqueue('19.0', db, install=['base']), 3600, lambda: False)
+    assert r['state'] == 'succeeded', r['logTail'][-2000:]
+    r = chain.wait(chain.enqueue('19.0', db, shell=f"a = env['ir.attachment'].create({{'name': 'mf-e2e.txt', 'raw': {data!r}}})\n"
+                                                  "env.cr.commit()\nprint('MF_ATT', a.store_fname)\n"), 3600, lambda: False)
+    fname = next(line.split()[1] for line in r['logTail'].splitlines() if line.startswith('MF_ATT '))
+    upload = ctx().workdir / 'upload.zip'   # what a team uploads: the filestore of the original database
+    with zipfile.ZipFile(upload, 'w') as z:
+        for f in (Path(a.data_dir) / 'filestore' / db).rglob('*'):
+            if f.is_file():
+                z.write(f, 'filestore/' + str(f.relative_to(Path(a.data_dir) / 'filestore' / db)))
+    backup = oj.backup(ctx(), run, db, upload)
+    chain.drop_db(db)
+    res = oj.preview(ctx(), run, 'e2e-project', uuid.uuid4(), None, backup=backup, addons19=None, rows=[], sql_files=[],
+                     base_url='http://127.0.0.1', log=print, cancelled=lambda: False, timeout=3 * 3600)
+    print('preview:', {k: v for k, v in res.items() if k != 'password'})
+    att = res['attachments']
+    assert att and att['total'] >= 1 and att['missing'] == 0, att
+    url = f"http://127.0.0.1:{res['port']}"
+    for _ in range(120):
+        try:
+            if urllib.request.urlopen(url + '/web/login', timeout=10).status == 200:
+                break
+        except Exception:  # noqa: BLE001
+            time.sleep(5)
+    else:
+        raise AssertionError('Odoo del espacio no respondió')
+    web = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    rpc = lambda path, params: _json.loads(web.open(urllib.request.Request(  # noqa: E731
+        url + path, data=_json.dumps({'jsonrpc': '2.0', 'params': params}).encode(), headers={'Content-Type': 'application/json'}), timeout=60).read())
+    assert (rpc('/web/session/authenticate', {'db': res['database'], 'login': res['login'], 'password': res['password']}).get('result') or {}).get('uid')
+    got = rpc('/web/dataset/call_kw', {'model': 'ir.attachment', 'method': 'search_read', 'args': [[('name', '=', 'mf-e2e.txt')]],
+                                       'kwargs': {'fields': ['datas', 'store_fname']}})['result']
+    assert got and base64.b64decode(got[0]['datas']) == data and got[0]['store_fname'] == fname, got
+    print(f"adjunto leído por HTTP en la base migrada: {data!r} ({fname}) · {att['total'] - att['missing']}/{att['total']} adjuntos con archivo")
+    chain.preview_release(res['slot'])
+    for _ in range(40):
+        if not chain.query('postgres')(f"select 1 from pg_database where datname = '{res['database']}'"):
+            break
+        time.sleep(3)
+    else:
+        raise AssertionError('el espacio no borró su base al apagarse')
+    print('apagado: base y adjuntos del espacio borrados')
+
+
 def main(argv):
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -211,6 +266,8 @@ def main(argv):
     v.add_argument('addons')
     v.add_argument('--sql', action='append')
     v.add_argument('--idle', type=int, default=0)
+    w = sub.add_parser('preview-migrated')
+    w.add_argument('data_dir')   # the data directory shared by odoo-hop-19 and the slot (odoo19-data on the VPS)
     q = sub.add_parser('port')
     q.add_argument('addons')
     q.add_argument('out')
@@ -221,6 +278,9 @@ def main(argv):
     if a.cmd == 'preview':
         chain.ensure_control()
         return preview(a)
+    if a.cmd == 'preview-migrated':
+        chain.ensure_control()
+        return preview_migrated(a)
     chain.ensure_control()
     scenario(a) if a.cmd == 'scenario' else code(a)
 

@@ -8,7 +8,9 @@
           <button name="action_activate" type="object" string="Activate" states="draft"/>
           <field name="state" widget="statusbar"/>
         </header>
-        <sheet><group>
+        <sheet>
+          <div class="oe_title"><label string="Contrato de Odoo 12"/><h1><field name="name"/></h1></div>
+          <group>
           <field name="name"/><field name="partner_id"/>
           <field name="legacy_code"/><field name="discount_rate"/>
         </group></sheet>
