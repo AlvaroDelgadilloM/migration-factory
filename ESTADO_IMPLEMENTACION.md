@@ -718,7 +718,13 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   el módulo y el SQL externo: «Verificado en 19» o «Manual» con el error de PostgreSQL (DDL/REFRESH quedan «a revisar»); vistas
   SQL y tablas externas quedan «Verificado en 19» si el módulo instala y pasa sus pruebas y la prueba funcional. Lo que queda se
   marca **«Revisado»** con comentario (rol plan, auditado `odoo.review.mark/undo`, `PATCH /odoo-migrations/{id}/reviews`) y se
-  conserva en el siguiente port mientras el hallazgo siga. Verificado en `odoo-e2e.yml` (code, codecomplex, flows, lab12code:
+  conserva en el siguiente port mientras el hallazgo siga.
+  **(2026-11-04)** `@api.one` con valor devuelto o `super()` también se convierte solo: el cuerpo intacto en una función interna
+  corrida una vez por registro, el método devuelve la lista como `@api.one`. El SQL armado en el código (f-strings, `+`, `%`,
+  `.format()`, `SQL()`, variables del método, constantes del módulo/clase, `self._table`) se reconstruye y se comprueba igual;
+  lo que solo se sabe al ejecutar va como NULL y la nota sugiere parámetros; con reconstrucción no exacta un error deja «a
+  revisar» con el error (nunca «Manual» en falso). Verificado en `odoo-e2e.yml` con `legacy_tier_label` del laboratorio
+  complejo (f-string + `@api.one` con valor: SQL «Verificado en 19», el flujo devuelve la lista de etiquetas). Verificado en `odoo-e2e.yml` (code, codecomplex, flows, lab12code:
   11 hallazgos verificados en 19 —SQL directo, vistas SQL y tablas externas—, flujos de los `@api.one` convertidos bien).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
@@ -743,7 +749,7 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   funciones de los scripts de 18 (se usa un commit fijado); Odoo 19 es paquete de espacio de nombres (el ejecutor se caía y el
   salto 19 esperaba para siempre; ahora un fallo del ejecutor termina la tarea con su traceback); el uid de `odoo` en la imagen 19
   no es 101; la cola cortaba los trabajos Odoo a los 30 min.
-- **Pendiente / límites**: Odoo 20 (sin scripts de OpenUpgrade); el SQL armado en tiempo de ejecución (f-strings, concatenación)
-  y los `@api.one` con valor devuelto o `super()` siguen siendo de una persona; el filestore no se monta en los ejecutores (Odoo registra como INFO los
+- **Pendiente / límites**: Odoo 20 (sin scripts de OpenUpgrade); el SQL que no se puede reconstruir (viene de otra función o
+  su forma depende del camino del método) sigue siendo de una persona; el filestore no se monta en los ejecutores (Odoo registra como INFO los
   adjuntos que no encuentra en disco durante la migración; no cambia el resultado); otras reglas de port se agregan en
   `mf/odoo/code.py` según aparezcan.
