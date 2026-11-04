@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Datasource JBoss desplegable: la aplicación lo busca por JNDI (java:jboss/datasources/PedidosDS). Sin JTA: las transacciones
+     las maneja Spring (DataSourceTransactionManager), como en muchas aplicaciones Camel de JBoss. -->
+<datasources xmlns="http://www.jboss.org/ironjacamar/schema">
+    <datasource jndi-name="java:jboss/datasources/PedidosDS" pool-name="PedidosDS" enabled="true" use-java-context="true" jta="false">
+        <connection-url>jdbc:postgresql://db:5432/pedidos</connection-url>
+        <driver>postgresql-42.2.27.jar</driver>
+        <pool>
+            <min-pool-size>2</min-pool-size>
+            <max-pool-size>15</max-pool-size>
+        </pool>
+        <security>
+            <user-name>pedidos</user-name>
+            <password>pedidos</password>
+        </security>
+    </datasource>
+</datasources>

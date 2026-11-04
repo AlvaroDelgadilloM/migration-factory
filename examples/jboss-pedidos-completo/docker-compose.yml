@@ -1,0 +1,42 @@
+# Sistema LEGADO completo de prueba: WildFly 10.1 (JBoss, Java 8) con el WAR de Camel 2, PostgreSQL, ActiveMQ y un buró de crédito
+# SOAP simulado. Todo local y sintético.
+#   cd examples/jboss-pedidos-completo && (cd app && mvn -q -DskipTests package) && docker compose up -d
+#   REST: http://127.0.0.1:18083/pedidos/api/...   SOAP: http://127.0.0.1:18083/pedidos/ws/pedidos?wsdl
+#   Prueba completa: python3 scripts/probar.py http://127.0.0.1:18083/pedidos evidence/legacy --entrada entrada
+name: jboss-pedidos-completo
+
+services:
+  db:
+    image: postgres:16.10-alpine3.22
+    environment:
+      POSTGRES_DB: pedidos
+      POSTGRES_USER: pedidos
+      POSTGRES_PASSWORD: pedidos       # base sintética y local: no es un secreto
+    ports: ["127.0.0.1:5434:5432"]
+    volumes: ["./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pedidos -d pedidos"]
+      interval: 3s
+      retries: 30
+
+  mq:
+    image: apache/activemq-classic:5.18.6
+    ports: ["127.0.0.1:61617:61616"]
+
+  buro:
+    image: python:3.12-alpine
+    command: ["python", "-u", "/mock/credito_mock.py"]
+    volumes: ["./mock:/mock:ro"]
+
+  jboss:
+    image: jboss/wildfly:10.1.0.Final       # JBoss/WildFly con Java 8, como el servidor legado
+    depends_on:
+      db: {condition: service_healthy}
+      mq: {condition: service_started}
+      buro: {condition: service_started}
+    ports: ["127.0.0.1:18083:8080"]
+    volumes:
+      - ./jboss/postgresql-42.2.27.jar:/opt/jboss/wildfly/standalone/deployments/postgresql-42.2.27.jar:ro
+      - ./jboss/pedidos-ds.xml:/opt/jboss/wildfly/standalone/deployments/pedidos-ds.xml:ro
+      - ./app/target/pedidos.war:/opt/jboss/wildfly/standalone/deployments/pedidos.war:ro
+      - ./entrada:/opt/pedidos/entrada        # archivos CSV de reabastecimiento (la ruta de archivos los procesa)

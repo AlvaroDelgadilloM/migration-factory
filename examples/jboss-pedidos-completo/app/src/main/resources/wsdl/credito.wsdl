@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Contrato del buró de crédito externo (simulado en mock/credito_mock.py) -->
+<wsdl:definitions name="CreditoService" targetNamespace="http://proveedor.example/credito"
+                  xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:c="http://proveedor.example/credito">
+    <wsdl:types>
+        <xs:schema targetNamespace="http://proveedor.example/credito" elementFormDefault="qualified">
+            <xs:element name="evaluar">
+                <xs:complexType><xs:sequence>
+                    <xs:element name="clienteId" type="xs:int"/>
+                    <xs:element name="monto" type="xs:decimal"/>
+                </xs:sequence></xs:complexType>
+            </xs:element>
+            <xs:element name="evaluarResponse">
+                <xs:complexType><xs:sequence>
+                    <xs:element name="aprobado" type="xs:boolean"/>
+                    <xs:element name="folio" type="xs:string"/>
+                </xs:sequence></xs:complexType>
+            </xs:element>
+        </xs:schema>
+    </wsdl:types>
+    <wsdl:message name="evaluar"><wsdl:part name="parameters" element="c:evaluar"/></wsdl:message>
+    <wsdl:message name="evaluarResponse"><wsdl:part name="parameters" element="c:evaluarResponse"/></wsdl:message>
+    <wsdl:portType name="Credito">
+        <wsdl:operation name="evaluar">
+            <wsdl:input message="c:evaluar"/>
+            <wsdl:output message="c:evaluarResponse"/>
+        </wsdl:operation>
+    </wsdl:portType>
+    <wsdl:binding name="CreditoBinding" type="c:Credito">
+        <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="evaluar">
+            <soap:operation soapAction="evaluar"/>
+            <wsdl:input><soap:body use="literal"/></wsdl:input>
+            <wsdl:output><soap:body use="literal"/></wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:service name="CreditoService">
+        <wsdl:port name="CreditoPort" binding="c:CreditoBinding"><soap:address location="http://buro:8090/credito"/></wsdl:port>
+    </wsdl:service>
+</wsdl:definitions>

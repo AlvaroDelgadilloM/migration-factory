@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Configuración Spring XML legada: datasource por JNDI de JBoss, transacciones de Spring, JMS con ActiveMQ, endpoints SOAP de CXF
+     (uno publicado y un cliente con timeout) y una parte de las rutas en XML, como suele estar en estas aplicaciones. -->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:jee="http://www.springframework.org/schema/jee"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:cxf="http://camel.apache.org/schema/cxf"
+       xmlns:http-conf="http://cxf.apache.org/transports/http/configuration"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/jee http://www.springframework.org/schema/jee/spring-jee.xsd
+                           http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+                           http://camel.apache.org/schema/cxf http://camel.apache.org/schema/cxf/camel-cxf.xsd
+                           http://cxf.apache.org/transports/http/configuration http://cxf.apache.org/schemas/configuration/http-conf.xsd
+                           http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <import resource="classpath:META-INF/cxf/cxf.xml"/>
+    <context:property-placeholder location="classpath:pedidos.properties"/>
+
+    <jee:jndi-lookup id="pedidosDS" jndi-name="java:jboss/datasources/PedidosDS"/>
+
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="pedidosDS"/>
+    </bean>
+    <bean id="PROPAGATION_REQUIRED" class="org.apache.camel.spring.spi.SpringTransactionPolicy">
+        <property name="transactionManager" ref="transactionManager"/>
+        <property name="propagationBehaviorName" value="PROPAGATION_REQUIRED"/>
+    </bean>
+
+    <bean id="jmsConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+        <property name="brokerURL" value="${broker.url}"/>
+        <property name="trustAllPackages" value="true"/>
+    </bean>
+    <bean id="activemq" class="org.apache.camel.component.jms.JmsComponent">
+        <property name="connectionFactory" ref="jmsConnectionFactory"/>
+    </bean>
+
+    <!-- SOAP publicado: consulta de pedidos (WSDL primero, modo PAYLOAD) -->
+    <cxf:cxfEndpoint id="pedidosSoap" address="/pedidos" wsdlURL="wsdl/pedidos.wsdl"
+                     serviceName="p:PedidosService" endpointName="p:PedidosPort" xmlns:p="http://demo.example/pedidos">
+        <cxf:properties><entry key="dataFormat" value="PAYLOAD"/></cxf:properties>
+    </cxf:cxfEndpoint>
+
+    <!-- SOAP consumido: buró de crédito externo, con timeout -->
+    <cxf:cxfEndpoint id="buroCredito" address="${credito.url}" wsdlURL="wsdl/credito.wsdl"
+                     serviceName="c:CreditoService" endpointName="c:CreditoPort" xmlns:c="http://proveedor.example/credito">
+        <cxf:properties><entry key="dataFormat" value="PAYLOAD"/></cxf:properties>
+    </cxf:cxfEndpoint>
+    <http-conf:conduit name="{http://proveedor.example/credito}CreditoPort.http-conduit">
+        <http-conf:client ConnectionTimeout="2000" ReceiveTimeout="3000"/>
+    </http-conf:conduit>
+
+    <bean id="validador" class="demo.pedidos.ValidadorPedido"/>
+    <bean id="soap" class="demo.pedidos.Soap"/>
+    <bean id="pedidosRoutes" class="demo.pedidos.PedidosRoutes"/>
+    <bean id="fondoRoutes" class="demo.pedidos.FondoRoutes"/>
+    <bean id="serviciosRoutes" class="demo.pedidos.ServiciosRoutes"/>
+
+    <camelContext id="pedidos" xmlns="http://camel.apache.org/schema/spring">
+        <propertyPlaceholder id="properties" location="classpath:pedidos.properties"/>
+        <routeBuilder ref="pedidosRoutes"/>
+        <routeBuilder ref="fondoRoutes"/>
+        <routeBuilder ref="serviciosRoutes"/>
+
+        <!-- Ruta en XML: salud del servicio -->
+        <rest path="/salud">
+            <get><to uri="direct:salud"/></get>
+        </rest>
+        <route id="salud">
+            <from uri="direct:salud"/>
+            <setHeader headerName="Content-Type"><constant>application/json</constant></setHeader>
+            <setBody><constant>{"estado":"OK","servicio":"pedidos"}</constant></setBody>
+        </route>
+    </camelContext>
+</beans>

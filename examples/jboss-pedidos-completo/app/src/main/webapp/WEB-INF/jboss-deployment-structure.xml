@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Acoplamientos típicos de JBoss: la aplicación trae su propio CXF, Jackson y cliente JMS, así que excluye los del servidor
+     (subsistemas de web services, JAX-RS y logging) para que no choquen con los de WEB-INF/lib. -->
+<jboss-deployment-structure>
+    <deployment>
+        <exclude-subsystems>
+            <subsystem name="logging"/>
+            <subsystem name="webservices"/>
+            <subsystem name="jaxrs"/>
+        </exclude-subsystems>
+        <exclusions>
+            <module name="javax.jms.api"/>
+        </exclusions>
+        <dependencies>
+            <module name="javax.api"/>
+        </dependencies>
+    </deployment>
+</jboss-deployment-structure>

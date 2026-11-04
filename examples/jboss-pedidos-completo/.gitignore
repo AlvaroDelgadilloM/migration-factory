@@ -1,0 +1,5 @@
+jboss/*.jar
+app/target/
+evidence-ci/
+entrada/*
+!entrada/.gitkeep

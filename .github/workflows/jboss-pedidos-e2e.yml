@@ -1,0 +1,44 @@
+name: JBoss pedidos e2e
+
+# El ejemplo legado completo (examples/jboss-pedidos-completo) de punta a punta: WildFly 10.1 con el WAR de Camel 2, PostgreSQL,
+# ActiveMQ y el buró de crédito SOAP simulado. scripts/probar.py recorre REST, SOAP, transacción, colas, tarea programada y archivos.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['examples/jboss-pedidos-completo/**', '.github/workflows/jboss-pedidos-e2e.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: examples/jboss-pedidos-completo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '8', cache: maven}
+      - name: WAR (Java 8)
+        run: cd app && mvn -B -ntp package
+      - name: Levantar JBoss, base, colas y buró
+        run: |
+          chmod 777 entrada
+          docker compose up -d
+          for i in $(seq 1 90); do
+            curl -sf http://127.0.0.1:18083/pedidos/api/salud && break
+            sleep 4
+          done
+          curl -sf http://127.0.0.1:18083/pedidos/api/salud
+      - name: Prueba de punta a punta
+        run: python3 scripts/probar.py http://127.0.0.1:18083/pedidos evidence-ci/legacy --entrada entrada
+      - name: Registro de JBoss
+        if: always()
+        run: docker compose logs --no-color jboss | tail -n 400
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidencia-jboss-pedidos
+          path: examples/jboss-pedidos-completo/evidence-ci
