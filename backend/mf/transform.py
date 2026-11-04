@@ -118,6 +118,14 @@ def apply_edits(root: Path, edits, runtime: str) -> list[dict]:
                 continue
             lines[i] = new
             r |= {'applied': True, 'change': '${property.…} → ${exchangeProperty.…}'}
+        elif e['op'] == 'logging-error-handler':  # removed in Camel 3: a dead letter channel to a log endpoint (CAMEL-4763)
+            m = re.search(r'\bloggingErrorHandler\s*\(\s*(?:"([\w.\-]+)")?\s*\)', line)
+            if not m:
+                results.append(r | {'reason': 'loggingErrorHandler con logger o nivel propio: revisar a mano'})
+                continue
+            target = f'"log:{m[1]}?level=ERROR&showException=true"' if m[1] else '"log:" + getClass().getName() + "?level=ERROR&showException=true"'
+            lines[i] = line[:m.start()] + f'deadLetterChannel({target})' + line[m.end():]
+            r |= {'applied': True, 'change': 'loggingErrorHandler(…) → deadLetterChannel("log:…")'}
         elif e['op'] == 'secret':
             m = SECRET_LINE.match(line)
             if not m or m[4].startswith('${'):

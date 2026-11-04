@@ -1,0 +1,9 @@
+{
+  "description": "Clases de componentes Camel 2 que en Camel 4 viven en otro paquete y que la receta oficial de Camel 3→4 no mueve. Cada una verificada contra el jar de Camel 4 indicado.",
+  "verifiedAgainst": "org.apache.camel:camel-cxf-common:4.14.0",
+  "moves": {
+    "org.apache.camel.component.cxf.CxfPayload": "org.apache.camel.component.cxf.common.CxfPayload",
+    "org.apache.camel.component.cxf.DataFormat": "org.apache.camel.component.cxf.common.DataFormat"
+  },
+  "foundBy": "examples/jboss-pedidos-completo (SOAP en modo PAYLOAD): el candidato no compilaba con la receta oficial sola"
+}

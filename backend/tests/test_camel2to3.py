@@ -35,3 +35,22 @@ def test_simple_property_edit_is_located_and_leaves_other_placeholders(tmp_path)
                                            {'op': 'simple-property', 'file': 'R.java', 'line': 1}], 'spring')
     assert [r['applied'] for r in res] == [True, False]
     assert f.read_text().split('\n')[1] == '.log("${exchangeProperty.id} ${properties:x} {{y}} $simple{exchangeProperty[k]}")'
+
+
+def test_cxf_classes_that_camel4_moved_go_with_the_camel2_to_3_recipe():
+    """examples/jboss-pedidos-completo: SOAP in PAYLOAD mode; the official 3->4 recipe leaves CxfPayload in its Camel 2 package."""
+    moves = dict((o['oldFullyQualifiedTypeName'], o['newFullyQualifiedTypeName']) for r, o in camel2to3.recipe_items() if r.endswith('ChangeType'))
+    assert moves['org.apache.camel.component.cxf.CxfPayload'] == 'org.apache.camel.component.cxf.common.CxfPayload'
+    assert moves['org.apache.camel.component.cxf.DataFormat'] == 'org.apache.camel.component.cxf.common.DataFormat'
+    assert moves['org.apache.camel.impl.DefaultExchange'] == 'org.apache.camel.support.DefaultExchange'   # the generated map is kept
+
+
+def test_logging_error_handler_becomes_a_dead_letter_channel_to_a_log_endpoint(tmp_path):
+    f = tmp_path / 'R.java'
+    f.write_text('from("jms:q").errorHandler(loggingErrorHandler())\nerrorHandler(loggingErrorHandler("pedidos"));\n'
+                 'errorHandler(loggingErrorHandler(LOG, LoggingLevel.WARN));\n')
+    res = transform.apply_edits(tmp_path, camel2to3.error_handler_edits([type('F', (), {'file': 'R.java', 'line': n}) for n in (1, 2, 3)]), 'spring')
+    assert [r['applied'] for r in res] == [True, True, False] and 'revisar a mano' in res[2]['reason']
+    lines = f.read_text().split('\n')
+    assert lines[0] == 'from("jms:q").errorHandler(deadLetterChannel("log:" + getClass().getName() + "?level=ERROR&showException=true"))'
+    assert lines[1] == 'errorHandler(deadLetterChannel("log:pedidos?level=ERROR&showException=true"));'

@@ -5,7 +5,11 @@ What it changes, all verified against the real jars or the Camel 3 migration gui
   ChangeType, type-attributed on the project's Camel 2 classpath;
 - @EndpointInject / @Produce / @Consume `uri=` -> `value=` (Camel 4 removed `uri`);
 - Simple language `${property.x}` -> `${exchangeProperty.x}` (the `property` function was removed in Camel 3): located edits
-  from the CAMEL2_SIMPLE_PROPERTY findings (file and line), never a blind replace.
+  from the CAMEL2_SIMPLE_PROPERTY findings (file and line), never a blind replace;
+- `loggingErrorHandler(...)` -> `deadLetterChannel("log:...")` (removed in Camel 3, CAMEL-4763): located edits from the
+  CAMEL2_LOGGING_ERROR_HANDLER findings;
+- component classes that Camel 4 moved and the official 3->4 recipe leaves alone (rules/camel/camel-component-types.json, each one
+  checked against the Camel 4 jar), moved here because only the Camel 2 classpath resolves their old name.
 Classes removed in Camel 3 are not guessed: the compile gate reports them and they stay as manual actions."""
 from __future__ import annotations
 
@@ -24,16 +28,26 @@ def types() -> dict:
     return json.loads((base / 'camel' / 'camel2-to-camel3-types.json').read_text(encoding='utf-8'))
 
 
+@lru_cache
+def component_types() -> dict:
+    base = Path(os.environ.get('MF_RULES_CATALOG', Path(__file__).resolve().parents[2] / 'rules' / 'catalog.json')).parent
+    return json.loads((base / 'camel' / 'camel-component-types.json').read_text(encoding='utf-8'))
+
+
 def recipe_items() -> list[tuple[str, dict]]:
     """OpenRewrite recipe list (rendered by planning.recipe_yaml)."""
     items = [('org.openrewrite.java.ChangeType', {'oldFullyQualifiedTypeName': old, 'newFullyQualifiedTypeName': new, 'ignoreDefinition': True})
-             for old, new in sorted(types()['moves'].items())]
+             for old, new in sorted((types()['moves'] | component_types()['moves']).items())]
     return items + [('org.openrewrite.java.ChangeAnnotationAttributeName',
                      {'annotationType': a, 'oldAttributeName': 'uri', 'newAttributeName': 'value'}) for a in ANNOTATIONS]
 
 
 def simple_edits(findings) -> list[dict]:
     return [{'op': 'simple-property', 'file': f.file, 'line': f.line} for f in findings]
+
+
+def error_handler_edits(findings) -> list[dict]:
+    return [{'op': 'logging-error-handler', 'file': f.file, 'line': f.line} for f in findings]
 
 
 if __name__ == '__main__':  # self-check

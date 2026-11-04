@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "2026.10.9",
+  "catalogVersion": "2026.11.1",
   "description": "Reglas de diagnóstico estático. Son indicios revisables, no una matriz completa de compatibilidad Camel.",
   "rules": [
     {
@@ -362,6 +362,27 @@
         ],
         "negative": [
           "rest(\"/items\").get().to(\"direct:items\")"
+        ]
+      },
+      "category": "MIGRATION"
+    },
+    {
+      "id": "CAMEL2_LOGGING_ERROR_HANDLER",
+      "version": 1,
+      "detector": "text",
+      "pattern": "\\bloggingErrorHandler\\s*\\(",
+      "severity": "medium",
+      "classification": "AUTO_TEST",
+      "blocking": false,
+      "recommendation": "Camel 3 eliminó loggingErrorHandler(): el paso camel2-error-handler lo cambia por un dead letter channel hacia un endpoint log:, que es lo que hacía (CAMEL-4763).",
+      "source": "https://issues.apache.org/jira/browse/CAMEL-4763",
+      "examples": {
+        "positive": [
+          "from(\"jms:q\").errorHandler(loggingErrorHandler())",
+          "errorHandler(loggingErrorHandler(\"pedidos\"));"
+        ],
+        "negative": [
+          "errorHandler(deadLetterChannel(\"log:pedidos\"))"
         ]
       },
       "category": "MIGRATION"

@@ -455,6 +455,13 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
                 depends_on=['camel-2-to-3'], finding_ids=ids(['CAMEL2_SIMPLE_PROPERTY']), rollback=ROLLBACK_RECIPE,
                 notes=['Ediciones localizadas (archivo y línea del hallazgo).'])
             camel_dep = 'camel2-simple-language'
+        if by_rule.get('CAMEL2_LOGGING_ERROR_HANDLER'):
+            add('camel2-error-handler', 'loggingErrorHandler() → deadLetterChannel("log:...") (eliminado en Camel 3)', 'transform',
+                'AUTO_TEST', recipe={'edits': camel2to3.error_handler_edits(by_rule['CAMEL2_LOGGING_ERROR_HANDLER'])}, preconditions=base_pre,
+                depends_on=[camel_dep], finding_ids=ids(['CAMEL2_LOGGING_ERROR_HANDLER']), rollback=ROLLBACK_RECIPE,
+                notes=['Ediciones localizadas. El dead letter channel hacia log: registra el error, que es lo que hacía el manejador de '
+                       'Camel 2 (https://issues.apache.org/jira/browse/CAMEL-4763); con nivel o logger propio queda como acción manual.'])
+            camel_dep = 'camel2-error-handler'
     camel_target = tooling['camelRecipeTarget']
     from . import camel_compat
     present = {d['artifactId'] for mod in modules for d in mod.dependencies if d['groupId'] == 'org.apache.camel'}
