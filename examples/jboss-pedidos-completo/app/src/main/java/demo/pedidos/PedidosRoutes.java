@@ -11,6 +11,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.ExchangePattern;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.sql.SqlConstants;
+import org.apache.camel.impl.DefaultMessage;
 import org.apache.camel.model.dataformat.JsonLibrary;
 import org.apache.camel.model.rest.RestBindingMode;
 import org.apache.cxf.binding.soap.SoapFault;
@@ -26,8 +27,14 @@ public class PedidosRoutes extends RouteBuilder {
     @Override
     public void configure() {
         restConfiguration().component("servlet").bindingMode(RestBindingMode.off);
-        // el cuerpo de la petición se lee al entrar: Undertow cierra el stream y un GET con error lo leía después (Stream is closed)
-        interceptFrom("servlet:*").convertBodyTo(String.class);
+        // el mensaje HTTP de Camel vuelve a leer la petición cuando el cuerpo queda vacío (una consulta sin filas), y Undertow ya
+        // cerró el stream (Stream is closed): al entrar se copia a un mensaje normal, con el cuerpo ya leído
+        interceptFrom("servlet:*").process(e -> {
+            DefaultMessage m = new DefaultMessage(e.getContext());
+            m.copyFrom(e.getIn());
+            m.setBody(e.getIn().getBody(String.class));
+            e.setIn(m);
+        });
 
         onException(Errores.Validacion.class).handled(true).process(e -> responder(e, 400, "VALIDACION", null));
         onException(Errores.NoEncontrado.class).handled(true).process(e -> responder(e, 404, "NO_ENCONTRADO", null));
