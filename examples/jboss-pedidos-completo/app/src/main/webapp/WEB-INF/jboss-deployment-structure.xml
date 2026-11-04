@@ -13,6 +13,10 @@
         </exclusions>
         <dependencies>
             <module name="javax.api"/>
+            <!-- APIs de JAX-WS y SOAP: al excluir el subsistema webservices JBoss ya no las agrega solo, y CXF las necesita -->
+            <module name="javax.xml.ws.api"/>
+            <module name="javax.jws.api"/>
+            <module name="javax.xml.soap.api"/>
         </dependencies>
     </deployment>
 </jboss-deployment-structure>
