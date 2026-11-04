@@ -54,6 +54,7 @@ jobs:
           set -euo pipefail
           {  # bloque completo: bash lo lee entero antes de ejecutar, así ningún docker se come el resto del script por stdin
           cd demos/pedidos-migrado
+          export PEDIDOS_BIND=0.0.0.0  # los dos stacks se ven desde fuera (18083 JBoss, 18084 migrado), como en deploy-demo-jboss.yml
           API=http://127.0.0.1:3240/api/v1
           TOKEN=$(curl -sf -X POST -H 'Content-Type: application/json' -d '{"username":"admin"}' $API/auth/dev-login | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
           curl -sf -H "Authorization: Bearer $TOKEN" -o candidate.zip "$API/executions/$EXECUTION/download"
@@ -64,18 +65,18 @@ jobs:
           J="docker compose -f ../jboss-pedidos/docker-compose.yml -f ../jboss-pedidos/docker-compose.vps.yml -p jboss-pedidos --project-directory ../jboss-pedidos"
           M="docker compose -p pedidos-migrado"
           probe() {  # $1 host  $2 evidence  $3 entrada
-            docker run --rm --network migration-factory_egress -v "$PWD/probar.py:/probar.py:ro" -v "$3:/entrada" -v "$PWD/evidencia:/ev" \
+            docker run --rm --network migration-factory_egress -v "$PWD/scripts/probar.py:/probar.py:ro" -v "$3:/entrada" -v "$PWD/evidencia:/ev" \
               python:3.12-alpine sh -c "for i in \$(seq 1 60); do python -c \"import urllib.request; urllib.request.urlopen('http://$1:8080/pedidos/api/salud', timeout=5)\" 2>/dev/null && break; sleep 5; done; python -u /probar.py http://$1:8080/pedidos /ev/$2 --entrada /entrada" </dev/null
           }
           fresh() { $J up -d --force-recreate --renew-anon-volumes db mq; for i in $(seq 1 30); do $J exec -T db pg_isready -U pedidos -d pedidos </dev/null >/dev/null && break; sleep 2; done; }
-          rm -rf evidencia && mkdir -p evidencia
+          rm -rf evidencia probar.py && mkdir -p evidencia
           echo "== 1) JBoss original (la versión migrada detenida)"
           $M down 2>/dev/null || true
           $J stop jboss </dev/null; fresh; $J up -d --force-recreate jboss </dev/null
           legacy=0; probe pedidos-jboss legado "$(cd ../jboss-pedidos && pwd)/entrada" || legacy=$?
           echo "== 2) Versión migrada (JBoss detenido)"
           $J stop jboss </dev/null; fresh
-          PEDIDOS_BIND=0.0.0.0 $M up -d --force-recreate
+          $M up -d --force-recreate
           migrado=0; probe pedidos-migrado migrado "$PWD/entrada" || migrado=$?
           echo "== las dos arriba (misma base: para recorrerlas en la demo)"
           $J start jboss
