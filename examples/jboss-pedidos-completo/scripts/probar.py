@@ -62,7 +62,7 @@ def main():
     def check(name, method, path, body=None, status=200, expect=None, soap=False, url=None):
         st, ctype, text = call(url or api, method, path, body, soap)
         value = parsed(text)
-        ok = st == status and (expect is None or expect(value, text))
+        ok = bool(st == status and (expect is None or expect(value, text)))
         results.append({'caso': name, 'metodo': method, 'ruta': path, 'esperado': status, 'status': st, 'ok': ok})
         (out / f'{name}.json').write_text(json.dumps({'status': st, 'contentType': ctype.split(';')[0], 'body': value}, ensure_ascii=False, indent=2),
                                           encoding='utf-8')

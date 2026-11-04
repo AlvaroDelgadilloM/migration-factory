@@ -26,6 +26,8 @@ public class PedidosRoutes extends RouteBuilder {
     @Override
     public void configure() {
         restConfiguration().component("servlet").bindingMode(RestBindingMode.off);
+        // el cuerpo de la petición se lee al entrar: Undertow cierra el stream y un GET con error lo leía después (Stream is closed)
+        interceptFrom("servlet:*").convertBodyTo(String.class);
 
         onException(Errores.Validacion.class).handled(true).process(e -> responder(e, 400, "VALIDACION", null));
         onException(Errores.NoEncontrado.class).handled(true).process(e -> responder(e, 404, "NO_ENCONTRADO", null));
@@ -77,6 +79,9 @@ public class PedidosRoutes extends RouteBuilder {
             .process(e -> e.getIn().setHeader("monto",
                 e.getIn().getBody(BigDecimal.class).multiply(BigDecimal.valueOf(e.getIn().getHeader("cantidad", Integer.class)))))
             .to("direct:evaluarCredito")
+            .choice().when(header("creditoRechazado").isNotNull())
+                .process(e -> { throw new Errores.CreditoRechazado(e.getIn().getHeader("creditoRechazado", String.class)); })
+            .end()
             // la ruta transaccional siempre trae su propio manejador (TransactionErrorHandler): su error se atrapa aquí
             .doTry()
                 .to("direct:registrarPedido")

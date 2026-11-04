@@ -3,6 +3,7 @@ package demo.pedidos;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.cxf.common.message.CxfConstants;
 import org.apache.camel.component.sql.SqlConstants;
+import org.apache.cxf.binding.soap.SoapFault;
 
 /**
  * Rutas internas sin manejo de errores propio: un error sube a quien las llamó (PedidosRoutes lo traduce a HTTP) y, en la ruta
@@ -23,8 +24,13 @@ public class ServiciosRoutes extends RouteBuilder {
             .bean("soap", "peticionCredito")
             .setHeader(CxfConstants.OPERATION_NAME, constant("evaluar"))
             .setHeader(CxfConstants.OPERATION_NAMESPACE, constant(Soap.NS_CREDITO))
-            .to("cxf:bean:buroCredito")
-            .bean("soap", "leerCredito");
+            // el SOAP Fault del buró vuelve por el hilo de respuesta de CXF: se atrapa aquí y quien llamó decide (422)
+            .doTry()
+                .to("cxf:bean:buroCredito")
+                .bean("soap", "leerCredito")
+            .doCatch(SoapFault.class, Errores.CreditoRechazado.class)
+                .setHeader("creditoRechazado", simple("${exception.message}"))
+            .end();
 
         // Transacción: descuenta existencias y registra el pedido; si algo falla, no queda nada a medias
         from("direct:registrarPedido").routeId("registrar-pedido")
