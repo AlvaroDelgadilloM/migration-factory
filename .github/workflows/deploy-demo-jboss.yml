@@ -65,7 +65,8 @@ jobs:
       - name: Desde fuera del servidor
         env:
           HOST: ${{ secrets.VPS_HOST }}
-        run: curl -sf --max-time 10 "http://$HOST:18083/pedidos/api/salud" || echo "::warning::El puerto 18083 no responde desde fuera: revisar el firewall del VPS"
+        run: |
+          curl -sf --max-time 10 "http://$HOST:18083/pedidos/api/salud" || echo "::warning::El puerto 18083 no responde desde fuera; revisar el firewall del VPS"
       - name: Limpiar
         if: always()
         run: ssh-agent -k >/dev/null 2>&1 || true
