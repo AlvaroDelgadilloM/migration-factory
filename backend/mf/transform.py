@@ -60,6 +60,10 @@ def apply_edits(root: Path, edits, runtime: str) -> list[dict]:
     results, services, secret_props = [], {}, {}
     used = {k: None for k in existing_service_keys(root)}  # reserved: never reuse a key already in the configuration
     for e in edits:
+        if e['op'] == 'spring-xml-context':  # whole module: Spring XML of web.xml -> Spring Boot (mf.spring_xml)
+            from .spring_xml import apply as spring_xml_apply
+            results.append(spring_xml_apply(root, e))
+            continue
         path = safe_join(root, e['file'])
         r = {'op': e['op'], 'file': e['file'], 'line': e['line'], 'applied': False}
         if not path.is_file():
