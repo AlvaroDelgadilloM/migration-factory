@@ -726,6 +726,12 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   revisar» con el error (nunca «Manual» en falso). Verificado en `odoo-e2e.yml` con `legacy_tier_label` del laboratorio
   complejo (f-string + `@api.one` con valor: SQL «Verificado en 19», el flujo devuelve la lista de etiquetas). Verificado en `odoo-e2e.yml` (code, codecomplex, flows, lab12code:
   11 hallazgos verificados en 19 —SQL directo, vistas SQL y tablas externas—, flujos de los `@api.one` convertidos bien).
+- **Odoo 19 de prueba con adjuntos (2026-11-04)**: de una base migrada, el `filestore/` del respaldo se extrae (solo rutas
+  seguras) a `/odoo-addons/preview/<espacio>-filestore` y la tarea de odoo-hop-19 que prepara el admin lo copia al filestore de
+  la base del espacio (`odoo19-data`, compartido con los espacios); se cuentan los adjuntos con archivo y Pruebas lo muestra
+  («N/N adjuntos con su archivo»). Verificado en `odoo-e2e.yml` (preview-migrated: respaldo hecho por `oj.backup`, adjunto
+  leído por HTTP como admin con su contenido; preview de código 13/13). Regla nueva 14.0: `<label>` sin `for` →
+  `<span class="o_form_label">` (proyecto del usuario `custom_forms_core`).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
   8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
