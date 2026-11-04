@@ -712,6 +712,14 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   conserva entre reinicios y se comparte con odoo-hop-19. Reglas de port nuevas por el laboratorio «native + custom» del
   usuario (8 módulos, 8/8 instalan y pasan pruebas en el VPS): `res_model` de acciones, vista de CRM `crm_lead_view_form` (13.0),
   `planned_revenue` → `expected_revenue` (14.0), `user_id` → `user_ids` en tareas (16.0).
+- **Hallazgos «a revisar» (2026-11-03)**: `@api.one` sin valor devuelto ni `super()` se convierte solo en `for record in self`
+  (regla 13.0 antes de la herramienta de OCA; la marca no lleva «@api.one» porque esa herramienta borra esas líneas); el SQL
+  literal de cada `cr.execute` se comprueba con `EXPLAIN` (parámetros como NULL, **sin ejecutarlo**) en el Odoo 19 de prueba con
+  el módulo y el SQL externo: «Verificado en 19» o «Manual» con el error de PostgreSQL (DDL/REFRESH quedan «a revisar»); vistas
+  SQL y tablas externas quedan «Verificado en 19» si el módulo instala y pasa sus pruebas y la prueba funcional. Lo que queda se
+  marca **«Revisado»** con comentario (rol plan, auditado `odoo.review.mark/undo`, `PATCH /odoo-migrations/{id}/reviews`) y se
+  conserva en el siguiente port mientras el hallazgo siga. Verificado en `odoo-e2e.yml` (code, codecomplex, flows, lab12code:
+  9 hallazgos verificados en 19, flujos de los `@api.one` convertidos bien).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
   8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
@@ -735,7 +743,7 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   funciones de los scripts de 18 (se usa un commit fijado); Odoo 19 es paquete de espacio de nombres (el ejecutor se caía y el
   salto 19 esperaba para siempre; ahora un fallo del ejecutor termina la tarea con su traceback); el uid de `odoo` en la imagen 19
   no es 101; la cola cortaba los trabajos Odoo a los 30 min.
-- **Pendiente / límites**: Odoo 20 (sin scripts de OpenUpgrade); los hallazgos «a revisar» (SQL directo, vistas SQL, tablas
-  externas, `@api.one`) siguen siendo de una persona; el filestore no se monta en los ejecutores (Odoo registra como INFO los
+- **Pendiente / límites**: Odoo 20 (sin scripts de OpenUpgrade); el SQL armado en tiempo de ejecución (f-strings, concatenación)
+  y los `@api.one` con valor devuelto o `super()` siguen siendo de una persona; el filestore no se monta en los ejecutores (Odoo registra como INFO los
   adjuntos que no encuentra en disco durante la migración; no cambia el resultado); otras reglas de port se agregan en
   `mf/odoo/code.py` según aparezcan.
