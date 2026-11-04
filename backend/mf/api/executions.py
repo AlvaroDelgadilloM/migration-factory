@@ -348,6 +348,42 @@ def cancel_job(job_id: uuid.UUID, request: Request, db: Session = Depends(get_db
     return job
 
 
+@router.post('/jobs/{job_id}/relaunch', response_model=JobOut, status_code=202)
+def relaunch_job(job_id: uuid.UUID, request: Request, db: Session = Depends(get_db), me: Principal = Depends(current_principal)):
+    """A job that ended failed, timed out or cancelled (e.g. the worker went down and the automatic retries ran out) runs again
+    from scratch: same job and log, new attempts, its subject back to queued. Same permission as cancelling it; audited."""
+    from ..config import get_settings
+    from ..models import Outbox
+    job = load_job(db, me, job_id)
+    authorize(db, me, job.project_id, 'scan' if job.kind == 'scan' else ('pull_request' if job.kind == 'pull_request' else 'execute'))
+    if job.state not in ('failed', 'timed_out', 'cancelled'):
+        raise ApiError(409, 'INVALID_STATE', f'Solo se relanza un trabajo fallido, vencido o cancelado (está {job.state})')
+    previous = job.state
+    job.state, job.cancel_requested, job.lease_owner, job.lease_until = 'queued', False, None, None
+    job.error_code = job.error_message = job.finished_at = job.started_at = None
+    job.phase, job.progress = 'queued', 0
+    job.max_attempts = job.attempts + get_settings().max_attempts   # new attempts, new work directories
+    _set_subject_state(db, job, 'queued')
+    db.add(Outbox(event_type='job.enqueue', payload={'jobId': str(job.id)}))
+    db.add(JobEvent(job_id=job.id, level='warn', phase='queued', message=f'Relanzado por {me.subject} (estaba {previous}): vuelve a empezar desde cero'))
+    audit.record(db, actor=me.subject, action='job.relaunch', entity_type='job', entity_id=job.id, project_id=job.project_id,
+                 details={'kind': job.kind, 'previous': previous}, request=request)
+    db.commit()
+    jobs.try_publish(db)
+    return job
+
+
+def _set_subject_state(db, job, state):
+    """The record the job works on (scan, execution, migration…) to that state."""
+    from .. import models as m
+    model = {'scan': m.Scan, 'preview': m.Execution, 'apply': m.Execution, 'modernize': m.Modernization,
+             'workspace_migrate': m.WorkspaceMigration, 'http_compare': m.HttpTestRun, 'datastage_migrate': m.DataStageMigration,
+             'apex_analyze': m.ApexMigration}.get(job.kind) or (m.OdooMigration if job.kind.startswith('odoo_') else None)
+    obj = model and db.get(model, job.subject_id)
+    if obj is not None:
+        setattr(obj, 'status' if job.kind == 'scan' else 'state', state)
+
+
 def _mark_subject_cancelled(db, job):
     if job.kind == 'scan':
         s = db.get(Scan, job.subject_id)

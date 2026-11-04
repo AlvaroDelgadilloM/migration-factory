@@ -85,6 +85,16 @@ def test_scan_idempotency_and_conflicts(client, token, pilot_repo, monkeypatch):
     assert client.post(f'{API}/jobs/{job}/cancel', headers=token('diego.dev')).status_code == 409
     run_job(job)  # a late delivery of a cancelled job does nothing
     assert client.get(f"{API}/scans/{first.json()['scanId']}", headers=token('diego.dev')).json()['status'] == 'cancelled'
+    # «Relanzar»: the same job runs again from scratch (audited); a finished one cannot be relaunched
+    assert client.post(f'{API}/jobs/{job}/relaunch', headers=token('aldo.auditor')).status_code == 403
+    r = client.post(f'{API}/jobs/{job}/relaunch', headers=token('diego.dev'))
+    assert r.status_code == 202 and r.json()['state'] == 'queued', r.text
+    assert client.get(f"{API}/scans/{first.json()['scanId']}", headers=token('diego.dev')).json()['status'] == 'queued'
+    run_job(job)
+    assert client.get(f"{API}/scans/{first.json()['scanId']}", headers=token('diego.dev')).json()['status'] == 'succeeded'
+    assert client.post(f'{API}/jobs/{job}/relaunch', headers=token('diego.dev')).json()['code'] == 'INVALID_STATE'
+    logs = client.get(f'{API}/jobs/{job}/logs', headers=token('diego.dev')).json()
+    assert any(m['message'].startswith('Relanzado por diego.dev') for m in logs)
 
 
 def test_scan_persists_inventory_with_provenance(client, token, pilot_repo, monkeypatch):

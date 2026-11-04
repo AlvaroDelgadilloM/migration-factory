@@ -94,6 +94,7 @@ export class Api {
   cancelExecution(id: string) { return this.send<Execution>('POST', `/executions/${id}/cancel`); }
   rollback(id: string) { return this.send<Execution>('POST', `/executions/${id}/rollback`); }
   cancelJob(id: string) { return this.send<unknown>('POST', `/jobs/${id}/cancel`); }
+  relaunchJob(id: string) { return this.send<unknown>('POST', `/jobs/${id}/relaunch`); }
   logs(jobId: string, after = 0) { return this.get<LogEvent[]>(`/jobs/${jobId}/logs`, { after, limit: 200 }); }
   diff(executionId: string, p: Params) { return this.get<Page<DiffFile>>(`/executions/${executionId}/diff`, p); }
   diffFile(id: string) { return this.get<DiffFileDetail>(`/diff-files/${id}`); }

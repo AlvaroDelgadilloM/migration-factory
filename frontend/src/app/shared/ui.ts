@@ -166,7 +166,8 @@ export class ActionButton {
 /** Live, redacted job log over SSE with resume (Last-Event-ID) and optional autoscroll. */
 @Component({
   selector: 'mf-job-log',
-  imports: [FormsModule, ProgressBarModule, ToggleSwitchModule],
+  imports: [ButtonModule, FormsModule, ProgressBarModule, ToggleSwitchModule],
+  styles: [`.joblog-note { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; margin: 8px 0; }`],
   template: `
     <div class="joblog">
       <div class="joblog-bar">
@@ -174,6 +175,14 @@ export class ActionButton {
         <label class="inline"><p-toggleswitch [(ngModel)]="autoscroll" inputId="as" /> <span>Autoscroll</span></label>
       </div>
       <p-progressbar [value]="progress()" [showValue]="true" aria-label="Progreso del trabajo" />
+      @if (crashed()) {
+        <p class="joblog-note">El worker se cayó o se reinició durante este trabajo.
+          @if (failed()) { No quedan reintentos automáticos: puede relanzarlo. } @else { Se reencoló solo y vuelve a empezar desde cero. }</p>
+      }
+      @if (failed()) {
+        <p class="joblog-note"><p-button label="Relanzar" icon="pi pi-refresh" size="small" [loading]="relaunching()" (onClick)="relaunch()" />
+          @if (relaunchError(); as e) { <span class="lv-error">{{ e }}</span> } @else { <span>Vuelve a correr este trabajo desde cero.</span> }</p>
+      }
       <pre #box class="log" role="log" aria-live="polite">@for (l of lines(); track l.id) {<span [class]="'lv-' + l.level">[{{ l.phase }}] {{ l.message }}</span>
 }</pre>
     </div>`,
@@ -189,6 +198,18 @@ export class JobLog implements OnDestroy {
   progress = signal(0);
   autoscroll = signal(true);
   box = viewChild<ElementRef<HTMLPreElement>>('box');
+  /** the worker went down while it ran (lease recovery), and whether it ended failed (no automatic retries left) */
+  crashed = computed(() => this.lines().some(l => l.phase === 'recovery'));
+  failed = computed(() => ['failed', 'timed_out', 'cancelled'].includes(this.state()));
+  relaunching = signal(false);
+  relaunchError = signal<string | null>(null);
+
+  async relaunch() {
+    this.relaunching.set(true); this.relaunchError.set(null);
+    try { await this.api.relaunchJob(this.jobId()); this.state.set('queued'); this.start(this.jobId()); }
+    catch (e) { this.relaunchError.set(UiError.from(e).message); }
+    finally { this.relaunching.set(false); }
+  }
   private abort?: AbortController;
 
   constructor() {
