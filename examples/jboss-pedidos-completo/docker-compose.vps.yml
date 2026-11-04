@@ -20,8 +20,12 @@ services:
     networks:
       default: {}
       plataforma: {aliases: [pedidos-jboss]}
+      api: {aliases: [pedidos-jboss]}   # Pruebas > Manuales las envía la API (red edge), no el worker
 
 networks:
   plataforma:
     external: true
     name: migration-factory_egress
+  api:
+    external: true
+    name: migration-factory_edge
