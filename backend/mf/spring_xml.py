@@ -15,7 +15,12 @@ On JBoss, ContextLoaderListener started the XML context: JMS connection factorie
 - <camelContext>: Camel Spring Boot owns the CamelContext; its routes and rests go to src/main/resources/camel/*.xml (XML IO
   DSL, loaded by camel-xml-io-dsl-starter), with the attribute renames of Camel 3 (setHeader headerName -> name...).
   Anything else in it (onException, dataFormats, attributes besides id/streamCache) is reported as a manual action;
-- CXFServlet url-pattern of web.xml -> cxf.path; activemq-client 5.x (javax.jms) -> the jakarta client Spring Boot manages.
+- CXFServlet url-pattern of web.xml -> cxf.path; activemq-client 5.x (javax.jms) -> the jakarta client Spring Boot manages;
+- a SOAP client endpoint (cxfEndpoint with a non-relative address): CXF 4 sends with java.net.http (HttpClientHTTPConduit), whose
+  timeout is java.net.http.HttpTimeoutException instead of the java.net.SocketTimeoutException of CXF 3, so an
+  onException(SocketTimeoutException) of the legacy routes no longer matches (found validating in Portainer: 503 became 500).
+  The system property org.apache.cxf.transport.http.forceURLConnection (HTTPTransportFactory, cxf-rt-transports-http 4.1.4)
+  keeps the CXF 3 conduit.
 Every change is reported; nothing is guessed: an element it does not understand stays and is listed for review."""
 from __future__ import annotations
 
@@ -155,7 +160,9 @@ def migrate_xml(text: str, ds_beans: set[str], route_builders: set[str]) -> dict
         changes.append('<camelContext> quitado: Camel Spring Boot crea el contexto (rutas Java vía MigratedRoutesConfig)')
     imports = list(dict.fromkeys(imports))
     body = re.sub(r'<!--.*?-->', '', re.search(r'<beans\b[^>]*>(.*)</beans>', text, re.S)[1] if '<beans' in text else text, flags=re.S)
-    return {'xml': text, 'routes': routes, 'imports': imports, 'changes': changes, 'manual': manual, 'empty': not body.strip()}
+    client = any(not a.startswith('/') for a in re.findall(r'<cxf:cxfEndpoint\b[^>]*\baddress\s*=\s*"([^"]+)"', text))
+    return {'xml': text, 'routes': routes, 'imports': imports, 'changes': changes, 'manual': manual, 'empty': not body.strip(),
+            'cxfClient': client}
 
 
 def _drop_activemq_version(pom: str) -> tuple[str, bool]:
@@ -188,10 +195,22 @@ def _append_properties(root: Path, prefix: str, props: list[str]):
         path.write_text(old.rstrip('\n') + '\n' + '\n'.join(add) + '\n', encoding='utf-8')
 
 
+_FORCE_URLCONNECTION = (
+    '    // CXF 4 envía con java.net.http: su timeout es HttpTimeoutException y no SocketTimeoutException como en CXF 3, y las rutas\n'
+    '    // legadas atrapan SocketTimeoutException. Conserva el transporte de CXF 3 (HTTPTransportFactory, cxf-rt-transports-http).\n'
+    '    // Un BeanFactoryPostProcessor estático corre antes de crear cualquier bean (el bus de CXF incluido), en jar y en WAR.\n'
+    '    @org.springframework.context.annotation.Bean\n'
+    '    public static org.springframework.beans.factory.config.BeanFactoryPostProcessor cxfUrlConnectionConduit() {\n'
+    '        if (System.getProperty("org.apache.cxf.transport.http.forceURLConnection") == null) {\n'
+    '            System.setProperty("org.apache.cxf.transport.http.forceURLConnection", "true");\n        }\n'
+    '        return beanFactory -> { };\n    }\n')
+
+
 def apply(root: Path, e: dict) -> dict:
     """Edit 'spring-xml-context': e = {file (web.xml), prefix, package, dsBeans, routeBuilders}. Returns the result record."""
     r = {'op': e['op'], 'file': e['file'], 'line': 1, 'applied': False}
     prefix, changes, manual, imports, resources, route_files = e.get('prefix', ''), [], [], [], [], []
+    cxf_client = False
     web = safe_join(root, e['file'])
     if 'locations' in e:  # facts read at scan time: the runtime step of a WAR profile deletes web.xml before this step
         f = {'contextConfigLocation': e['locations'], 'cxfServletPattern': e.get('cxfServletPattern')}
@@ -210,6 +229,7 @@ def apply(root: Path, e: dict) -> dict:
         changes += [f'{name}: {c}' for c in res['changes']]
         manual += [f'{name}: {c}' for c in res['manual']]
         imports += [i for i in res['imports'] if i not in imports]
+        cxf_client = cxf_client or (res['cxfClient'] and not res['empty'])
         if res['routes']:
             out = safe_join(root, f'{prefix}src/main/resources/camel/{PurePosixPath(name).stem}-routes.xml')
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -257,8 +277,12 @@ def apply(root: Path, e: dict) -> dict:
                        'import org.springframework.context.annotation.ImportResource;\n\n'
                        '/** Generado por Migration Factory: el contexto Spring XML que JBoss cargaba desde web.xml (contextConfigLocation).\n'
                        ' *  JMS, CXF y transacciones siguen definidos ahí; revisar antes de aprobar. */\n'
-                       f'@Configuration\n@ImportResource({{{listed}}})\npublic class MigratedXmlContextConfig {{\n}}\n', encoding='utf-8')
+                       f'@Configuration\n@ImportResource({{{listed}}})\npublic class MigratedXmlContextConfig {{\n'
+                       + (_FORCE_URLCONNECTION if cxf_client else '') + '}\n', encoding='utf-8')
         changes.append('MigratedXmlContextConfig: @ImportResource(' + ', '.join(resources) + ')')
+        if cxf_client:
+            changes.append('cliente SOAP: org.apache.cxf.transport.http.forceURLConnection=true (los timeouts siguen siendo '
+                           'SocketTimeoutException, como en CXF 3)')
     elif resources:
         manual.append('Sin paquete Java para MigratedXmlContextConfig: agregar @ImportResource(' + ', '.join(resources) + ') a mano')
     if not changes:

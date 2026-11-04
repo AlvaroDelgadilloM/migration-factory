@@ -35,7 +35,7 @@ def test_migrate_pedidos_xml():
     assert r['routes'].startswith('<?xml') and '<rest path="/salud">' in r['routes'] and '<route id="salud">' in r['routes']
     assert '<setHeader name="Content-Type">' in r['routes'] and 'headerName' not in r['routes']
     assert '<routeBuilder' not in r['routes'] and '<propertyPlaceholder' not in r['routes']
-    assert r['manual'] == [] and not r['empty']
+    assert r['manual'] == [] and not r['empty'] and r['cxfClient']
 
 
 def test_shop_xml_has_nothing_left():
@@ -71,6 +71,7 @@ def test_apply_on_module(tmp_path):
     assert (app / 'src/main/resources/camel/applicationContext-routes.xml').is_file()
     cfg = (app / 'src/main/java/demo/pedidos/MigratedXmlContextConfig.java').read_text(encoding='utf-8')
     assert '@ImportResource({"classpath:legacy/applicationContext.xml"})' in cfg
+    assert 'System.setProperty("org.apache.cxf.transport.http.forceURLConnection", "true")' in cfg  # buroCredito: SOAP client
     props = (app / 'src/main/resources/application.properties').read_text(encoding='utf-8')
     assert 'spring.config.import=classpath:pedidos.properties' in props and 'cxf.path=/ws' in props
     pom = (app / 'pom.xml').read_text(encoding='utf-8')
