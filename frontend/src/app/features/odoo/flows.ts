@@ -47,6 +47,7 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
             @if (p.password) { · contraseña <code>{{ p.password }}</code> <button class="link" (click)="copy(p.password)">copiar</button> }
             @else { · la contraseña solo la ven quienes pueden ejecutar en el proyecto }</p>
           <p class="small muted">Con {{ p.from === 'migración' ? 'la base migrada a Odoo 19' : 'el código portado, datos demo y el SQL externo' }} ·
+            @if (p.attachments?.total) { {{ p.attachments.total - p.attachments.missing }}/{{ p.attachments.total }} adjuntos con su archivo · }
             espacio {{ p.slot }} · sin tareas programadas ni correo saliente · se apaga sola tras 4 h sin uso@if (p.lastActivity) { (último uso {{ p.lastActivity.slice(11, 16) }} UTC) }.</p>
           <mf-action label="Apagar" icon="pi pi-power-off" [outlined]="true" [busy]="pvBusy()" [disabledReason]="execReason()" (run)="stopPreview()" />
         } @else {

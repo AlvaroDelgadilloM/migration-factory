@@ -139,7 +139,8 @@ export class Api {
   }
   odooPreview(projectId: string) {
     return this.get<{ available: boolean; slots: { slot: number; busy: boolean }[]; preview: null | { slot: number; state: string; port: string | null;
-      from: string | null; lastActivity: string | null; startedAt: string | null; login: string | null; password: string | null; jobId: string | null } }>(
+      from: string | null; lastActivity: string | null; startedAt: string | null; login: string | null; password: string | null; jobId: string | null;
+      attachments?: { total: number; missing: number } | null } }>(
       `/projects/${projectId}/odoo-preview`);
   }
   startOdooPreview(projectId: string, baseUrl: string) {

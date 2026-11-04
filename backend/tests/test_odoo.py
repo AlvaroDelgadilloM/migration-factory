@@ -253,3 +253,17 @@ def test_odoo_findings_verified_on_19(tmp_path):
     oj.verify_findings(row, tmp_path)
     assert [f['status'] for f in row['findings']] == ['VERIFIED', 'REVIEW'], row['findings']
     assert 'x_y' in row['findings'][0]['note'] and 'parámetros' in row['findings'][0]['note'] and 'sin certeza' in row['findings'][1]['note']
+
+
+def test_preview_takes_the_backup_attachments_only_from_safe_paths(tmp_path):
+    import zipfile
+    from mf.odoo import jobs as oj
+    z = tmp_path / 'b.zip'
+    with zipfile.ZipFile(z, 'w') as w:
+        w.writestr('dump.sql', '-- x')
+        w.writestr('filestore/ab/abcdef', b'uno')
+        w.writestr('filestore/../../evil', b'no')
+        w.writestr('other/cd/x', b'no')
+    assert oj.extract_filestore(z, tmp_path / 'fs') == 1
+    assert (tmp_path / 'fs' / 'ab' / 'abcdef').read_bytes() == b'uno' and not (tmp_path / 'evil').exists()
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob('*') if p.is_file()) == ['b.zip', 'fs/ab/abcdef']
