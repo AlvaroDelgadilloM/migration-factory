@@ -6,7 +6,9 @@ def customer360():
     assert (a.x_score, b.x_score) == (100, 50), (a.x_score, b.x_score)
     (a | b).legacy_block()   # was @api.one
     assert {a.x_legacy_status, b.x_legacy_status} == {'blocked'}
-    return 'puntaje 100/50, ambos bloqueados'
+    labels = (a | b).legacy_tier_label()   # was @api.one with a value: still one result per record, and SQL built with an f-string
+    assert labels == ['MF oro:gold', 'MF bronce:bronze'], labels
+    return f'puntaje 100/50, ambos bloqueados, etiquetas {labels}'
 check('legacy_customer360: puntaje y bloqueo de varios clientes (antes @api.one)', customer360)
 def credit():
     p = P.create({'name': 'MF crédito', 'x_credit_limit': 10000, 'x_customer_tier': 'gold'})

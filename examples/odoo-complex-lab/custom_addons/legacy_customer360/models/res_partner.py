@@ -20,3 +20,8 @@ class ResPartner(models.Model):
     @api.one
     def legacy_block(self):
         self.x_legacy_status = 'blocked'
+
+    @api.one
+    def legacy_tier_label(self):
+        self._cr.execute(f"SELECT name FROM {self._table} WHERE id = {self.id}")
+        return '%s:%s' % (self._cr.fetchone()[0], self.x_customer_tier)

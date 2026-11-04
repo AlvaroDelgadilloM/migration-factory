@@ -101,8 +101,10 @@ def inventory(src: Path, ported: Path | None) -> list[dict]:
                 src_lines = (m['path'] / f['file']).read_text(encoding='utf-8', errors='replace').splitlines()
                 meth = re.match(r'\s*def (\w+)', src_lines[f['line']] if f['line'] < len(src_lines) else '')
                 ported = after[name]['path'] / f['file']
-                if meth and ported.exists() and f'MF_API_ONE: {meth[1]}' in ported.read_text(encoding='utf-8', errors='replace'):
-                    status, note = 'AUTO', 'Convertido a «for record in self» (el método no devolvía valor ni llamaba a super).'
+                mark = meth and ported.exists() and re.search(rf'MF_API_ONE: {meth[1]} .*', ported.read_text(encoding='utf-8', errors='replace'))
+                if mark:
+                    status, note = 'AUTO', ('Convertido: corre una vez por registro como @api.one y devuelve la lista de resultados, como antes.'
+                                            if 'devuelve la lista' in mark[0] else 'Convertido a «for record in self» (el método no devolvía valor).')
             key = hashlib.sha1(f"{name}|{f['file']}|{f['pattern']}|{f['text']}".encode()).hexdigest()[:16]   # stable across ports
             findings.append(f | {'since': since, 'target': target, 'note': note, 'status': status, 'key': key})
         man = m['manifest']
@@ -287,12 +289,17 @@ def api_one_to_loop(d: Path) -> list[str]:
                 j += 1
             body = lines[i + 2:j]
             text = ''.join(body)
-            if re.search(r'\breturn\s+\S', text) or 'super(' in text:
-                out.extend(lines[i:j])   # left as it was: a person decides
-                notes.append(f'[revisar] {f.relative_to(d)} · {name}(): @api.one con return o super(), no se convierte solo')
-                i = j
-                continue
             inner = indent + '    '
+            if re.search(r'\breturn\s+\S', text) or 'super(' in text:
+                # what @api.one did: the body once per record, the results as a list (callers keep getting what they got in 12);
+                # the body stays as it was, on `self` = one record (super(), with or without arguments, works there too)
+                out.append(lines[i + 1])
+                out.append(f'{inner}def _one(self):  # MF_API_ONE: {name} — Migration Factory: era api.one, devuelve la lista como antes\n')
+                out.extend(('    ' + b) if b.strip() else b for b in body)
+                out.append(f'{inner}return [_one(rec) for rec in self]\n')
+                notes.append(f'regla de la plataforma: {f.relative_to(d)} · {name}(): @api.one → una vez por registro, devuelve la lista')
+                changed, i = True, j
+                continue
             out.append(lines[i + 1])
             out.append(f'{inner}for record in self:  # MF_API_ONE: {name} — Migration Factory: era api.one, una vez por registro\n')   # no «@api.one»: the OCA tool deletes those lines
             for b in body:
@@ -428,20 +435,91 @@ def test_results(log: str) -> dict | None:
     return {'total': total, 'failed': failed, 'errors': errors, 'failures': fails, 'smoke': smoke}
 
 
+UNKNOWN = '\x00'   # a value only known at run time, inside a reconstructed query
+
+
+def _text(node, env: dict) -> str:
+    """The SQL text an expression builds, with UNKNOWN where a part is only known at run time."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):   # f-string
+        return ''.join(_text(v.value if isinstance(v, ast.FormattedValue) else v, env) for v in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _text(node.left, env) + _text(node.right, env)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):   # "… %s" % x
+        left = _text(node.left, env)
+        if isinstance(node.right, ast.Dict):
+            vals = {k.value: _text(v, env) for k, v in zip(node.right.keys, node.right.values) if isinstance(k, ast.Constant)}
+            return re.sub(r'%\((\w+)\)s', lambda m: vals.get(m[1], UNKNOWN), left)
+        vals = iter([_text(e, env) for e in node.right.elts] if isinstance(node.right, ast.Tuple) else [_text(node.right, env)])
+        return re.sub(r'%s', lambda m: next(vals, UNKNOWN), left.replace('%%', '\x01')).replace('\x01', '%')
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'format':   # "…{}".format(x)
+        left, args = _text(node.func.value, env), [_text(a, env) for a in node.args]
+        kw = {k.arg: _text(k.value, env) for k in node.keywords if k.arg}
+        it = iter(args)
+        return re.sub(r'\{(\w*)\}', lambda m: kw.get(m[1], UNKNOWN) if m[1] and not m[1].isdigit()
+                      else (args[int(m[1])] if m[1].isdigit() and int(m[1]) < len(args) else next(it, UNKNOWN)), left)
+    if isinstance(node, ast.Call) and node.args and getattr(node.func, 'id', getattr(node.func, 'attr', '')) == 'SQL':   # Odoo 17+
+        return _text(node.args[0], env)
+    if isinstance(node, ast.Name):
+        return env.get(node.id, UNKNOWN)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == 'self':
+        return env.get('self.' + node.attr, UNKNOWN)
+    return UNKNOWN
+
+
+def _consts(body, env: dict) -> dict:
+    """String constants assigned at that level (module or class), on top of the outer ones."""
+    env = dict(env)
+    for st in body:
+        if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+            t = _text(st.value, env)
+            if UNKNOWN not in t:
+                env[st.targets[0].id] = t
+    return env
+
+
 def sql_queries(module_dir: Path) -> list[dict]:
-    """The literal SQL of every cr.execute(...) in the module (file relative to the module, line of the call), read with ast: never
-    run here. Built strings (f-strings, concatenations) are not reconstructed."""
+    """The SQL of every cr.execute(...) in the module (file relative to the module, line of the call), read with ast, never run.
+    Built SQL is reconstructed: f-strings, +, %, .format(), SQL(), the variables the method assigned before the call (=, +=),
+    the module's and the class's constants, self._table from the model. 'exact': nothing in it is only known at run time
+    (UNKNOWN parts, or a variable assigned more than once: 'branches'); 'built': it was not a single literal."""
     out = []
     for f in sorted(module_dir.rglob('*.py')):
         try:
             tree = ast.parse(f.read_text(encoding='utf-8', errors='replace'))
         except SyntaxError:
             continue
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'execute' and node.args
-                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
-                out.append({'file': str(f.relative_to(module_dir)), 'line': node.lineno, 'sql': node.args[0].value})
-    return out
+        menv = _consts(tree.body, {})
+        scopes = [(None, tree)] + [(n, n) for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+        for cls, scope in scopes:
+            env = menv
+            if cls is not None:
+                env = _consts(cls.body, menv)
+                table = env.get('_table') or (env.get('_name') or env.get('_inherit') or '').replace('.', '_')
+                if table:
+                    env['self._table'] = table
+            funcs = [n for n in (cls.body if cls else scope.body) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            for fn in funcs:
+                fenv, assigned = dict(env), {}
+                stmts = sorted((n for n in ast.walk(fn) if isinstance(n, (ast.Assign, ast.AugAssign, ast.Call))),
+                               key=lambda n: (n.lineno, n.col_offset))
+                for n in stmts:
+                    if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
+                        fenv[n.targets[0].id] = _text(n.value, fenv)
+                        assigned[n.targets[0].id] = assigned.get(n.targets[0].id, 0) + 1
+                    elif isinstance(n, ast.AugAssign) and isinstance(n.op, ast.Add) and isinstance(n.target, ast.Name):
+                        fenv[n.target.id] = fenv.get(n.target.id, UNKNOWN) + _text(n.value, fenv)
+                    elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'execute' and n.args:
+                        sql = _text(n.args[0], fenv)
+                        if not re.search(r'[A-Za-z]', sql.replace(UNKNOWN, '')):
+                            continue   # nothing of it is known here
+                        names = {x.id for x in ast.walk(n.args[0]) if isinstance(x, ast.Name)}
+                        branches = any(assigned.get(x, 0) > 1 for x in names)   # which assignment applies depends on the run
+                        out.append({'file': str(f.relative_to(module_dir)), 'line': n.lineno, 'sql': sql,
+                                    'built': not isinstance(n.args[0], ast.Constant), 'branches': branches,
+                                    'exact': UNKNOWN not in sql and not branches})
+    return sorted(out, key=lambda q: (q['file'], q['line']))
 
 
 def explainable(sql: str) -> str | None:
@@ -449,7 +527,7 @@ def explainable(sql: str) -> str | None:
     s = sql.strip().rstrip(';')
     if not re.match(r'(?is)^(with\b.*?\b)?(select|insert|update|delete)\b', s):
         return None
-    return re.sub(r'%\(\w+\)s|%s', 'NULL', s)
+    return re.sub(r'%\(\w+\)s|%s', 'NULL', s).replace(UNKNOWN, 'NULL')
 
 
 def diff(src: Path, ported: Path) -> str:
@@ -512,13 +590,27 @@ if __name__ == '__main__':  # self-check on a tiny module
         qs = sql_queries(src)
         assert [(q['file'], q['line']) for q in qs] == [('m.py', 3), ('q.py', 2), ('q.py', 3)], qs
         assert explainable(qs[1]['sql']) == 'SELECT id FROM t WHERE a > NULL' and explainable(qs[2]['sql']) is None
+        (src / 'b.py').write_text(
+            "TBL = 'x_log'\nclass M(models.Model):\n    _name = 'x.thing'\n    def f(self, ids):\n"
+            "        q = f'SELECT id FROM {self._table} WHERE id = {ids[0]}'\n        q += ' AND a = %s'\n        self.env.cr.execute(q, (1,))\n"
+            "        self.env.cr.execute('DELETE FROM %s WHERE b = %%s' % TBL, (2,))\n        self.env.cr.execute(SQL('SELECT {} FROM t'.format('c')))\n")
+        b = [q for q in sql_queries(src) if q['file'] == 'b.py']
+        assert [(q['sql'], q['exact']) for q in b] == [(f'SELECT id FROM x_thing WHERE id = {UNKNOWN} AND a = %s', False),
+                                                       ('DELETE FROM x_log WHERE b = %s', True), ('SELECT c FROM t', True)], b
+        assert explainable(b[0]['sql']) == 'SELECT id FROM x_thing WHERE id = NULL AND a = NULL'
         one = Path(t) / 'one' / 'm'
         one.mkdir(parents=True)
         (one / 'p.py').write_text("class P:\n    @api.one\n    def a(self):\n        self.x = 1\n\n    @api.one\n    def b(self):\n        return self.x\n")
         api_one_to_loop(one.parent)
         conv = (one / 'p.py').read_text()
-        assert 'for record in self:  # MF_API_ONE: a' in conv and '            record.x = 1' in conv and conv.count('    @api.one\n') == 1, conv
+        assert 'for record in self:  # MF_API_ONE: a' in conv and '            record.x = 1' in conv and '@api.one' not in conv, conv
         assert 'for record in self' in re.sub(r'.*@api.one.*\n', '', conv)   # survives the OCA tool's 13.0 rule
+        assert '    def b(self):\n        def _one(self):  # MF_API_ONE: b' in conv and '            return self.x\n        return [_one(rec) for rec in self]' in conv, conv
+        ns = {'api': None}
+        exec(re.sub(r'.*@api.one.*\n', '', conv).replace('class P:', 'class P(list):'), ns)
+        recs = ns['P']([ns['P'](), ns['P']()])
+        recs[0].x, recs[1].x = 1, 2
+        assert recs.b() == [1, 2]   # one result per record, as @api.one returned
         flush_before_sql(ported.parent)
         body = (ported / 'm.py').read_text()
         assert body.count('flush_all()') == 1 and body.index('flush_all()') < body.index('execute('), body

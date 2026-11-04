@@ -261,10 +261,16 @@ def verify_findings(row: dict, source: Path | None) -> None:
             continue
         if f['pattern'] == 'raw_sql':
             chk = (inst.get('sql') or {}).get((f['file'], src_sql.get((f['file'], f['line']))))
-            if chk and chk['state'] == 'ok':
-                f['status'], f['note'] = 'VERIFIED', 'SQL comprobado en Odoo 19 (EXPLAIN, sin ejecutarlo): ' + chk['detail']
+            built = ' (armado en el código; se reconstruyó: ' + chk.get('sql', '').replace(oc.UNKNOWN, '…')[:300] + ')' if chk and chk.get('built') else ''
+            values = '. Pega valores en el texto del SQL: conviene pasarlos como parámetros (%s)' if chk and oc.UNKNOWN in chk.get('sql', '') else ''
+            if chk and chk['state'] == 'ok' and not chk.get('branches'):
+                f['status'], f['note'] = 'VERIFIED', 'SQL comprobado en Odoo 19 (EXPLAIN, sin ejecutarlo): ' + chk['detail'] + built + values
+            elif chk and chk['state'] == 'ok':
+                f['note'] = 'Una de sus formas se comprobó en Odoo 19; el texto depende de por dónde pase el método' + built
+            elif chk and chk['state'] == 'error' and chk.get('exact', True):
+                f['status'], f['note'] = 'MANUAL', 'El SQL no es válido en Odoo 19: ' + chk['detail'] + built
             elif chk and chk['state'] == 'error':
-                f['status'], f['note'] = 'MANUAL', 'El SQL no es válido en Odoo 19: ' + chk['detail']
+                f['note'] = 'Reconstruido sin certeza (partes que solo se saben al ejecutar); PostgreSQL respondió: ' + chk['detail'] + built
         elif f['pattern'] in ('sql_view', 'external_table') and works:
             f['status'], f['note'] = 'VERIFIED', 'Verificado en Odoo 19: el módulo instala y la prueba funcional lee el modelo'
     row['counts'] = {s: sum(1 for f in row['findings'] if f['status'] == s) for s in STATUSES}
@@ -332,10 +338,10 @@ def port_code(ctx, run, src: Path, om_id, log, cancelled, timeout: int, sql_file
         if r['state'] == 'succeeded':   # its literal SQL planned (never run) on that Odoo 19, with the module and the external SQL
             for q in oc.sql_queries(Path(addons) / name):
                 e = oc.explainable(q['sql'])
-                sql_checks[(q['file'], q['sql'])] = ({'state': 'skipped', 'detail': 'no es consulta (DDL/REFRESH): la valida la instalación'}
-                                                      if e is None else
-                                                      {'state': 'error', 'detail': err} if (err := chain.explain(db, e)) else
-                                                      {'state': 'ok', 'detail': 'tablas y columnas existen en Odoo 19'})
+                sql_checks[(q['file'], q['sql'])] = q | ({'state': 'skipped', 'detail': 'no es consulta (DDL/REFRESH): la valida la instalación'}
+                                                          if e is None else
+                                                          {'state': 'error', 'detail': err} if (err := chain.explain(db, e)) else
+                                                          {'state': 'ok', 'detail': 'tablas y columnas existen en Odoo 19'})
         chain.drop_db(db)
         tests = oc.test_results(r['logTail'])
         installs[name] = {'state': r['state'], 'errors': r['errors'], 'logTail': r['logTail'][-6000:], 'tests': tests, 'sql': sql_checks}

@@ -242,3 +242,14 @@ def test_odoo_findings_verified_on_19(tmp_path):
     oj.verify_findings(row, tmp_path)
     assert [f['status'] for f in row['findings']] == ['VERIFIED', 'MANUAL', 'VERIFIED'] and 'gone' in row['findings'][1]['note']
     assert row['counts']['VERIFIED'] == 2 and row['counts']['MANUAL'] == 1
+    # built SQL: reconstructed; an error on an inexact reconstruction stays «a revisar» (never a false «Manual»)
+    (tmp_path / 'models' / 'b.py').write_text("class M:\n    _name = 'x.y'\n    def f(self, v):\n        self.env.cr.execute(f'SELECT a FROM {self._table} WHERE b = {v}')\n"
+                                              "        self.env.cr.execute(f'SELECT a FROM {v}')\n")
+    fb = lambda line: {'pattern': 'raw_sql', 'file': 'models/b.py', 'line': line, 'status': 'REVIEW', 'note': ''}  # noqa: E731
+    built = {q['line']: q for q in __import__('mf.odoo.code', fromlist=['x']).sql_queries(tmp_path) if q['file'] == 'models/b.py'}
+    row = {'findings': [fb(4), fb(5)], 'install': {'state': 'succeeded', 'tests': {'total': 1, 'failed': 0, 'errors': 0}, 'sql': {
+        ('models/b.py', built[4]['sql']): built[4] | {'state': 'ok', 'detail': 'ok'},
+        ('models/b.py', built[5]['sql']): built[5] | {'state': 'error', 'detail': 'syntax error at or near "NULL"'}}}}
+    oj.verify_findings(row, tmp_path)
+    assert [f['status'] for f in row['findings']] == ['VERIFIED', 'REVIEW'], row['findings']
+    assert 'x_y' in row['findings'][0]['note'] and 'parámetros' in row['findings'][0]['note'] and 'sin certeza' in row['findings'][1]['note']
