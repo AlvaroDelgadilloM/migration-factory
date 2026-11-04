@@ -5,6 +5,7 @@
                    on JBoss the server provided the driver; a Spring Boot jar must carry it
   servletPatterns  url-pattern of CamelHttpTransportServlet in web.xml (the REST URLs clients call today)
   contextRoots     jboss-web.xml <context-root>, else the WAR <finalName>: JBoss served the app under /<that>
+  springContexts   web.xml with contextConfigLocation (the Spring XML context ContextLoaderListener started on JBoss)
 Stdlib only (the scanner also runs without the platform)."""
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ _MAPPING = re.compile(r'<servlet-mapping>\s*<servlet-name>\s*([^<]+?)\s*</servle
 
 
 def empty() -> dict:
-    return {'jndiDataSources': [], 'jdbcDrivers': [], 'servletPatterns': [], 'contextRoots': []}
+    return {'jndiDataSources': [], 'jdbcDrivers': [], 'servletPatterns': [], 'contextRoots': [], 'springContexts': []}
 
 
 def collect(rel: str, text: str, facts: dict) -> None:
@@ -42,6 +43,12 @@ def collect(rel: str, text: str, facts: dict) -> None:
         for name, pattern in _MAPPING.findall(text):
             if name in camel:
                 facts['servletPatterns'].append({'pattern': pattern, 'file': rel})
+        ctx = re.search(r'<param-name>\s*contextConfigLocation\s*</param-name>\s*<param-value>\s*([^<]+?)\s*</param-value>', text)
+        if ctx:
+            cxf = {n for n in re.findall(r'<servlet>\s*<servlet-name>\s*([^<]+?)\s*</servlet-name>\s*<servlet-class>\s*'
+                                         r'org\.apache\.cxf\.transport\.servlet\.CXFServlet', text)}
+            facts.setdefault('springContexts', []).append({'file': rel, 'locations': [x for x in re.split(r'[,\s]+', ctx[1]) if x],
+                                                           'cxfServletPattern': next((p for n, p in _MAPPING.findall(text) if n in cxf), None)})
     if rel.endswith('jboss-web.xml'):
         m = re.search(r'<context-root>\s*/?([^<\s]*)\s*</context-root>', text)
         if m:

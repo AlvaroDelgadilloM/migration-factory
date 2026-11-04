@@ -550,6 +550,28 @@ def build_steps(scan: Scan, profile: TargetProfile, modules, routes, findings, j
     add(f'runtime-{profile.runtime}', f'Runtime {profile.name}: BOM, starters/extensiones y arranque', 'recipe', 'REVIEW',
         recipe=recipe, preconditions=base_pre + [g1] + pre, depends_on=[mapping_dep], rollback=ROLLBACK_RECIPE,
         finding_ids=ids(['UNMAPPED_COMPONENT']), notes=notes)
+    legacy = (scan.summary or {}).get('legacyRuntime') or {}
+    if profile.runtime == 'spring' and legacy.get('springContexts'):
+        builders = [b for b in (scan.route_builders or []) if b.get('noArgConstructor')]
+        xml_edits = []
+        for ctx in legacy['springContexts']:
+            prefix = ctx['file'].split('src/main/', 1)[0] if 'src/main/' in ctx['file'] else ''
+            mine = [b for b in builders if b['file'].startswith(prefix)]
+            ds = [d['bean'] for d in legacy.get('jndiDataSources', []) if d['file'].startswith(prefix)]
+            xml_edits.append({'op': 'spring-xml-context', 'file': ctx['file'], 'line': 1, 'prefix': prefix, 'locations': ctx['locations'],
+                              'cxfServletPattern': ctx.get('cxfServletPattern'),  # web.xml itself may be gone (WAR profile deletes it)
+                              'package': min((b['package'] for b in mine if b.get('package')), key=len, default=''),
+                              'dsBeans': ds if len(ds) == 1 else [],  # several datasources are configured by hand (runtime step)
+                              'routeBuilders': [f"{b['package']}.{b['class']}" if b.get('package') else b['class'] for b in mine]})
+        add('spring-xml-context', 'Contexto Spring XML de JBoss (web.xml) → Spring Boot: @ImportResource, CXF, JMS y rutas XML', 'transform',
+            'REVIEW', recipe={'edits': xml_edits}, preconditions=base_pre, depends_on=[f'runtime-{profile.runtime}'], rollback=ROLLBACK_RECIPE,
+            notes=['JBoss arrancaba el XML con ContextLoaderListener; Spring Boot ignora WEB-INF. El XML pasa a '
+                   'src/main/resources/legacy/ con @ImportResource; lo que Spring Boot ya provee (datasource JNDI, bus de CXF, '
+                   'placeholders, RouteBuilder) se quita; las rutas de <camelContext> pasan a camel/*.xml (XML IO DSL).',
+                   'Repara los <properties> que la receta de Camel agrega dentro de <bean> de Spring, y cambia activemq-client 5.x '
+                   '(javax.jms) por el cliente jakarta que gestiona Spring Boot.',
+                   'Lo que no se reconoce (onException en el contexto, atributos de <camelContext>, JNDI sin datasource) queda listado '
+                   'como acción manual.'])
     from .transform import plan_edits
     edits = plan_edits(endpoints, [{'ruleId': f.rule_id, 'file': f.file, 'line': f.line} for f in findings])
     scheme_edits = [e for e in edits if e['op'] == 'scheme']
