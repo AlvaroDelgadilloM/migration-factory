@@ -67,7 +67,9 @@ jobs:
           docker build -f docker/frontend.Dockerfile -t migration-factory/frontend:ci .
       - name: Capturas de la evidencia dentro de la imagen del worker (usuario sin privilegios)
         run: |
-          docker run --rm migration-factory/worker:ci python -c "
+          # como en el VPS (docker-compose.yml): raíz de solo lectura y /tmp en tmpfs. Sin esto la prueba no veía que Chromium no
+          # podía escribir en HOME y en producción no salía ninguna captura.
+          docker run --rm --read-only --tmpfs /tmp migration-factory/worker:ci python -c "
           import tempfile; from pathlib import Path; from mf.tomcat_war import evidence
           d = Path(tempfile.mkdtemp()); (d / 'p.html').write_text('<h1>evidencia</h1>')
           exe = evidence.find_browser(); assert exe, 'sin navegador'
