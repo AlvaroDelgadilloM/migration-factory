@@ -34,7 +34,7 @@ services:
       db: {condition: service_healthy}
       mq: {condition: service_started}
       buro: {condition: service_started}
-    ports: ["127.0.0.1:18083:8080"]
+    ports: ["${PEDIDOS_BIND:-127.0.0.1}:18083:8080"]     # en el VPS: PEDIDOS_BIND=0.0.0.0 (deploy-demo-jboss.yml)
     volumes:
       - ./jboss/postgresql-42.2.27.jar:/opt/jboss/wildfly/standalone/deployments/postgresql-42.2.27.jar:ro
       - ./jboss/pedidos-ds.xml:/opt/jboss/wildfly/standalone/deployments/pedidos-ds.xml:ro

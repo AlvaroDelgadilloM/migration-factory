@@ -1,0 +1,71 @@
+name: Deploy demo JBoss pedidos
+
+# El ejemplo legado completo (examples/jboss-pedidos-completo) en el VPS, como stack propio «jboss-pedidos» (se ve en Portainer):
+# WildFly 10.1 con el WAR, PostgreSQL, ActiveMQ y el buró SOAP simulado. Carpeta aparte de la plataforma; no la toca.
+# REST: http://<VPS>:18083/pedidos/api/salud   SOAP: http://<VPS>:18083/pedidos/ws/pedidos?wsdl
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: {group: deploy-demo-jboss, cancel-in-progress: false}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: vps cpontabo
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: examples/jboss-pedidos-completo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '8', cache: maven}
+      - name: WAR (Java 8)
+        run: cd app && mvn -B -ntp package
+      - name: Paquete del stack
+        run: |
+          tar -czf /tmp/jboss-pedidos.tgz docker-compose.yml db mock jboss/pedidos-ds.xml jboss/postgresql-42.2.27.jar app/target/pedidos.war
+          tar -tzf /tmp/jboss-pedidos.tgz
+      - name: SSH
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+          PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)" >/dev/null
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          printf '#!/bin/sh\nprintf "%%s" "$PASSPHRASE"\n' > ~/.ssh/askpass && chmod 700 ~/.ssh/askpass
+          printf '%s\n' "$KEY" | SSH_ASKPASS=~/.ssh/askpass SSH_ASKPASS_REQUIRE=force DISPLAY=none ssh-add - >/dev/null
+          rm -f ~/.ssh/askpass
+      - name: Desplegar (docker compose, proyecto jboss-pedidos)
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+        run: |
+          SSH="ssh -o StrictHostKeyChecking=yes $USER@$HOST"
+          $SSH "mkdir -p demos/jboss-pedidos && cd demos/jboss-pedidos && tar -xzf - && mkdir -p entrada && chmod 777 entrada" < /tmp/jboss-pedidos.tgz
+          $SSH bash -s <<'EOF'
+          set -euo pipefail
+          cd demos/jboss-pedidos
+          export PEDIDOS_BIND=0.0.0.0
+          docker compose -p jboss-pedidos up -d --force-recreate
+          for i in $(seq 1 60); do
+            docker compose -p jboss-pedidos exec -T jboss curl -sf http://127.0.0.1:8080/pedidos/api/salud && break
+            sleep 5
+          done
+          docker compose -p jboss-pedidos ps
+          docker compose -p jboss-pedidos exec -T jboss curl -sf http://127.0.0.1:8080/pedidos/api/salud
+          EOF
+      - name: Desde fuera del servidor
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+        run: curl -sf --max-time 10 "http://$HOST:18083/pedidos/api/salud" || echo "::warning::El puerto 18083 no responde desde fuera: revisar el firewall del VPS"
+      - name: Limpiar
+        if: always()
+        run: ssh-agent -k >/dev/null 2>&1 || true
