@@ -18,8 +18,12 @@ services:
       - ./entrada:/opt/pedidos/entrada
     networks:
       plataforma: {aliases: [pedidos-migrado]}
+      api: {aliases: [pedidos-migrado]}   # Pruebas > Manuales las envía la API (red edge), no el worker
 
 networks:
   plataforma:
     external: true
     name: migration-factory_egress
+  api:
+    external: true
+    name: migration-factory_edge
