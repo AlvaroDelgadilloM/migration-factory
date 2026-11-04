@@ -30,7 +30,7 @@ jobs:
           # en el VPS la base y ActiveMQ solo los usa JBoss: sin puertos publicados (no chocan con otros servicios del servidor)
           mkdir -p /tmp/stack && sed -E '/"127\.0\.0\.1:(5434:5432|61617:61616)"/d' docker-compose.yml > /tmp/stack/docker-compose.yml
           ! grep -nE '5434|61617' /tmp/stack/docker-compose.yml
-          tar -czf /tmp/jboss-pedidos.tgz db mock jboss/pedidos-ds.xml jboss/postgresql-42.2.27.jar app/target/pedidos.war -C /tmp/stack docker-compose.yml
+          tar -czf /tmp/jboss-pedidos.tgz db mock docker-compose.vps.yml jboss/pedidos-ds.xml jboss/postgresql-42.2.27.jar app/target/pedidos.war -C /tmp/stack docker-compose.yml
           tar -tzf /tmp/jboss-pedidos.tgz
       - name: SSH
         env:
@@ -57,13 +57,13 @@ jobs:
           set -euo pipefail
           cd demos/jboss-pedidos
           export PEDIDOS_BIND=0.0.0.0
-          docker compose -p jboss-pedidos up -d --force-recreate
+          docker compose -f docker-compose.yml -f docker-compose.vps.yml -p jboss-pedidos up -d --force-recreate
           for i in $(seq 1 60); do
-            docker compose -p jboss-pedidos exec -T jboss curl -sf http://127.0.0.1:8080/pedidos/api/salud && break
+            docker compose -f docker-compose.yml -f docker-compose.vps.yml -p jboss-pedidos exec -T jboss curl -sf http://127.0.0.1:8080/pedidos/api/salud && break
             sleep 5
           done
-          docker compose -p jboss-pedidos ps
-          docker compose -p jboss-pedidos exec -T jboss curl -sf http://127.0.0.1:8080/pedidos/api/salud
+          docker compose -f docker-compose.yml -f docker-compose.vps.yml -p jboss-pedidos ps
+          docker compose -f docker-compose.yml -f docker-compose.vps.yml -p jboss-pedidos exec -T jboss curl -sf http://127.0.0.1:8080/pedidos/api/salud
           EOF
       - name: Desde fuera del servidor
         env:

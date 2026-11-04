@@ -1,0 +1,25 @@
+# Solo en el VPS (deploy-demo-jboss.yml): une el ejemplo a la red de salida de los workers de la plataforma, con nombres propios,
+# para que Pruebas → Automáticas compare contra este JBoss y la versión migrada use la misma base, ActiveMQ y buró. No publica
+# puertos nuevos. Los nombres van en MF_TEST_ALLOWED_HOSTS del environment del VPS.
+services:
+  db:
+    networks:
+      default: {}
+      plataforma: {aliases: [pedidos-db]}
+  mq:
+    networks:
+      default: {}
+      plataforma: {aliases: [pedidos-mq]}
+  buro:
+    networks:
+      default: {}
+      plataforma: {aliases: [pedidos-buro]}
+  jboss:
+    networks:
+      default: {}
+      plataforma: {aliases: [pedidos-jboss]}
+
+networks:
+  plataforma:
+    external: true
+    name: migration-factory_egress
