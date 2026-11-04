@@ -123,6 +123,18 @@ def _states_to_invisible(m: re.Match) -> str:
     return tag.replace(st.group(0), f' invisible="state not in ({values}{"," if values.count(",") == 0 else ""})"')
 
 
+def _label_without_for(m: re.Match) -> str:
+    """<label string="X"/> without for → <span class="o_form_label">X</span> (14.0+ rejects a label without for; Odoo's own advice)"""
+    attrs = m[1]
+    text = re.search(r'\sstring=(["\'])(.*?)\1', attrs)
+    if re.search(r'\sfor=', attrs) or not text:
+        return m[0]
+    rest = attrs.replace(text[0], '')
+    cls = re.search(r'\sclass=(["\'])(.*?)\1', rest)
+    rest = rest.replace(cls[0], f' class="o_form_label {cls[2]}"') if cls else rest + ' class="o_form_label"'
+    return f'<span{rest}>{text[2]}</span>'
+
+
 # What OCA odoo-module-migrator leaves (it warns but does not rewrite): the platform's own rules, per version where the change
 # happened. (since, scope: the file must mention it, files, regex, replacement). Applied right after the tool's step to that version.
 INVOICE = r'account\.invoice\b'
@@ -155,6 +167,7 @@ RULES = [
     ('14.0', r'crm\.lead', 'py', r"""\.planned_revenue\b""", '.expected_revenue'),
     ('14.0', r'crm\.lead', 'py', r"""(['"])planned_revenue\1""", r'\1expected_revenue\1'),
     ('17.0', r'\sstates="', 'xml', r'<[^<>]*\sstates="[^"]*"[^<>]*>', _states_to_invisible),
+    ('14.0', r'<label\b', 'xml', r'<label\b([^<>]*?)\s*(?:/>|>\s*</label>)', _label_without_for),
     ('16.0', r'stock\.production\.lot', 'py', r"""(['"])stock\.production\.lot\1""", r"\1stock.lot\1"),
 ]
 FIELD = re.compile(r'^(\s+)(\w+)\s*=\s*fields\.(\w+)\(')
@@ -617,4 +630,7 @@ if __name__ == '__main__':  # self-check on a tiny module
         assert flush_before_sql(ported.parent) == []   # idempotent
     x = re.sub(r'<[^<>]*\sstates="[^"]*"[^<>]*>', _states_to_invisible, '<button name="a" states="draft"/><button states="a,b" invisible="1"/>')
     assert x == '<button name="a" invisible="state not in (\'draft\',)"/><button states="a,b" invisible="1"/>', x
+    rx = next(r for v, _s, _k, r, f in RULES if f is _label_without_for)
+    y = re.sub(rx, _label_without_for, '<label string="Era 12"/><label for="name"/><label string="B" class="x"></label><label string="C" for="c"/>')
+    assert y == '<span class="o_form_label">Era 12</span><label for="name"/><span class="o_form_label x">B</span><label string="C" for="c"/>', y
     print('ok')

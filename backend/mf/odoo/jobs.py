@@ -450,8 +450,8 @@ def preview(ctx, run, project_id, om_id, src: Path | None, *, backup: Path | Non
         password = secrets.token_urlsafe(12)
         # the attachments go into this database's filestore (data directory shared with the slots) and are counted against the
         # records that point to a file; the slot's supervisor deletes them with the database
-        script = (f"import os, shutil, odoo\nsrc, dst = {str(files)!r}, odoo.tools.config.filestore(env.cr.dbname)\nshutil.rmtree(dst, ignore_errors=True)\n"
-                  "if os.path.isdir(src):\n    shutil.copytree(src, dst)\n"
+        script = (f"import os, shutil, odoo\nsrc, dst = {str(files)!r}, odoo.tools.config.filestore(env.cr.dbname)\n"
+                  "if os.path.isdir(src):\n    shutil.rmtree(dst, ignore_errors=True)\n    shutil.copytree(src, dst)\n"
                   "names = [a['store_fname'] for a in env['ir.attachment'].sudo().with_context(active_test=False).search_read("
                   "[('store_fname', '!=', False), ('url', 'not like', '/web/assets/%')], ['store_fname'])]\n"
                   "print('MF_FILES %d %d' % (len(names), sum(1 for n in names if not os.path.isfile(os.path.join(dst, n)))))\n"
