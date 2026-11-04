@@ -1,0 +1,25 @@
+# La VERSIÓN MIGRADA por la plataforma (Spring Boot 3.5 + Camel 4, Java 21), como stack propio «pedidos-migrado» en el VPS (se ve
+# en Portainer), al lado de «jboss-pedidos». Usa la misma base, ActiveMQ y buró que el JBoss (alias db, mq y buro en la red egress),
+# como en un cambio real de servidor. Lo despliega deploy-demo-migrado.yml desde el candidate.zip de una ejecución; no es código
+# de la plataforma. REST: http://<VPS>:18084/pedidos/api/salud   SOAP: http://<VPS>:18084/pedidos/ws/pedidos?wsdl
+name: pedidos-migrado
+
+services:
+  app:
+    image: eclipse-temurin:21.0.8_9-jre
+    command: ["java", "-jar", "/app/pedidos.jar"]
+    environment:
+      MF_DS_PEDIDOSDS_URL: jdbc:postgresql://pedidos-db:5432/pedidos
+      MF_DS_PEDIDOSDS_USERNAME: pedidos
+      MF_DS_PEDIDOSDS_PASSWORD: pedidos      # base sintética de la demo (la misma de jboss/pedidos-ds.xml): no es un secreto
+    ports: ["${PEDIDOS_BIND:-127.0.0.1}:18084:8080"]
+    volumes:
+      - ./app/target/pedidos.jar:/app/pedidos.jar:ro
+      - ./entrada:/opt/pedidos/entrada
+    networks:
+      plataforma: {aliases: [pedidos-migrado]}
+
+networks:
+  plataforma:
+    external: true
+    name: migration-factory_egress
