@@ -56,7 +56,7 @@
     <bean id="fondoRoutes" class="demo.pedidos.FondoRoutes"/>
     <bean id="serviciosRoutes" class="demo.pedidos.ServiciosRoutes"/>
 
-    <camelContext id="pedidos" xmlns="http://camel.apache.org/schema/spring">
+    <camelContext id="pedidos" streamCache="true" xmlns="http://camel.apache.org/schema/spring">
         <propertyPlaceholder id="properties" location="classpath:pedidos.properties"/>
         <routeBuilder ref="pedidosRoutes"/>
         <routeBuilder ref="fondoRoutes"/>

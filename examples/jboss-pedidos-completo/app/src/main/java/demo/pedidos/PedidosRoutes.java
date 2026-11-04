@@ -77,7 +77,14 @@ public class PedidosRoutes extends RouteBuilder {
             .process(e -> e.getIn().setHeader("monto",
                 e.getIn().getBody(BigDecimal.class).multiply(BigDecimal.valueOf(e.getIn().getHeader("cantidad", Integer.class)))))
             .to("direct:evaluarCredito")
-            .to("direct:registrarPedido")
+            // la ruta transaccional siempre trae su propio manejador (TransactionErrorHandler): su error se atrapa aquí
+            .doTry()
+                .to("direct:registrarPedido")
+            .doCatch(Errores.Conflicto.class)
+                .process(e -> responder(e, 409, "SIN_EXISTENCIAS", null)).stop()
+            .doCatch(Exception.class)
+                .process(e -> responder(e, 500, "ERROR_INTERNO", "No se pudo registrar la operación")).stop()
+            .end()
             .setBody(header("pedidoId")).convertBodyTo(String.class)
             .to(ExchangePattern.InOnly, "activemq:queue:pedidos.confirmados")
             .process(e -> {

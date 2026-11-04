@@ -14,6 +14,10 @@ public class ServiciosRoutes extends RouteBuilder {
 
     @Override
     public void configure() {
+        // sin manejador propio: el error llega intacto a la ruta que llamó (en Camel 2 una excepción que ya pasó por un manejador
+        // de errores no la vuelve a manejar el onException de quien llamó)
+        errorHandler(noErrorHandler());
+
         // SOAP consumido: el buró de crédito (timeout de 3 s en el conduit de applicationContext.xml)
         from("direct:evaluarCredito").routeId("evaluar-credito")
             .bean("soap", "peticionCredito")
