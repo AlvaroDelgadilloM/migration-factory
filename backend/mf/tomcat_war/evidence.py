@@ -66,6 +66,12 @@ def shoot(cmd: list, png: Path, timeout: int = 60):
     """One headless screenshot. The browser runs in its own process group and the whole group is stopped afterwards: a
     headless Edge/Chrome sometimes never exits (or leaves children behind) and would hold the run, or pile up, forever."""
     kw = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
+    profile = next((a.split('=', 1)[1] for a in cmd if a.startswith('--user-data-dir=')), None)
+    if profile and os.environ.get('MF_BROWSER_CONTAINER') == '1':
+        # the worker runs with a read-only root filesystem (docker-compose.yml): Chromium writes its config, cache, fontconfig and
+        # crashpad files under HOME and exits without the image when it cannot. Point them at the run's own profile folder.
+        Path(profile).mkdir(parents=True, exist_ok=True)
+        kw['env'] = os.environ | {'HOME': profile, 'XDG_CONFIG_HOME': profile, 'XDG_CACHE_HOME': profile, 'XDG_DATA_HOME': profile}
     p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     t0, size, exited = time.monotonic(), -1, None
     try:
