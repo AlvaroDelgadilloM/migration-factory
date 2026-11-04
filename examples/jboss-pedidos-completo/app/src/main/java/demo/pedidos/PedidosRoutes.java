@@ -29,7 +29,7 @@ public class PedidosRoutes extends RouteBuilder {
         restConfiguration().component("servlet").bindingMode(RestBindingMode.off);
         // el mensaje HTTP de Camel vuelve a leer la petición cuando el cuerpo queda vacío (una consulta sin filas), y Undertow ya
         // cerró el stream (Stream is closed): al entrar se copia a un mensaje normal, con el cuerpo ya leído
-        interceptFrom("servlet:*").process(e -> {
+        interceptFrom("rest:*").process(e -> {
             DefaultMessage m = new DefaultMessage(e.getContext());
             m.copyFrom(e.getIn());
             m.setBody(e.getIn().getBody(String.class));
