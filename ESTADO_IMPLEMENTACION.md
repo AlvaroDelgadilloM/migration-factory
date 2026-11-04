@@ -719,7 +719,7 @@ El ZIP del proyecto trae el respaldo de la base (`dump.sql` + `filestore/` + `ma
   SQL y tablas externas quedan «Verificado en 19» si el módulo instala y pasa sus pruebas y la prueba funcional. Lo que queda se
   marca **«Revisado»** con comentario (rol plan, auditado `odoo.review.mark/undo`, `PATCH /odoo-migrations/{id}/reviews`) y se
   conserva en el siguiente port mientras el hallazgo siga. Verificado en `odoo-e2e.yml` (code, codecomplex, flows, lab12code:
-  9 hallazgos verificados en 19, flujos de los `@api.one` convertidos bien).
+  11 hallazgos verificados en 19 —SQL directo, vistas SQL y tablas externas—, flujos de los `@api.one` convertidos bien).
 - **Proyectos del usuario en el VPS (2026-10-29)**: `odoo12-to-19-migration-lab` (5/5 módulos instalan y pasan pruebas, 1 objeto
   SQL), `odoo12-complex-migration-lab` y `…-with-db-backup` (8/8 instalan y pasan pruebas; 12 objetos SQL creados sin error:
   8 KEEP, 1 REWRITE, 1 MOVE_TO_ORM, 2 DEPRECATE); 0 cambios manuales en los tres.
