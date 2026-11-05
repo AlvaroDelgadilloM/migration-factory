@@ -90,6 +90,9 @@ Documento 16 (estado real del job y POM del candidato), verificado con el proyec
 1. (Resuelto 2026-10-22) E2E de UI del flujo completo (`frontend/e2e/flow.spec.ts`) y workflow diario `UI e2e`.
 2. (Resuelto 2026-10-12) `docker-compose.oidc.yml` + `scripts/oidc_e2e.py`.
 3. Re-ejecución manual de suites/fases (botones deshabilitados con explicación en la UI).
+   (2026-11-05) Un trabajo fallido, vencido o cancelado se relanza desde cero con «Relanzar» en su log (`POST /jobs/{id}/relaunch`,
+   auditado `job.relaunch`, el mismo trabajo con intentos nuevos; el log avisa si el worker se cayó durante el trabajo).
+   Sigue pendiente re-ejecutar una fase suelta.
 4. (Resuelto 2026-10-12) `POST /executions/{id}/evidence-files`.
 5. (Resuelto 2026-10-22, probado en kind + gVisor; NetworkPolicy sin verificar) `MF_EXECUTION_MODE=k8s`: pod efímero gVisor por job + NetworkPolicy + proxy de salida (`deploy/k8s`).
 6. (Resuelto 2026-10-22) repositorio Maven local por proyecto (`MF_MAVEN_REPO_PER_PROJECT`).
