@@ -121,9 +121,11 @@ El piloto sugerido (un job LOW, uno MEDIUM, uno HIGH y una secuencia maestra) sa
 
 ## Límites conocidos
 
-- **Pendiente para Sprint 4:** el fallback con IA (doc 58). Hoy lo no traducible queda MANUAL, con el motivo.
+- **IA (doc 58):** propuestas de SQL para lo que el traductor rechaza (`mf/datastage/ai_fallback.py`, `ai-proposals.md`),
+  nunca aplicadas; apagado por defecto (`MF_AI_ENABLED`, clave `MF_CRED_AI`). Sin clave lo no traducible queda MANUAL, con el motivo.
 - **Reconciliación:** ejecutarla requiere DataStage y Airflow sobre la misma entrada en el ambiente del cliente (ver arriba).
-- **Programación:** el DSX no la trae. `schedule=None` y `config/schedules.yaml` para definirla.
+- **Programación:** el DSX no la trae. Se define en la plataforma (cron por DAG, detalle de la secuencia; auditado y heredado
+  por la siguiente migración); queda en el DAG y en `config/schedules.yaml`.
 - **Sin traducción, por diseño:** `@PARTITIONNUM` (particionamiento paralelo), contadores entre filas, ColumnGenerator y
   RowGenerator con valores sintéticos, y los bloques PL/SQL por fila (WriteMode 8).
 - **Códigos de trigger:** `ConditionType` 0 se trata como «OK/sin condición» y 6 como expresión personalizada (los únicos
