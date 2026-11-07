@@ -7,7 +7,7 @@ import { MessageModule } from 'primeng/message';
 import { ProgressBarModule } from 'primeng/progressbar';
 import { TableModule } from 'primeng/table';
 import { Api } from '../../core/api';
-import { ActionButton, JobLog, PageHeader, StateView, StatusTag, STATUS_HINT } from '../../shared/ui';
+import { ActionButton, humanStatus, JobLog, PageHeader, StateView, StatusTag, STATUS_HINT } from '../../shared/ui';
 import { DataStageStore } from './store';
 
 /** DataStage → Airflow · Resumen: status in plain words, the next step, the gates and the downloads. */
@@ -24,7 +24,7 @@ import { DataStageStore } from './store';
       <mf-action [label]="ds.current() ? 'Volver a migrar' : 'Analizar y migrar'" icon="pi pi-play" [busy]="ds.busy()"
                  [disabledReason]="ds.startReason()" (run)="ds.start(timezone, aiAssist && aiOn())" />
     </mf-page-header>
-    @if (ds.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (ds.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
 
     <mf-state [loading]="ds.list.loading()" [error]="ds.list.error()" [hasData]="!!ds.list.data()" [empty]="ds.list.data()?.length === 0"
               emptyText="Aún no se ha migrado. «Analizar y migrar» lee los DSX, genera el proyecto Airflow y lo valida." (retry)="ds.reload()">
@@ -67,6 +67,7 @@ import { DataStageStore } from './store';
             <section class="card">
               <h3>Controles de calidad</h3>
               <p-table [value]="s.gates ?? []" size="small">
+                <ng-template #header><tr><th scope="col">Control</th><th scope="col">Estado</th><th scope="col">Detalle</th></tr></ng-template>
                 <ng-template #body let-g><tr><td>{{ gateName(g.gate) }}</td><td><mf-status [value]="g.status" /></td><td class="small">{{ g.detail }}</td></tr></ng-template>
               </p-table>
             </section>
@@ -79,25 +80,26 @@ import { DataStageStore } from './store';
             </section>
           </div>
         } @else {
-          <p-message severity="error">La migración terminó en estado «{{ m.state }}»: {{ m.job?.errorMessage }}</p-message>
+          <p-message severity="error">La migración terminó en estado «{{ human(m.state) }}»@if (m.state) { <small class="mono muted">({{ m.state }})</small> }: {{ m.job?.errorMessage }}</p-message>
         }
       }
     </mf-state>`,
   styles: [`.ai{display:flex;gap:6px;align-items:center;font-size:13px;white-space:nowrap}.ai input{width:16px;height:16px}
-    .tz{display:flex;flex-direction:column;gap:4px}.tz label{font-size:12px;color:var(--mf-muted)}
+    .tz{display:flex;flex-direction:column;gap:4px}.tz label{font-size:13px;color:var(--mf-muted)}
     .hero{display:flex;justify-content:space-between;align-items:center;gap:1rem;background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:20px 24px;margin-bottom:16px}
     .hero h2{margin:8px 0 4px;font-size:22px}
-    .next{background:#f0f7f7;border:1px solid #cfe5e6;border-radius:12px;padding:16px 20px;margin-bottom:16px}.next h3{margin:0 0 6px}
+    .next{background:#fdf3d0;border:1px solid #ecd27a;border-radius:12px;padding:16px 20px;margin-bottom:16px}.next h3{margin:0 0 6px}
     .next p-progressbar{display:block;margin:10px 0 4px;height:8px}
     .grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px}.card{background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:16px 20px}
     .card h3{margin:0 0 10px}.pilot{list-style:none;padding:0;margin:0 0 14px}.pilot li{padding:4px 0;display:flex;gap:8px;align-items:baseline}
-    .pilot .mono{word-break:break-all}:host ::ng-deep .nowrap-btn{white-space:nowrap}.hero{flex-wrap:wrap}
+    .pilot .mono{word-break:break-all}.nowrap-btn{white-space:nowrap}.hero{flex-wrap:wrap}
     .ok-c b{color:#067647}.info-c b{color:#0a5f73}.warn-c b{color:#b54708}
     .ok-c > i{background:#e7f6ec !important;color:#067647 !important}.warn-c > i{background:#fff4e5 !important;color:#b54708 !important}
     .card{min-width:0}:host ::ng-deep .card .p-datatable{overflow-x:auto}
     @media (max-width:1100px){.grid{grid-template-columns:minmax(0,1fr)}}`],
 })
 export class DsOverview {
+  human = humanStatus;
   ds = inject(DataStageStore);
   api = inject(Api);
   timezone = 'America/Mexico_City';

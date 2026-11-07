@@ -19,7 +19,7 @@ const APP_STATE: Record<string, { label: string; s: 'danger' | 'warn' | 'success
   styles: [`
     .panel { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; overflow-x: auto; margin-bottom: 16px; }
     .card { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 14px 18px; margin: 0 0 16px; }
-    tr.row { cursor: pointer; } tr.row.on { background: var(--mf-teal-soft); } h2 { font-size: 17px; margin: 0 0 4px; } h3 { font-size: 14.5px; margin: 14px 0 6px; }
+    tr.row { cursor: pointer; } tr.row.on { background: var(--mf-amber-soft); } h2 { font-size: 17px; margin: 0 0 4px; } h3 { font-size: 14.5px; margin: 14px 0 6px; }
     .filters { margin: 0 0 12px; } .facts { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; margin: 0 0 8px; } .num { text-align: right; }
     .f { border-top: 1px solid var(--mf-line); padding: 8px 0; font-size: 13.5px; } .f small { display: block; color: var(--mf-muted); }
     ul.tight { margin: 0; padding-left: 18px; font-size: 13.5px; } code { font-size: 12.5px; }`],

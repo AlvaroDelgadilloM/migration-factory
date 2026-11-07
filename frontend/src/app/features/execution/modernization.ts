@@ -19,7 +19,7 @@ const LEVEL: Record<string, string> = { SAFE: 'AUTO', REFACTOR: 'REVIEW', ARCHIT
   template: `
     <p class="muted">Se trabaja sobre una copia del candidato (candidate.zip no cambia). Cada refactor: snapshot → aplicar → <code>mvn clean test</code>
       → rollback automático si falla o corren menos pruebas. ARCHITECTURE nunca se aplica.</p>
-    @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     <fieldset class="approvals">
       <legend>Refactors que cambian contratos públicos (requieren aprobación de arquitecto/owner)</legend>
       @for (r of contractRules(); track r.id) {
@@ -36,7 +36,7 @@ const LEVEL: Record<string, string> = { SAFE: 'AUTO', REFACTOR: 'REVIEW', ARCHIT
         <h3><mf-status [value]="m.state" /> Modernización {{ m.id.slice(0, 8) }} · {{ m.createdBy }}
           @if (m.approved.length) { · aprobado: <code>{{ m.approved.join(', ') }}</code> }</h3>
         @if (m.jobId && ['queued', 'running'].includes(m.state)) { <mf-job-log [jobId]="m.jobId" (finished)="list.reload()" /> }
-        @if (m.job?.errorMessage) { <p-message severity="warn">{{ m.job?.errorCode }}: {{ m.job?.errorMessage }}</p-message> }
+        @if (m.job?.errorMessage) { <p-message severity="warn">{{ m.job?.errorMessage }} <small class="mono muted">(código {{ m.job?.errorCode }})</small></p-message> }
         @if (m.results.length) {
           <p-table [value]="m.results">
             <ng-template #header><tr><th scope="col">Regla</th><th scope="col">Tier</th><th scope="col">Confianza</th><th scope="col">Estado</th><th scope="col">Casos</th><th scope="col">Motivo</th></tr></ng-template>

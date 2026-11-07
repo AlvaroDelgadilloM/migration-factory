@@ -11,7 +11,7 @@ import { UiError } from '../../core/errors';
 import { Artifact, Module, Page, Route, Scan, TargetVersions } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { CursorPager, Loader } from '../../shared/state';
-import { ActionButton, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
+import { ActionButton, humanStatus, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
 import { VersionPicker, runtimeEntry } from '../../shared/version-picker';
 import { WorkspacePanel } from './workspace';
 import { WorkspaceMigrationPanel } from './ws-migration';
@@ -52,7 +52,7 @@ import { WorkspaceMigrationPanel } from './ws-migration';
       <small class="muted">Se usa al analizar y como valor inicial en «Migración por oleadas» y en Plan.
         @if (ctx.destination().runtime === 'quarkus') { Java 25 está validado con Tomcat WAR y con Spring Boot 4.1 + Camel 4.22. }</small>
     </section>
-    @if (startError(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (startError(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     @if (isAgent()) {
       <p-message severity="info"><span><strong>Agente local:</strong> el código no está en la plataforma. En el equipo donde está la carpeta, con la CLI
         de Migration Factory: <code class="cmd">{{ agentCommand() }}</code>. Solo se envían hallazgos, módulos y rutas; la migración también se ejecuta allí
@@ -72,7 +72,7 @@ import { WorkspaceMigrationPanel } from './ws-migration';
 
       @if (scan.data(); as s) {
         @if (s.status === 'failed' || s.status === 'timed_out' || s.status === 'cancelled') {
-          <p-message severity="warn">Este análisis terminó en estado «{{ s.status }}»: {{ s.job?.errorMessage }}.
+          <p-message severity="warn">Este análisis terminó en estado «{{ human(s.status) }}»@if (s.status) { <small class="mono muted">({{ s.status }})</small> }: {{ s.job?.errorMessage }}.
             @if (lastGood()) { El último análisis correcto sigue disponible en el selector. }</p-message>
         }
         @if (s.status === 'queued' || s.status === 'running') {
@@ -94,7 +94,7 @@ import { WorkspaceMigrationPanel } from './ws-migration';
           }
           <p class="meta">Snapshot <code>{{ s.snapshotHash?.slice(0, 16) }}…</code>
             @if (s.commitSha) { · commit <code>{{ s.commitSha }}</code> · ref {{ s.ref }} } · raíz Maven <code>{{ s.projectRoot }}</code>
-            @if ($any(s.summary['workspace'])?.repositoryType) { ({{ $any(s.summary['workspace']).repositoryType }}) } · objetivo {{ s.target }} ·
+            @if ($any(s.summary['workspace'])?.repositoryType) { ({{ $any(s.summary['workspace']).repositoryType === 'MULTI_PROJECT_REPOSITORY' ? 'varios proyectos en un workspace' : $any(s.summary['workspace']).repositoryType }}) } · objetivo {{ s.target }} ·
             Resolución Maven: <mf-status [value]="s.mavenResolution === 'maven-effective' ? 'maven-effective' : s.mavenResolution" />
             @if (s.mavenResolution !== 'maven-effective') { <span class="muted"> — valores marcados como observados/no resueltos</span> }
           </p>
@@ -104,7 +104,7 @@ import { WorkspaceMigrationPanel } from './ws-migration';
               <p-tabpanel value="modules">
                 <mf-state [loading]="modules.loading()" [error]="modules.error()" [hasData]="!!modules.data()" [empty]="modules.data()?.length === 0"
                           emptyText="No se encontraron pom.xml" (retry)="modules.reload()">
-                  <p-table [value]="modules.data() ?? []" dataKey="id" [expandedRowKeys]="expanded">
+                  <p-table [value]="modules.data() ?? []" dataKey="id" [expandedRowKeys]="expanded" [paginator]="(modules.data()?.length ?? 0) > 20" [rows]="20">
                     <ng-template #header><tr><th></th><th scope="col">POM</th><th scope="col">Artefacto</th><th scope="col">Empaquetado</th>
                       <th scope="col">Java observado</th><th scope="col">Java resuelto</th><th scope="col">Camel</th><th scope="col">Resolución</th></tr></ng-template>
                     <ng-template #body let-m let-exp="expanded">
@@ -244,6 +244,7 @@ export class Inventory {
     return runtimeEntry(this.versions.data(), this.ctx.destination().runtime);
   });
   dsls = [{ label: 'Todas', value: null }, { label: 'Java (aprox.)', value: 'java' }, { label: 'XML', value: 'xml' }];
+  human = humanStatus;
   lastGood = computed(() => this.scans.data()?.items.find(s => s.status === 'succeeded') ?? null);
   isAgent = computed(() => this.ctx.project()?.sourceType === 'agent');
   scanBlockReason = computed(() => !this.ctx.perms() ? 'Cargando permisos…' : this.isAgent() ? 'El código está en el equipo del agente: analice allí con «migrate.py agent push»'

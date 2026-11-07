@@ -41,6 +41,9 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
       <article><i class="pi pi-database" aria-hidden="true"></i><b>{{ countType('ODOO') }}</b> Odoo 12 → 19</article>
       <article><i class="pi pi-window-maximize" aria-hidden="true"></i><b>{{ countType('APEX') }}</b> Oracle APEX</article>
     </div>
+    @if ((list.data()?.total ?? 0) > (list.data()?.items?.length ?? 0)) {
+      <p class="small muted">Los contadores por tipo y etapa cuentan solo los proyectos de esta página (20 por página); el total de arriba es global.</p>
+    }
     <div class="phases" role="group" aria-label="Proyectos por etapa">
       @for (ph of phaseOrder; track ph) {
         <button type="button" class="phase" [class.on]="phaseFilter() === ph" (click)="phaseFilter.set(phaseFilter() === ph ? null : ph)"
@@ -90,6 +93,8 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
                 <p-tag [severity]="PHASE[ph].s" [value]="PHASE[ph].label"><i [class]="'pi ' + PHASE[ph].icon" aria-hidden="true" style="margin-right:.35rem"></i></p-tag>
                 @if (p.progress?.['step']; as st) {
                   <small class="muted block">{{ st }}@if (p.progress?.['at']; as at) { · {{ at | date: 'd/M/yy HH:mm' }} }</small>
+                } @else if (ph === 'running') {
+                  <small class="muted block">en curso…</small>
                 }
                 @if (p.lastDataStage?.['manualJobs']; as mj) { <small class="muted block">{{ mj }} job(s) con trabajo manual</small> }
                 @else if (ph === 'analyzed' && p.lastScan?.['findings']) { <small class="muted block">{{ p.lastScan?.['findings'] }} hallazgo(s)</small> }
@@ -203,7 +208,7 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
             <dt>Tipo</dt><dd>{{ typeLabel(form.migrationType) }} · {{ runtimeLabel[form.targetRuntime] }}</dd>
           </dl>
         }
-        @if (createError(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+        @if (createError(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
         <div class="dialog-actions">
           @if (step() > 1) { <p-button label="Atrás" icon="pi pi-arrow-left" [text]="true" (onClick)="step.set(step() - 1)" /> }
           <span class="grow"></span>
@@ -219,21 +224,21 @@ const URL_RE = /^https:\/\/[\w.-]+(:443)?\/[\w.\-/~]+$/;
     <mf-folder-browser [visible]="browsing()" [start]="form.localPath || null" (selected)="form.localPath = $event; browsing.set(false)" (closed)="browsing.set(false)" />`,
   styles: [`.phases{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-8px 0 18px}
     .phase{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 6px;border:1px solid var(--mf-line);border-radius:10px;background:var(--mf-surface);cursor:pointer;font:inherit}
-    .phase.on{border-color:var(--mf-teal);box-shadow:0 0 0 3px var(--mf-teal-soft)}.phase b{font-size:15px}
-    .link{background:none;border:0;color:var(--mf-teal);cursor:pointer;font:inherit;text-decoration:underline}.block{display:block}
+    .phase.on{border-color:var(--mf-amber-dark);box-shadow:0 0 0 3px var(--mf-amber-soft)}.phase b{font-size:15px}
+    .link{background:none;border:0;color:var(--mf-amber-dark);cursor:pointer;font:inherit;text-decoration:underline}.block{display:block}
     .wsteps{display:flex;gap:8px;list-style:none;padding:0;margin:0 0 14px}.wsteps li{flex:1;display:flex;gap:8px;align-items:center;color:var(--mf-muted);
     padding:8px 10px;border-radius:8px;background:#f3f6fa;font-size:13px}.wsteps li span{width:22px;height:22px;border-radius:50%;display:inline-grid;
-    place-items:center;background:#dfe7ee;font-weight:600;font-size:12px}.wsteps li.on{background:#e6f2f3;color:var(--mf-ink);font-weight:600}
-    .wsteps li.on span{background:var(--mf-teal);color:#fff}.wsteps li.done span{background:#12b76a;color:#fff}.grow{flex:1}
+    place-items:center;background:#dfe7ee;font-weight:600;font-size:12px}.wsteps li.on{background:#fdf3d0;color:var(--mf-ink);font-weight:600}
+    .wsteps li.on span{background:var(--mf-amber);color:var(--mf-coal)}.wsteps li.done span{background:#12b76a;color:#fff}.grow{flex:1}
     .review{margin-top:10px;font-size:13px}.chip.ds{background:#fff1e0}
-    .search{position:relative;flex:0 1 22rem}.search i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#8193a4}
+    .search{position:relative;flex:0 1 22rem}.search i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--mf-faint)}
     .search input{width:100%;padding-left:36px}
     .prow{cursor:pointer}.pname{display:flex;gap:12px;align-items:center}.ptext{display:flex;flex-direction:column;min-width:0}
     .ptext small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32rem}
     .picon{width:38px;height:38px;flex:0 0 38px;border-radius:11px;display:grid;place-items:center;background:#e3effd;color:#1d4f91}
     .picon.ds{background:#fff0dc;color:#8a4b08}.src{display:inline-flex;gap:8px;align-items:center;max-width:18rem}
     .src .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.block{display:block;margin-top:3px}
-    .go{color:#8193a4;text-align:right}.nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .go{color:var(--mf-faint);text-align:right}.nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .ptext small{max-width:100%}.src{max-width:100%}`],
 })
 export class Portfolio {

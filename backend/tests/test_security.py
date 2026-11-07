@@ -105,6 +105,27 @@ def test_redaction():
     assert redact('value custom-secret-value here', ['custom-secret-value']) == 'value *** here'
     assert find_secrets('api_key=XYZ') and not find_secrets('import javax.jms.Queue;')
 
+def test_redaction_json():
+    # P0 (2026-11-06): la forma JSON "clave": "valor" no se redactaba ni la detectaba find_secrets.
+    for text, leaked in (
+        ('{"password": "hunter2"}', 'hunter2'),
+        ('{"token": "abc123secret"}', 'abc123secret'),
+        ('{"client_secret": "s3cr3t-value"}', 's3cr3t-value'),
+        ('{"password":"hunter2"}', 'hunter2'),
+        ('{"PASSWORD": "hunter2"}', 'hunter2'),
+        ('{"api_key": "XYZ"}', 'XYZ'),
+    ):
+        assert leaked not in redact(text)
+        assert find_secrets(text)
+    assert redact('{"user": "bob", "password": "hunter2"}') == '{"user": "bob", "password": "***"}'
+    # Negativos: valor vacío y placeholders no son secretos.
+    assert redact('{"password": ""}') == '{"password": ""}'
+    assert not find_secrets('{"password": ""}')
+    assert redact('{"password": "${MF_SECRET_DB}"}') == '{"password": "${MF_SECRET_DB}"}'
+    assert not find_secrets('{"password": "${MF_SECRET_DB}"}')
+    assert redact('{"password": "{{services.x.url}}"}') == '{"password": "{{services.x.url}}"}'
+    assert not find_secrets('{"password": "{{services.x.url}}"}')
+
 
 def test_safe_join_and_symlinks(tmp_path):
     assert safe_join(tmp_path, 'a/b.txt') == (tmp_path / 'a/b.txt').resolve()

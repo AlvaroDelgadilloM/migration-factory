@@ -13,7 +13,7 @@ import { UiError } from '../../core/errors';
 import { DataPackage, HttpCase, HttpCaseResult, HttpRunSummary, HttpTestRun, HttpTestSource } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
-import { ActionButton, JobLog, PageHeader, StateView, StatusTag } from '../../shared/ui';
+import { ActionButton, humanStatus, JobLog, PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { MigratedAppTest } from './migrated-app';
 import { CompareView, Side } from './compare';
 import { PruebasDraft, Target } from './draft';
@@ -32,14 +32,14 @@ const EXAMPLE = `{
             PageHeader, StateView, StatusTag, ActionButton, JobLog, CompareView, MigratedAppTest],
   styles: [`
     .perf-opts{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;margin:8px 0 0 28px}.perf-opts span{display:flex;flex-direction:column;gap:4px}
-    .perf-opts label{font-size:12px;color:var(--mf-muted)}.perf-opts input{width:8rem}.perf-opts small{flex-basis:100%}
+    .perf-opts label{font-size:13px;color:var(--mf-muted)}.perf-opts input{width:8rem}.perf-opts small{flex-basis:100%}
     .perf{border:1px solid var(--mf-line);border-radius:10px;padding:10px 14px;margin:12px 0}.perf h4{margin:2px 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .perf-t{border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}.perf-t th,.perf-t td{padding:4px 14px 4px 0;text-align:left;border-bottom:1px solid var(--mf-line)}
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 12px 18px; }
-    .field { display: flex; flex-direction: column; gap: 4px; } .field label { font-size: 12px; color: var(--mf-muted); }
+    .field { display: flex; flex-direction: column; gap: 4px; } .field label { font-size: 13px; color: var(--mf-muted); }
     fieldset { border: 1px solid var(--mf-line); border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; background: #fff; }
     legend { font-weight: 600; padding: 0 4px; } textarea { width: 100%; font: 12.5px/1.45 ui-monospace, Menlo, monospace; }
-    h2 { font-size: 18px; margin: 26px 0 10px; } tr.sel td { background: #eef5f6; } .case { cursor: pointer; }
+    h2 { font-size: 18px; margin: 26px 0 10px; } tr.sel td { background: #fdf3d0; } .case { cursor: pointer; }
     .steps { margin: 6px 0 12px 18px; padding: 0; color: var(--mf-muted); } .steps li { margin: 2px 0; }
     details { margin: 18px 0; } summary { cursor: pointer; font-weight: 600; color: #0a5f73; }
     .pkg { padding: 8px 12px; border: 1px dashed var(--mf-line); border-radius: 8px; background: #fbfcfd; }
@@ -151,7 +151,7 @@ casos.json              casos extra con el formato de la batería</pre>
         <mf-action label="Ejecutar comparación" icon="pi pi-play" [busy]="busy()" [disabledReason]="reason()" (run)="start()" />
       </form>
     </details>
-    @if (error(); as e) { <p class="err" role="alert"><strong>{{ e.code }}</strong> — {{ e.message }}</p> }
+    @if (error(); as e) { <p class="err" role="alert"><strong>{{ e.message }}</strong> <small class="mono muted">(código {{ e.code }})</small></p> }
 
     @if (jobId(); as j) { <h2>En curso</h2><mf-job-log [jobId]="j" (finished)="finished()" /> }
 
@@ -317,7 +317,7 @@ export class PruebasAutomaticas {
       this.savedCount.set(this.draft.saved(id).length);
       this.reload();
       this.sources.load(async () => (await this.api.httpTestSources(id)).map(s => ({
-        ...s, label: `${new Date(s.createdAt).toLocaleString()} · build ${s.build ?? '—'} · ${s.state}${s.war ? '' : ' · sin WAR'}`,
+        ...s, label: `${new Date(s.createdAt).toLocaleString()} · build ${s.build ?? '—'} · ${humanStatus(s.state)}${s.war ? '' : ' · sin WAR'}`,
       }))).then(list => {
         const first = list?.find(s => s.war);
         if (first && !this.migrationId) this.migrationId = first.workspaceMigrationId;

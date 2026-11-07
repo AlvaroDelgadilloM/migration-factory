@@ -13,7 +13,7 @@ import { Browse } from '../../core/models';
   template: `
     <p-dialog header="Seleccionar carpeta (equipo del worker)" [visible]="visible()" (visibleChange)="!$event && closed.emit()" [modal]="true" [style]="{ width: '38rem' }">
       <p class="muted small">Solo directorios autorizados. Las carpetas con <span class="chip">Maven</span> contienen pom.xml.</p>
-      @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+      @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
       @if (view(); as v) {
         <div class="crumbbar">
           <p-button icon="pi pi-arrow-up" [text]="true" size="small" ariaLabel="Subir un nivel" [disabled]="!v.path" (onClick)="open(v.parent)" />

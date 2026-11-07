@@ -92,7 +92,7 @@ const DS_SCREENS = [['ds', 'Resumen', 'pi-chart-bar'], ['ds/jobs', 'Jobs', 'pi-l
         </span>
       </header>
       <main id="main" tabindex="-1">
-        @if (ctx.projectId() && !isDs() && !isOdoo() && !isApex() && onProjectScreen()) { <mf-flow-progress /> }
+        @if (ctx.projectId() && onProjectScreen()) { <mf-flow-progress /> }
         <router-outlet />
       </main>
     </div>`,
@@ -109,8 +109,8 @@ export class Shell {
   apexScreens: [string, string, string][] = [['apex', 'Resumen', 'pi-chart-bar'], ['apex/aplicaciones', 'Aplicaciones', 'pi-th-large']];
   odooScreens: [string, string, string][] = [['odoo', 'Resumen', 'pi-chart-bar'], ['odoo/modulos', 'Módulos', 'pi-th-large'], ['odoo/codigo', 'Código', 'pi-code'], ['odoo/pruebas', 'Pruebas', 'pi-check-square']];
   private url = signal('');
-  /** the progress bar belongs to the five Java/Camel step screens, not to settings or tests */
-  onProjectScreen = computed(() => /^\/p\/[^/]+\/(inventory|findings|plan|execution|diff|validation)/.test(this.url()));
+  /** the progress bar belongs to the step screens of each migration type, not to settings or the portfolio */
+  onProjectScreen = computed(() => /^\/p\/[^/]+\/(inventory|findings|plan|execution|diff|validation|ds|odoo|apex|pruebas)/.test(this.url()));
   private nameParts = computed(() => /^(.*?)\s*\((.*)\)\s*$/.exec(this.auth.me()?.name ?? '') ?? [null, this.auth.me()?.name ?? '', '']);
   displayName = computed(() => this.nameParts()[1] || this.auth.me()?.name || '');
   roleText = computed(() => this.nameParts()[2] || (this.auth.me()?.isAdmin ? 'administrador' : ''));

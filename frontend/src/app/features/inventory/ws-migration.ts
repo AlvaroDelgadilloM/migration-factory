@@ -9,7 +9,7 @@ import { UiError } from '../../core/errors';
 import { Profile, TargetVersions, WorkspaceMigration } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
-import { ActionButton, JobLog, StateView, StatusTag } from '../../shared/ui';
+import { ActionButton, humanStatus, JobLog, StateView, StatusTag } from '../../shared/ui';
 import { VersionPicker, profileFor } from '../../shared/version-picker';
 
 /** Doc 18 on the platform: migrate every project of the workspace by waves (dependencies first). */
@@ -39,7 +39,7 @@ import { VersionPicker, profileFor } from '../../shared/version-picker';
     }
     <label for="wsa">Decisiones del arquitecto sobre hallazgos bloqueantes, una por línea: <code>REGLA=motivo</code> (se aplican a todos los proyectos y quedan en auditoría)</label>
     <textarea pTextarea id="wsa" rows="2" [(ngModel)]="acceptText" placeholder="CAMEL2_VERSION=Revisado contra la guía 2→3 para todo el workspace"></textarea>
-    @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     <mf-action label="Migrar workspace por oleadas" icon="pi pi-sitemap" [busy]="busy()" [disabledReason]="reason()" (run)="start()" />
 
     <mf-state [loading]="list.loading()" [error]="list.error()" [hasData]="!!list.data()" [empty]="list.data()?.length === 0"
@@ -50,9 +50,9 @@ import { VersionPicker, profileFor } from '../../shared/version-picker';
         @if (migrationWaves(m).length) {
           <h4>Migración por oleadas</h4>
           <div class="waves">@for (w of migrationWaves(m); track w.wave) {
-            <div class="wave"><strong>Wave {{ w.wave }}</strong> <small class="muted">{{ w.status }}</small>
+            <div class="wave"><strong>Wave {{ w.wave }}</strong> <small class="muted">{{ human(w.status) }}</small>
               <ul>@for (n of w.projects; track n) { <li><span [class]="cls(r(m, n)?.status)" aria-hidden="true">{{ glyph(r(m, n)?.status) }}</span> {{ n }}
-                <small class="muted">{{ r(m, n)?.status }}@if (r(m, n)?.reused) { · reutilizado }</small>
+                <small class="muted">{{ human(r(m, n)?.status) }}@if (r(m, n)?.reused) { · reutilizado }</small>
                 @if (r(m, n)?.blockedBy?.length) { <br /><small class="bad">Bloqueado por {{ r(m, n).blockedBy.join(', ') }}</small> }</li> }</ul></div> }
           </div>
           @if (!['queued', 'running'].includes(m.state) && retryable(m).length) {
@@ -89,7 +89,7 @@ import { VersionPicker, profileFor } from '../../shared/version-picker';
           @if (tw(m).note) { <p class="muted">{{ tw(m).note }}</p> }
         }
         @if (m.jobId && ['queued', 'running'].includes(m.state)) { <mf-job-log [jobId]="m.jobId" (finished)="list.reload()" /> }
-        @if (m.job?.errorMessage) { <p-message severity="warn">{{ m.job?.errorCode }}: {{ m.job?.errorMessage }}</p-message> }
+        @if (m.job?.errorMessage) { <p-message severity="warn">{{ m.job?.errorMessage }} <small class="mono muted">(código {{ m.job?.errorCode }})</small></p-message> }
         @if (rows().length) {
           <p-table [value]="rows()">
             <ng-template #header><tr><th scope="col">Proyecto</th><th scope="col">Estado</th><th scope="col">Motivo</th><th scope="col">Descargas</th></tr></ng-template>
@@ -134,6 +134,7 @@ export class WorkspaceMigrationPanel {
   verifyRoutes = true;
   busy = signal(false);
   error = signal<UiError | null>(null);
+  human = humanStatus;
   current = computed(() => this.list.data()?.[0] ?? null);
   rows = computed(() => Object.entries((this.current()?.results ?? {}) as Record<string, any>).map(([name, r]) => ({
     name, status: r.status, reason: r.reason + ((r.routeDifferences ?? []).length ? ': ' + r.routeDifferences.join(', ') : ''), dependency: (r.blockedBy ?? []).join(', ') || r.dependency, artifacts: Object.entries(r.artifacts ?? {}) as [string, string][],

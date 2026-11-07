@@ -7,7 +7,7 @@ import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { ProgressBarModule } from 'primeng/progressbar';
 import { SelectButtonModule } from 'primeng/selectbutton';
-import { PageHeader, StateView, StatusTag } from '../../shared/ui';
+import { humanStatus, PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { DataStageStore, DsAction } from './store';
 
 /** DataStage → Airflow · Acciones: the manual work as a team worklist, grouped by kind, with progress that survives re-runs. */
@@ -17,7 +17,7 @@ import { DataStageStore, DsAction } from './store';
             PageHeader, StateView, StatusTag],
   template: `
     <mf-page-header title="Acciones manuales" crumb="DATASTAGE → AIRFLOW" subtitle="El trabajo que necesita a una persona, agrupado y con avance." />
-    @if (ds.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (ds.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     <mf-state [loading]="ds.list.loading()" [error]="ds.list.error()" [hasData]="!!ds.list.data()" [empty]="!ds.actions().length"
               emptyText="No hay acciones pendientes (o el proyecto aún no se migra)." (retry)="ds.reload()">
       <section class="progress">
@@ -34,7 +34,7 @@ import { DataStageStore, DsAction } from './store';
       </div>
       @for (g of groups(); track g.category) {
         <details class="group" [open]="$first || groups().length <= 4">
-          <summary><strong>{{ g.category }}</strong> <span class="count">{{ g.items.length }}</span></summary>
+          <summary><strong>{{ human(g.category) }}</strong> <span class="count">{{ g.items.length }}</span></summary>
           <ul class="items">
             @for (a of g.items; track a.key) {
               <li [class.done]="isDone(a)">
@@ -61,6 +61,7 @@ import { DataStageStore, DsAction } from './store';
     .meta{color:var(--mf-muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}`],
 })
 export class DsActions {
+  human = humanStatus;
   ds = inject(DataStageStore);
   q = signal('');
   sev = signal('manual');

@@ -10,7 +10,7 @@ import { UiError } from '../../core/errors';
 import { DiffFile, DiffFileDetail, Execution, Page } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { CursorPager, Loader } from '../../shared/state';
-import { ActionButton, PageHeader, StateView, StatusTag } from '../../shared/ui';
+import { ActionButton, humanStatus, PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { executionLabel } from '../execution/execution';
 
 @Component({
@@ -36,7 +36,7 @@ import { executionLabel } from '../execution/execution';
             <p-table [value]="files.data()?.items ?? []" selectionMode="single" [(selection)]="current" (onRowSelect)="openFile($any($event).data)" dataKey="id">
               <ng-template #header><tr><th scope="col">Archivo</th><th scope="col">+/-</th><th scope="col">Revisión</th></tr></ng-template>
               <ng-template #body let-f><tr [pSelectableRow]="f">
-                <td class="mono small">{{ f.path }}<br /><small class="muted">{{ f.changeType }} · {{ f.recipes.join(', ') || 'sin atribución' }}</small></td>
+                <td class="mono small">{{ f.path }}<br /><small class="muted">{{ human(f.changeType) }} · {{ f.recipes.join(', ') || 'sin atribución' }}</small></td>
                 <td><span class="add">+{{ f.additions }}</span> <span class="del">-{{ f.deletions }}</span></td><td><mf-status [value]="f.reviewStatus" /></td></tr></ng-template>
             </p-table>
             <div class="pager">
@@ -51,7 +51,7 @@ import { executionLabel } from '../execution/execution';
                     emptyText="Seleccione un archivo (se carga por archivo)" (retry)="file.reload()">
             @if (file.data(); as d) {
               <h3 class="mono">{{ d.path }}</h3>
-              <p class="muted">Receta(s): {{ d.recipes.join(', ') || '—' }} · estado <mf-status [value]="d.reviewStatus" />
+              <p class="muted">Receta(s): <small class="mono">{{ d.recipes.join(', ') || '—' }}</small> · estado <mf-status [value]="d.reviewStatus" />
                 @if (d.reviewedBy) { · por {{ d.reviewedBy }} } @if (d.reviewReason) { — {{ d.reviewReason }} }</p>
               <pre class="diff" [attr.aria-label]="'Diff de ' + d.path">@for (l of lines(); track $index) {<span [class]="l.c">{{ l.t }}</span>
 }</pre>
@@ -65,7 +65,7 @@ import { executionLabel } from '../execution/execution';
                   <mf-action label="Rechazar archivo" icon="pi pi-times" severity="danger" [outlined]="true"
                              [disabledReason]="reviewReason() ?? (reason.trim().length < 10 ? 'Escriba un motivo de al menos 10 caracteres' : null)" (run)="review(d, 'rejected')" />
                 </span>
-                @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+                @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
               </div>
             }
           </mf-state>
@@ -87,6 +87,7 @@ export class DiffPage {
   minutes: number | null = null;
   error = signal<UiError | null>(null);
   label = executionLabel;
+  human = humanStatus;
   exec = computed(() => this.list.data()?.items.find(e => e.id === this.selected()) ?? null);
   lines = computed(() => (this.file.data()?.patch ?? '').split('\n').map(t => ({
     t, c: t.startsWith('+') && !t.startsWith('+++') ? 'add' : t.startsWith('-') && !t.startsWith('---') ? 'del' : t.startsWith('@@') ? 'hunk' : '',

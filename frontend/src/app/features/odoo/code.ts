@@ -21,26 +21,24 @@ interface CodeModule { name: string; version: string; depends: string[]; finding
   imports: [FormsModule, MessageModule, SelectButtonModule, ActionButton, JobLog, PageHeader, StateView, StatusTag],
   styles: [`
     .card { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 14px 18px; margin: 0 0 16px; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; margin: 10px 0 16px; }
-    .cards article { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 10px 14px; } .cards b { display: block; font-size: 22px; }
     h2 { font-size: 17px; margin: 0 0 6px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
     .t-AUTO, .t-succeeded { background: #e7f6ec; color: #067647; } .t-MANUAL, .t-failed { background: #fdecea; color: #b42318; }
     .t-REVIEW, .t-skipped { background: #fff4e5; color: #b54708; } .t-VERIFIED, .t-REVIEWED { background: #eef4ff; color: #3538cd; }
-    .rev { display: flex; gap: 6px; margin-top: 6px; } .rev input { flex: 1; min-width: 10rem; font-size: 12.5px; padding: 3px 6px; border: 1px solid var(--mf-line); border-radius: 6px; }
-    .linkish { background: none; border: 0; color: var(--mf-primary, #3538cd); cursor: pointer; font-size: 12.5px; padding: 0; }
+    .rev { display: flex; gap: 6px; margin-top: 6px; } .rev input { flex: 1; min-width: 10rem; font-size: 13px; padding: 3px 6px; border: 1px solid var(--mf-line); border-radius: 6px; }
+    .linkish { background: none; border: 0; color: #8a5a00; cursor: pointer; font-size: 13px; padding: 0; }
     .c-KEEP { background: #e7f6ec; color: #067647; } .c-MIGRATE, .c-MOVE_TO_ORM { background: #eef4ff; color: #3538cd; }
     .c-REWRITE, .c-MANUAL_REVIEW { background: #fff4e5; color: #b54708; } .c-DEPRECATE { background: #f2f4f7; color: #475467; }
     .tag + .tag { margin-left: 6px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; } td, th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--mf-line); vertical-align: top; }
-    .scroll { overflow-x: auto; } code { font-size: 12px; } .small { font-size: 12.5px; } .muted { color: var(--mf-muted); }
-    pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
+    .scroll { overflow-x: auto; } code { font-size: 12px; } .small { font-size: 13px; } .muted { color: var(--mf-muted); }
+    pre { background: #1C2833; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
     .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }`],
   template: `
     <mf-page-header title="Código" crumb="ODOO 12 → 19" subtitle="Módulos a la medida: qué cambia, qué se porta solo y si instalan en Odoo 19.">
       <mf-action label="Portar código a 19" icon="pi pi-cog" [outlined]="!!os.code()" [busy]="os.busy()" [disabledReason]="reason()" (run)="os.start('code')" />
     </mf-page-header>
-    @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (os.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     <mf-state [loading]="os.list.loading()" [error]="os.list.error()" [hasData]="!!os.code() || !!running()" [empty]="!os.code() && !running()"
               emptyText="Suba el ZIP con los módulos (carpetas con __manifest__.py) y pulse «Portar código a 19»: se inventarían, se portan con la herramienta de OCA y cada uno se instala y se prueba (sus pruebas y una prueba funcional generada) en un Odoo 19 nuevo y aislado con datos demo." (retry)="os.reload()">
       @if (running(); as r) {

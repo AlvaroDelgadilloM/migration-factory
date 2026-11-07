@@ -13,19 +13,19 @@ import { UiError } from '../../core/errors';
 import { Member } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
-import { ActionButton, PageHeader, StateView } from '../../shared/ui';
+import { ActionButton, humanProvider, humanRole, PageHeader, StateView } from '../../shared/ui';
 
 @Component({
   selector: 'mf-settings',
   imports: [FormsModule, ButtonModule, CheckboxModule, InputTextModule, MessageModule, MultiSelectModule, SelectModule, TableModule, ActionButton, PageHeader, StateView],
   template: `
     <mf-page-header title="Proyecto" crumb="PROYECTO" [subtitle]="ctx.project()?.name" />
-    @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     @if (saved()) { <p-message severity="success">Cambios guardados</p-message> }
     @if (ctx.project(); as p) {
-      <dl class="kv"><dt>Origen</dt><dd>{{ p.sourceType === 'git' ? 'Repositorio Git' : p.sourceType === 'zip' ? 'Archivo ZIP' : 'Carpeta local' }}</dd>
+      <dl class="kv"><dt>Origen</dt><dd>{{ p.sourceType === 'git' ? 'Repositorio Git' : p.sourceType === 'zip' ? 'Archivo ZIP' : p.sourceType === 'agent' ? 'Agente local' : 'Carpeta local' }}</dd>
         @switch (p.sourceType) {
-          @case ('git') { <dt>Repositorio</dt><dd class="mono">{{ p.repositoryUrl }} ({{ p.repositoryProvider }})</dd>
+          @case ('git') { <dt>Repositorio</dt><dd class="mono">{{ p.repositoryUrl }} ({{ humanProvider(p.repositoryProvider) }})</dd>
             <dt>Credencial</dt><dd class="mono">{{ p.credentialRef ?? 'sin credencial' }}</dd><dt>Rama</dt><dd>{{ p.defaultBranch }}</dd> }
           @case ('local') { <dt>Ruta (worker)</dt><dd class="mono">{{ p.localPath }}</dd> }
           @case ('zip') { <dt>Archivo</dt><dd class="mono">{{ p.upload?.['filename'] }} · sha256 {{ $any(p.upload?.['sha256'])?.slice(0, 16) }}…</dd> }
@@ -58,7 +58,7 @@ import { ActionButton, PageHeader, StateView } from '../../shared/ui';
     <mf-state [loading]="members.loading()" [error]="members.error()" [hasData]="!!members.data()" (retry)="members.reload()">
       <p-table [value]="members.data() ?? []">
         <ng-template #header><tr><th scope="col">Sujeto</th><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col"></th></tr></ng-template>
-        <ng-template #body let-m><tr><td class="mono">{{ m.subjectId }}</td><td>{{ m.displayName }}</td><td>{{ m.role }}</td>
+        <ng-template #body let-m><tr><td class="mono">{{ m.subjectId }}</td><td>{{ m.displayName }}</td><td>{{ humanRole(m.role) }}</td>
           <td><p-button icon="pi pi-trash" [text]="true" severity="danger" [disabled]="!ctx.can('manage')" [ariaLabel]="'Retirar ' + m.subjectId" (onClick)="remove(m)" /></td></tr></ng-template>
       </p-table>
       @if (ctx.can('manage')) {
@@ -96,6 +96,8 @@ export class Settings {
   pr = { provider: 'github', repository: '', baseBranch: 'main', credentialRef: '' };
   providers = [{ label: 'GitHub', value: 'github' }, { label: 'GitLab (gitlab.com o propio)', value: 'gitlab' }, { label: 'Bitbucket Cloud', value: 'bitbucket' }];
   repoHint() { return ({ gitlab: 'grupo/subgrupo/proyecto', bitbucket: 'workspace/repositorio' } as Record<string, string>)[this.pr.provider] ?? 'owner/nombre'; }
+  humanRole = humanRole;
+  humanProvider = humanProvider;
   newSubject = '';
   newRole = 'developer';
 

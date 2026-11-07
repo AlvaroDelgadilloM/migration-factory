@@ -17,7 +17,7 @@ interface Table {
   imports: [MessageModule, PageHeader, StateView, StatusTag],
   template: `
     <mf-page-header title="Reconciliación" crumb="DATASTAGE → AIRFLOW" subtitle="¿Airflow escribe los mismos datos que escribía DataStage?" />
-    @if (ds.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (ds.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     <mf-state [loading]="ds.list.loading()" [error]="ds.list.error()" [hasData]="!!ds.list.data()" [empty]="!ds.current()"
               emptyText="Primero migre el proyecto desde Resumen." (retry)="ds.reload()">
       <ol class="steps">
@@ -82,17 +82,17 @@ interface Table {
     </mf-state>`,
   styles: [`.steps{background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:14px 18px 14px 36px;margin:0 0 14px}
     .steps li{margin:6px 0;line-height:1.5}.steps code{display:block;margin:4px 0;padding:6px 8px;background:#f3f6f9;border-radius:6px;font-size:12px;overflow-x:auto}
-    .upload{display:inline-flex;gap:6px;align-items:center;margin:6px 10px 0 0;padding:6px 14px;border-radius:8px;background:#0a7ea4;color:#fff;cursor:pointer;font-weight:600}
+    .upload{display:inline-flex;gap:6px;align-items:center;margin:6px 10px 0 0;padding:6px 14px;border-radius:8px;background:#F4BD28;color:#1C2833;cursor:pointer;font-weight:600}
     .upload input{display:none}.upload.disabled{background:#9aa8b4;cursor:not-allowed}
-    .link{background:none;border:0;color:#0a7ea4;cursor:pointer;padding:0 4px;font:inherit}
+    .link{background:none;border:0;color:#8a5a00;cursor:pointer;padding:0 4px;font:inherit}
     .summary{background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:14px 18px;margin-bottom:12px}
     .big{display:flex;gap:10px;align-items:center;font-size:15px}.kpis{display:flex;gap:28px;margin:12px 0 6px;flex-wrap:wrap}
-    .kpis div{display:flex;flex-direction:column}.kpis strong{font-size:22px}.kpis span{font-size:12px;color:var(--mf-muted)}.kpis .bad strong{color:#b42318}
+    .kpis div{display:flex;flex-direction:column}.kpis strong{font-size:28px}.kpis span{font-size:13px;color:var(--mf-muted)}.kpis .bad strong{color:#b42318}
     .table{background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:10px 16px;margin-bottom:10px}
     .table summary{cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .count{font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px}.count.bad{background:#fee4e2;color:#b42318}
     .checks{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}.checks th,.checks td{text-align:left;padding:5px 8px;border-top:1px solid var(--mf-line)}
-    .checks th{font-size:12px;color:var(--mf-muted);font-weight:600}.checks tr.diff td{background:#fef3f2;color:#b42318;font-weight:600}
+    .checks th{font-size:13px;color:var(--mf-muted);font-weight:600}.checks tr.diff td{background:#fef3f2;color:#b42318;font-weight:600}
     .key{display:inline-block;background:#f3f6f9;border-radius:6px;padding:0 6px;margin:2px}.err{color:#b42318}`],
 })
 export class DsReconciliation {

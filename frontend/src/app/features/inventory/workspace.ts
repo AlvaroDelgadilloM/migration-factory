@@ -1,7 +1,7 @@
 import { Component, computed, input, output } from '@angular/core';
 import { MessageModule } from 'primeng/message';
 import { TableModule } from 'primeng/table';
-import { ActionButton, StatusTag } from '../../shared/ui';
+import { ActionButton, humanStatus, StatusTag } from '../../shared/ui';
 
 interface WsProject { name: string; dir: string; analysisStatus?: string; analysis?: string; contextMissing?: string[]; error?: string | null; technologies?: string[] }
 interface Ws {
@@ -29,7 +29,7 @@ interface Ws {
     @if (ws().analysisWaves?.length) {
       <h3>Análisis por oleadas <small class="muted">{{ ws().analysisStatus }}</small></h3>
       <div class="waves">@for (w of ws().analysisWaves!; track w.wave) {
-        <div class="wave"><strong>Wave {{ w.wave }}</strong> <small class="muted">{{ w.status }}</small>@if (w.note) { <br /><small class="muted">{{ w.note }}</small> }
+        <div class="wave"><strong>Wave {{ w.wave }}</strong> <small class="muted">{{ human(w.status) }}</small>@if (w.note) { <br /><small class="muted">{{ w.note }}</small> }
           <ul>@for (n of w.projects; track n) { <li><span [class]="'ic ' + icon(w.results?.[n])" aria-hidden="true">{{ glyph(w.results?.[n]) }}</span> {{ n }}
             <small class="muted">{{ w.results?.[n] }}</small>@if (missing(n).length) { <br /><small class="muted">contexto incompleto: {{ missing(n).join(', ') }}</small> }</li> }</ul></div> }
       </div>
@@ -63,6 +63,7 @@ interface Ws {
     .ok{color:#2e7d32}.warn{color:#e65100}.bad{color:#b71c1c}`],
 })
 export class WorkspacePanel {
+  human = humanStatus;
   ws = input.required<Ws>();
   disabledReason = input<string | null>(null);
   analyze = output<string>();

@@ -12,7 +12,7 @@ import { AuthService } from '../../core/auth';
 import { UiError } from '../../core/errors';
 import { Catalog, Profile } from '../../core/models';
 import { Loader } from '../../shared/state';
-import { ActionButton, PageHeader, StateView, StatusTag } from '../../shared/ui';
+import { ActionButton, humanStatus, PageHeader, StateView, StatusTag } from '../../shared/ui';
 
 @Component({
   selector: 'mf-rules',
@@ -21,7 +21,7 @@ import { ActionButton, PageHeader, StateView, StatusTag } from '../../shared/ui'
     <mf-page-header title="Reglas" crumb="REGLAS" subtitle="Catálogo versionado de diagnóstico y perfiles objetivo">
       <mf-action label="Nueva versión de catálogo" icon="pi pi-plus" [disabledReason]="adminReason()" (run)="openNew()" />
     </mf-page-header>
-    @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}
+    @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small>
       @if (e.details['errors']) { <ul>@for (x of asList(e.details['errors']); track x) { <li>{{ x }}</li> }</ul> } </p-message> }
     <p-tabs value="catalog">
       <p-tablist><p-tab value="catalog">Catálogos</p-tab><p-tab value="profiles">Perfiles objetivo</p-tab></p-tablist>
@@ -31,7 +31,7 @@ import { ActionButton, PageHeader, StateView, StatusTag } from '../../shared/ui'
             <div class="toolbar">
               <label for="cv">Versión</label>
               <p-select inputId="cv" [options]="catalogs.data() ?? []" optionValue="id" [ngModel]="selected()" (ngModelChange)="selected.set($event)">
-                <ng-template #selectedItem let-c>{{ c.version }} · {{ c.status }}</ng-template><ng-template #item let-c>{{ c.version }} · {{ c.status }}</ng-template></p-select>
+                <ng-template #selectedItem let-c>{{ c.version }} · {{ human(c.status) }}</ng-template><ng-template #item let-c>{{ c.version }} · {{ human(c.status) }}</ng-template></p-select>
               @if (current(); as c) {
                 <span>digest <code>{{ c.digest.slice(0, 12) }}</code> · {{ c.rules.length }} reglas · <mf-status [value]="c.status" /></span>
                 <mf-action label="Activar" icon="pi pi-check" severity="success" [disabledReason]="adminReason() ?? (c.status !== 'draft' ? 'Solo se activa un borrador; el histórico no se edita' : null)" (run)="activate(c)" />
@@ -41,7 +41,7 @@ import { ActionButton, PageHeader, StateView, StatusTag } from '../../shared/ui'
             <p-table [value]="current()?.rules ?? []">
               <ng-template #header><tr><th scope="col">Regla</th><th scope="col">Detector</th><th scope="col">Severidad</th><th scope="col">Clase</th><th scope="col">Bloquea</th><th scope="col">Patrón / receta</th><th scope="col">Fuente</th><th scope="col">Ejemplos</th></tr></ng-template>
               <ng-template #body let-r><tr><td><strong>{{ r.id }}</strong> v{{ r.version }}<br /><small>{{ r.recommendation }}</small></td><td>{{ r.detector }}</td>
-                <td><mf-status [value]="r.severity" /></td><td>{{ r.classification }}</td><td>{{ r.blocking ? 'Sí' : 'No' }}</td>
+                <td><mf-status [value]="r.severity" /></td><td>{{ human(r.classification) }}</td><td>{{ r.blocking ? 'Sí' : 'No' }}</td>
                 <td class="mono small">{{ r.pattern ?? '—' }}@if (r.recipe) { <br />→ {{ r.recipe }} }</td>
                 <td><a [href]="r.source" target="_blank" rel="noopener">fuente</a></td>
                 <td>{{ r.examples?.positive?.length ?? 0 }} + / {{ r.examples?.negative?.length ?? 0 }} −</td></tr></ng-template>
@@ -86,6 +86,7 @@ export class Rules {
   newVersion = '';
   newRules = '';
   current = computed(() => this.catalogs.data()?.find(c => c.id === this.selected()) ?? null);
+  human = humanStatus;
   adminReason = computed(() => this.auth.me()?.isAdmin ? null : 'Requiere administrador de plataforma');
 
   constructor() { this.loadAll(); }

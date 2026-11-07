@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { MessageModule } from 'primeng/message';
 import { Api } from '../../core/api';
 import { UiError } from '../../core/errors';
-import { ActionButton, JobLog, PageHeader, StateView, StatusTag } from '../../shared/ui';
+import { ActionButton, humanStatus, JobLog, PageHeader, StateView, StatusTag } from '../../shared/ui';
 import { OdooStore } from './store';
 
 interface Check { check: string; ok: boolean; got?: string; error?: string }
@@ -22,14 +22,14 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
     .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 8px 0 0; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; } td, th { text-align: left; padding: 6px 8px; border-top: 1px solid var(--mf-line); vertical-align: top; }
     .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; } .ok { background: #e7f6ec; color: #067647; } .bad { background: #fdecea; color: #b42318; }
-    pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
-    .small { font-size: 12.5px; } .muted { color: var(--mf-muted); } .err { color: #b42318; }
-    button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }
+    pre { background: #1C2833; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; }
+    .small { font-size: 13px; } .muted { color: var(--mf-muted); } .err { color: #b42318; }
+    button.link { background: none; border: 0; color: var(--mf-amber-dark); cursor: pointer; padding: 0; }
     details.card > summary { cursor: pointer; } details.card[open] > summary { margin-bottom: 12px; }
     details .card { border: 0; padding: 0; margin: 12px 0 0; }`],
   template: `
     <mf-page-header title="Pruebas" crumb="ODOO 12 → 19" subtitle="El proyecto migrado en un Odoo 19 para usarlo, y flujos automáticos opcionales." />
-    @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (os.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     <section class="card">
       <h2>Odoo 19 para probar a mano @if (pv()?.preview; as p) { <mf-status [value]="p.state === 'serving' ? 'running' : p.state" /> }</h2>
       @if (starting(); as jobId) {
@@ -51,7 +51,7 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
             espacio {{ p.slot }} · sin tareas programadas ni correo saliente · se apaga sola tras 4 h sin uso@if (p.lastActivity) { (último uso {{ p.lastActivity.slice(11, 16) }} UTC) }.</p>
           <mf-action label="Apagar" icon="pi pi-power-off" [outlined]="true" [busy]="pvBusy()" [disabledReason]="execReason()" (run)="stopPreview()" />
         } @else {
-          <p class="small err">El Odoo del espacio {{ p.slot }} terminó con error ({{ p.state }}). Apáguelo y vuelva a levantarlo.</p>
+          <p class="small err">El Odoo del espacio {{ p.slot }} terminó con error ({{ human(p.state) }}). Apáguelo y vuelva a levantarlo.</p>
           <mf-action label="Apagar" icon="pi pi-power-off" [outlined]="true" [busy]="pvBusy()" [disabledReason]="execReason()" (run)="stopPreview()" />
         }
       } @else {
@@ -60,7 +60,7 @@ interface Check { check: string; ok: boolean; got?: string; error?: string }
           Usuario administrador con contraseña nueva; sin tareas programadas ni correo saliente; se apaga sola tras 4 h sin uso.</p>
         <mf-action label="Levantar Odoo 19" icon="pi pi-server" [busy]="pvBusy()" [disabledReason]="previewReason()" (run)="startPreview()" />
       }
-      @if (pvError(); as e) { <p class="small err">{{ e.code }}: {{ e.message }}</p> }
+      @if (pvError(); as e) { <p class="small err">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p> }
       @if (!starting() && !pv()?.preview && lastPreviewFailed(); as f) { <p class="small err">El último intento falló: {{ f }}</p> }
     </section>
     <details class="card" [open]="flowsOpen()">
@@ -118,6 +118,7 @@ export class OdooFlows {
   isTemplate = signal(true);
   updatedBy = signal<string | null>(null);
   loading = signal(false);
+  human = humanStatus;
   loaded = signal(false);
   loadError = signal<UiError | null>(null);
   saving = signal(false);
@@ -131,7 +132,7 @@ export class OdooFlows {
   flowsOpen = computed(() => !this.isTemplate() || !!this.os.flows() || !!this.running());
   lastPreviewFailed = computed(() => {
     const r = (this.os.list.data() ?? []).find(x => x.mode === 'preview');
-    return r && ['failed', 'timed_out'].includes(r.state) ? `${r.job?.errorCode ?? r.state}: ${r.job?.errorMessage ?? ''}` : null;
+    return r && ['failed', 'timed_out'].includes(r.state) ? `${r.job?.errorMessage ?? humanStatus(r.state)} (código ${r.job?.errorCode ?? r.state})` : null;
   });
   pvBusy = signal(false);
   pvError = signal<UiError | null>(null);

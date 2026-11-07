@@ -30,7 +30,7 @@ const TEMPLATES: Record<Kind, { method: string; contentType: string; body: strin
   imports: [FormsModule, ButtonModule, CheckboxModule, InputTextModule, SelectModule, TextareaModule, PageHeader, ActionButton, StatusTag, CompareView],
   styles: [`
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 12px 18px; }
-    .field { display: flex; flex-direction: column; gap: 4px; } .field label { font-size: 12px; color: var(--mf-muted); }
+    .field { display: flex; flex-direction: column; gap: 4px; } .field label { font-size: 13px; color: var(--mf-muted); }
     .headers .row { margin-bottom: 6px; } .headers input { flex: 1; }
     textarea { width: 100%; font: 12.5px/1.45 ui-monospace, Menlo, monospace; }
     fieldset { border: 1px solid var(--mf-line); border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; background: #fff; }
@@ -89,7 +89,7 @@ const TEMPLATES: Record<Kind, { method: string; contentType: string; body: strin
       </div>
       @if (savedMsg()) { <p class="ok small">{{ savedMsg() }}</p> }
     </form>
-    @if (error(); as e) { <p class="err" role="alert"><strong>{{ e.code }}</strong> — {{ e.message }}</p> }
+    @if (error(); as e) { <p class="err" role="alert"><strong>{{ e.message }}</strong> <small class="mono muted">(código {{ e.code }})</small></p> }
     @if (result(); as r) {
       <div class="result-head">
         <h2 style="margin:0;font-size:18px">Resultado</h2>

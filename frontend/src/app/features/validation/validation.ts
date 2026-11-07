@@ -18,7 +18,7 @@ import { executionLabel } from '../execution/execution';
   template: `
     <mf-page-header title="Validación" crumb="VALIDACIÓN" subtitle="Gates, compilación, pruebas y evidencia de equivalencia" />
     <p-message severity="warn">Compilar y pasar pruebas unitarias no demuestra equivalencia funcional. G4 exige evidencia de la suite de
-      equivalencia del proyecto (contratos, JMS, duplicados, redelivery, DLQ, rollback de BD). SKIPPED / NOT_RUN nunca cuentan como PASS.</p-message>
+      equivalencia del proyecto (contratos, JMS, duplicados, redelivery, DLQ, rollback de BD). Las suites omitidas o no ejecutadas nunca cuentan como aprobadas.</p-message>
     <mf-state [loading]="list.loading()" [error]="list.error()" [hasData]="!!list.data()" [empty]="applied().length === 0"
               emptyText="Sin ejecuciones aplicadas. Ejecute un plan aprobado." (retry)="list.reload()">
       <div class="toolbar">
@@ -56,7 +56,7 @@ import { executionLabel } from '../execution/execution';
           @else {
             <form class="form narrow" (ngSubmit)="record(e)">
               <label for="suite">Suite</label><p-select inputId="suite" name="suite" [options]="suites" optionLabel="l" optionValue="v" [(ngModel)]="ev.suite" />
-              <label for="est">Resultado</label><p-select inputId="est" name="est" [options]="results" [(ngModel)]="ev.status" />
+              <label for="est">Resultado</label><p-select inputId="est" name="est" [options]="results" optionLabel="l" optionValue="v" [(ngModel)]="ev.status" />
               <label for="det">Detalle y referencia a la evidencia (mínimo 10 caracteres)</label>
               <textarea pTextarea id="det" name="det" rows="3" [(ngModel)]="ev.detail"></textarea>
               <label for="evf">Archivo de evidencia (opcional: pdf, json, md, txt, html, xml, csv, zip, png, jpg · máx. 20 MB)</label>
@@ -106,7 +106,7 @@ export class ValidationPage {
   ev = { suite: 'equivalence', status: 'PASS', detail: '' };
   evFile: File | null = null;
   suites = [{ l: 'Equivalencia (G4)', v: 'equivalence' }, { l: 'Contratos (G3)', v: 'contracts' }];
-  results = ['PASS', 'FAIL', 'SKIPPED'];
+  results = [{ l: 'Aprobado', v: 'PASS' }, { l: 'Fallido', v: 'FAIL' }, { l: 'Omitido', v: 'SKIPPED' }];
   applied = computed(() => (this.list.data()?.items ?? []).filter(e => e.mode === 'apply'));
   gates = computed(() => (this.ex.data()?.gates ?? []) as unknown as Gate[]);
   evidenceReason = computed(() => {

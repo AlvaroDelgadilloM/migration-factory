@@ -8,7 +8,7 @@ export interface SeqFlow {
 const W = 236, H = 92, GX = 56, GY = 16, PAD = 12;
 /** label, color and a plain-language explanation of what the activity does in DataStage and what it became in Airflow */
 const TYPE: Record<string, { label: string; color: string; ds: string; af: string }> = {
-  CJobActivity: { label: 'Job', color: '#0b8a8f', ds: 'Ejecuta otro job de DataStage (el que mueve o transforma los datos).',
+  CJobActivity: { label: 'Job', color: '#8a5a00', ds: 'Ejecuta otro job de DataStage (el que mueve o transforma los datos).',
     af: 'Un grupo de tareas (TaskGroup) con los pasos de ese job; si el job es otra secuencia, se lanza su DAG y se espera a que termine.' },
   CUserVarsActivity: { label: 'Variables', color: '#1d4f91', ds: 'Calcula valores (fechas, conteos, banderas) que usan los pasos siguientes.',
     af: 'Una tarea Python que calcula esos valores y los deja en XCom, la memoria compartida entre tareas de Airflow.' },
@@ -82,7 +82,7 @@ const TYPE: Record<string, { label: string; color: string; ds: string; af: strin
     svg{display:block}.t1{font:600 12.5px ui-monospace,Menlo,monospace;fill:#16293a}.t2{font:600 11.5px system-ui}
     .t3{font:11.5px ui-monospace,Menlo,monospace;fill:#16293a}.t4{font:11px system-ui;fill:#536679}
     .fail-i{color:#dc2626}.intro{margin:0 0 10px;max-width:72rem;line-height:1.5}
-    .gloss{margin-top:10px}.gloss summary{cursor:pointer;font-weight:600;color:var(--mf-teal)}
+    .gloss{margin-top:10px}.gloss summary{cursor:pointer;font-weight:600;color:var(--mf-amber-dark)}
     .gloss dl{display:grid;grid-template-columns:minmax(9rem,max-content) 1fr;gap:8px 16px;margin:10px 0 0}
     .gloss dt{font-weight:600;display:flex;gap:8px;align-items:center}.gloss dd{margin:0;display:flex;flex-direction:column;gap:2px}
     .sw{display:inline-block;width:10px;height:10px;border-radius:3px}

@@ -23,11 +23,11 @@ const OUTCOME: Record<string, string> = { OK: 'Migra', WARN: 'Revisar', BLOCK: '
     .vers { display: flex; gap: 3px; flex-wrap: wrap; } .vers span { font: 11px ui-monospace, Menlo, monospace; padding: 1px 4px; border-radius: 4px; }
     .yes { background: #e7f6ec; color: #067647; } .no { background: #fdecea; color: #b42318; }
     .decide { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; } .decide input { flex: 1 1 14rem; min-width: 0; }
-    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; } .small { font-size: 12.5px; }
-    .muted { color: var(--mf-muted); } button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }`],
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; } .small { font-size: 13px; }
+    .muted { color: var(--mf-muted); } button.link { background: none; border: 0; color: var(--mf-amber-dark); cursor: pointer; padding: 0; }`],
   template: `
     <mf-page-header title="Módulos" crumb="ODOO 12 → 19" subtitle="Cada módulo instalado: de dónde viene y si existe en cada versión hasta 19." />
-    @if (os.error(); as e) { <p class="err">{{ e.code }}: {{ e.message }}</p> }
+    @if (os.error(); as e) { <p class="err">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p> }
     @if (!os.analysis() && os.code(); as c) {
       <p class="small muted">Sin respaldo de la base: estos son los módulos del código subido, portados a Odoo 19 (detalle en
         <a [routerLink]="['/p', os.ctx.projectId(), 'odoo', 'codigo']">Código</a>).</p>

@@ -41,7 +41,8 @@ export class PageHeader {
         </p-message>
       } @else {
         <p-message severity="error" styleClass="state-msg">
-          <span><strong>{{ e.code }}</strong> — {{ e.message }}
+          <span>{{ e.message }}
+            @if (e.code) { <small class="mono muted">(código {{ e.code }})</small> }
             @if (e.requestId) { <small class="mono">(requestId {{ e.requestId }})</small> }</span>
           <p-button label="Reintentar" icon="pi pi-refresh" size="small" [text]="true" (onClick)="retry.emit()" />
         </p-message>
@@ -104,6 +105,7 @@ const LABEL: Record<string, string> = {
   'failed-rolled-back': 'Falló · revertido', rolled_back: 'Descartado (rollback)', approved: 'Aprobado', rejected: 'Rechazado',
   draft: 'Borrador', superseded: 'Reemplazado', validated: 'Validado', retired: 'Retirado', active: 'Activo',
   high: 'Alta', medium: 'Media', low: 'Baja', info: 'Info', NOT_RUN: 'No ejecutado', SKIPPED: 'Omitido',
+  PASS: 'Aprobado', FAIL: 'Fallido',
   'blocked-by-baseline': 'Bloqueado por baseline', BLOCKED_BY_BASELINE: 'Bloqueado por baseline', APPLIED: 'Aplicado',
   ROLLED_BACK: 'Revertido', PROPOSED_ONLY: 'Solo propuesta', NO_CHANGES: 'Sin cambios', WARN: 'Advertencia', BLOCKED: 'Bloqueado', ERROR: 'Error de herramienta',
   partial_success: 'Éxito parcial', FINDINGS: 'Hallazgos', PASS_WITH_STUBS: 'Válido solo con stubs (sin resolución real)',
@@ -117,7 +119,32 @@ const LABEL: Record<string, string> = {
   FUNCTIONALLY_VALIDATED: 'Datos reconciliados', LOW: 'Baja', MEDIUM: 'Media', HIGH: 'Alta', VERY_HIGH: 'Muy alta',
   PARALLEL: 'Job', SEQUENCE: 'Secuencia', manual: 'Manual', review: 'Revisar',
   VERIFIED: 'Verificado', EQUAL: 'Igual', NOT_RECONCILED: 'Sin reconciliar',
+  // códigos que aparecen como texto en tablas y mensajes (no solo en mf-status)
+  AUTO: 'Automático', MANUAL: 'Manual', REVIEW: 'Revisar', REVIEWED: 'Revisado', KEEP: 'Conservar', MIGRATE: 'Migrar',
+  REWRITE: 'Reescribir', MOVE_TO_ORM: 'Pasar al ORM', DEPRECATE: 'Retirar', DONE: 'Hecho', NOTHING_TO_DO: 'Sin cambios',
+  UNRESOLVED: 'Sin resolver', PARTIAL: 'Parcial', SMOKE: 'Humo', HUMO: 'Humo', DATOS: 'Con datos',
+  ADDED: 'Añadido', MODIFIED: 'Modificado', DELETED: 'Eliminado', RENAMED: 'Renombrado',
 };
+/** Texto en lenguaje humano para un código técnico; el código queda en pequeño junto al texto, nunca solo. */
+export function humanStatus(code?: string | null): string {
+  if (!code) return '—';
+  return LABEL[code] ?? code;
+}
+/** Roles de proyecto en lenguaje humano (los valores técnicos son owner/architect/developer/…). */
+export function humanRole(role?: string | null): string {
+  return ({ owner: 'Responsable', architect: 'Arquitecto', developer: 'Desarrollador', reviewer: 'Revisor',
+    auditor: 'Auditor', admin: 'Admin' } as Record<string, string>)[role ?? ''] ?? role ?? '—';
+}
+/** Tipos de entidad de auditoría en lenguaje humano. */
+export function humanEntity(type?: string | null): string {
+  return ({ plan: 'Plan', finding: 'Hallazgo', execution: 'Ejecución', project: 'Proyecto', scan: 'Análisis',
+    diff: 'Diff', validation: 'Validación', catalog: 'Catálogo', profile: 'Perfil', member: 'Miembro',
+    job: 'Trabajo', migration: 'Migración', run: 'Corrida' } as Record<string, string>)[type ?? ''] ?? type ?? '—';
+}
+/** Proveedores de Git en lenguaje humano. */
+export function humanProvider(provider?: string | null): string {
+  return ({ github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' } as Record<string, string>)[provider ?? ''] ?? provider ?? '—';
+}
 /** One line under a status where the code alone does not say what to do. */
 export const STATUS_HINT: Record<string, string> = {
   PARTIAL_SUCCESS: 'Se generó y valida técnicamente, pero hay acciones manuales o falta comparar los datos.',
@@ -171,7 +198,7 @@ export class ActionButton {
   template: `
     <div class="joblog">
       <div class="joblog-bar">
-        <span>Fase: <strong>{{ phase() || '—' }}</strong> · estado <strong>{{ state() || '—' }}</strong></span>
+        <span>Fase: <strong>{{ phase() || '—' }}</strong> · estado <strong>{{ stateLabel() }}</strong>@if (elapsed()) { · lleva {{ elapsed() }} }</span>
         <label class="inline"><p-toggleswitch [(ngModel)]="autoscroll" inputId="as" /> <span>Autoscroll</span></label>
       </div>
       <p-progressbar [value]="progress()" [showValue]="true" aria-label="Progreso del trabajo" />
@@ -195,8 +222,19 @@ export class JobLog implements OnDestroy {
   lines = signal<{ id: number; level: string; phase: string; message: string }[]>([]);
   phase = signal('');
   state = signal('');
+  stateLabel = computed(() => humanStatus(this.state()));
   progress = signal(0);
   autoscroll = signal(true);
+  /** tiempo transcurrido del trabajo, para que un job largo no parezca atascado */
+  startedAt = signal<number | null>(null);
+  now = signal(Date.now());
+  elapsed = computed(() => {
+    const s = this.startedAt();
+    if (!s) return '';
+    const sec = Math.max(0, Math.floor((this.now() - s) / 1000));
+    return sec < 60 ? `${sec} s` : `${Math.floor(sec / 60)} min ${sec % 60} s`;
+  });
+  private timer?: ReturnType<typeof setInterval>;
   box = viewChild<ElementRef<HTMLPreElement>>('box');
   /** the worker went down while it ran (lease recovery), and whether it ended failed (no automatic retries left) */
   crashed = computed(() => this.lines().some(l => l.phase === 'recovery'));
@@ -221,8 +259,12 @@ export class JobLog implements OnDestroy {
     this.abort?.abort();
     this.abort = new AbortController();
     this.lines.set([]);
+    this.startedAt.set(Date.now());
+    this.now.set(Date.now());
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.now.set(Date.now()), 1000);
     streamEvents(`/api/v1/jobs/${jobId}/events`, () => this.auth.token(), m => {
-      if (m.event === 'end') { this.state.set(m.data.state); this.progress.set(m.data.state === 'succeeded' ? 100 : this.progress()); this.finished.emit(m.data.state); return; }
+      if (m.event === 'end') { this.state.set(m.data.state); this.progress.set(m.data.state === 'succeeded' ? 100 : this.progress()); clearInterval(this.timer); this.finished.emit(m.data.state); return; }
       this.lines.update(l => [...l.slice(-1500), { id: m.id ?? 0, level: m.data.level, phase: m.data.phase, message: m.data.message }]);
       this.phase.set(m.data.phase ?? '');
       this.state.set(m.data.state);
@@ -230,7 +272,7 @@ export class JobLog implements OnDestroy {
     }, this.abort.signal);
   }
 
-  ngOnDestroy() { this.abort?.abort(); }
+  ngOnDestroy() { this.abort?.abort(); clearInterval(this.timer); }
 }
 
 export function short(sha?: string | null) { return sha ? sha.slice(0, 10) : '—'; }

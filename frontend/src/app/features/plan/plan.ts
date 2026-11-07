@@ -9,7 +9,7 @@ import { UiError } from '../../core/errors';
 import { EffortEstimate, Page, Plan, PlanStep, Profile, Scan, TargetVersions } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
-import { ActionButton, PageHeader, StateView, StatusTag, TrafficLight, short } from '../../shared/ui';
+import { ActionButton, humanStatus, PageHeader, StateView, StatusTag, TrafficLight, short } from '../../shared/ui';
 import { VersionPicker, profileFor } from '../../shared/version-picker';
 import { isMultiProject } from '../../shared/flow-progress';
 
@@ -34,7 +34,7 @@ import { isMultiProject } from '../../shared/flow-progress';
           <ng-template #selectedItem let-s>{{ scanLabel(s) }}</ng-template><ng-template #item let-s>{{ scanLabel(s) }}</ng-template></p-select>
         <label for="pf">Perfil objetivo</label>
         <p-select inputId="pf" [options]="profiles.data() ?? []" optionLabel="name" optionValue="id" [(ngModel)]="profileId" [style]="{ minWidth: '24rem' }">
-          <ng-template #item let-p>{{ p.name }} · v{{ p.version }} · {{ p.status }}</ng-template></p-select>
+          <ng-template #item let-p>{{ p.name }} · v{{ p.version }} · {{ human(p.status) }}</ng-template></p-select>
         <mf-version-picker [entry]="versionEntry()" [(java)]="java" [(spring)]="spring" />
         <mf-action label="Crear plan" icon="pi pi-plus" [busy]="busy() === 'create'" [disabledReason]="createReason()" (run)="create()" />
         @if (ctx.destination().runtime === 'tomcat') {
@@ -43,11 +43,11 @@ import { isMultiProject } from '../../shared/flow-progress';
         }
         <label for="pv">Versión</label>
         <p-select inputId="pv" [options]="plans.data() ?? []" optionValue="id" [ngModel]="planId()" (ngModelChange)="planId.set($event)" placeholder="Sin planes">
-          <ng-template #selectedItem let-p>v{{ p.version }} · {{ p.status }}</ng-template><ng-template #item let-p>v{{ p.version }} · {{ p.status }}</ng-template></p-select>
+          <ng-template #selectedItem let-p>v{{ p.version }} · {{ human(p.status) }}</ng-template><ng-template #item let-p>v{{ p.version }} · {{ human(p.status) }}</ng-template></p-select>
       </div>
       <p class="muted">Versiones de perfil fijadas y verificadas contra Maven Central; ver Reglas → Perfiles. Sin porcentajes de compatibilidad o ahorro.</p>
       @if (actionError(); as e) {
-        <p-message severity="error">{{ e.code }}: {{ e.message }}
+        <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small>
           @if (e.details['blocked']) { <ul>@for (b of blockedDetails(e); track b.key) { <li>{{ b.key }}: {{ b.reasons.join('; ') }}</li> }</ul> }
         </p-message>
       }
@@ -146,6 +146,7 @@ export class PlanPage {
   busy = signal<string | null>(null);
   actionError = signal<UiError | null>(null);
   expanded: Record<string, boolean> = {};
+  human = humanStatus;
   succeeded = computed(() => (this.scans.data()?.items ?? []).filter(s => s.status === 'succeeded'));
   steps = computed(() => (this.plan.data()?.steps ?? []) as unknown as PlanStep[]);
   multiProject = computed(() => { const s = this.succeeded().find(x => x.id === this.scanId()); return !!s && isMultiProject(s); });
@@ -154,7 +155,7 @@ export class PlanPage {
   approveReason = computed(() => {
     const p = this.plan.data();
     if (!this.ctx.can('plan')) return `Su rol (${this.ctx.role()}) no permite aprobar`;
-    return p?.status === 'draft' ? null : `El plan está ${p?.status}`;
+    return p?.status === 'draft' ? null : `El plan está ${humanStatus(p?.status)}`;
   });
 
   constructor() {

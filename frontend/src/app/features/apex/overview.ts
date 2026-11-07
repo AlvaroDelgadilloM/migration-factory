@@ -21,23 +21,21 @@ export const RULE_STATUS: Record<string, string> = {
   selector: 'mf-apex-overview',
   imports: [FormsModule, NgTemplateOutlet, RouterLink, MessageModule, SelectModule, TagModule, ActionButton, JobLog, PageHeader, StateView],
   styles: [`
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; margin: 10px 0 16px; }
-    .cards article { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 10px 14px; }
-    .cards b { display: block; font-size: 22px; } .bad { color: #b42318; }
+    .bad { color: #b42318; }
     .card { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 14px 18px; margin: 0 0 16px; }
     h2 { font-size: 17px; margin: 0 0 8px; } h3 { font-size: 15px; margin: 0; }
-    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 14px; } .controls label { display: block; font-size: 12px; color: var(--mf-muted); margin-bottom: 4px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 14px; } .controls label { display: block; font-size: 13px; color: var(--mf-muted); margin-bottom: 4px; }
     .route { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 12px; } .route span { font-weight: 600; } .route i { color: var(--mf-muted); font-size: 11px; }
     .hop { border: 1px solid var(--mf-line); border-radius: 10px; margin: 0 0 8px; }
     .hop > button { all: unset; box-sizing: border-box; width: 100%; display: flex; gap: 10px; align-items: center; padding: 10px 12px; cursor: pointer; flex-wrap: wrap; }
-    .hop > button:focus-visible { outline: 2px solid var(--mf-teal); outline-offset: -2px; } .grow { flex: 1 1 8rem; }
+    .hop > button:focus-visible { outline: 2px solid var(--mf-amber-dark); outline-offset: -2px; } .grow { flex: 1 1 8rem; }
     .changes { padding: 0 12px 10px; } .change { border-top: 1px solid var(--mf-line); padding: 8px 0; font-size: 13.5px; }
     .change strong { display: inline; } .change small { display: block; color: var(--mf-muted); }`],
   template: `
     <mf-page-header title="Resumen" crumb="ORACLE APEX" subtitle="Aplicaciones analizadas contra las notas de versión de Oracle: qué cambia en cada salto hasta la versión de destino.">
       <mf-action label="Analizar aplicaciones" icon="pi pi-search" [outlined]="!!st.latest()" [busy]="st.busy()" [disabledReason]="reason()" (run)="st.analyze()" />
     </mf-page-header>
-    @if (st.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (st.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     @if (st.running(); as r) {
       <section class="card"><h2>Análisis en curso</h2>
         @if (r.jobId) { <mf-job-log [jobId]="r.jobId" (finished)="st.reload()" /> }</section>

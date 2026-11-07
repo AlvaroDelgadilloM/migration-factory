@@ -15,23 +15,21 @@ const HOP_STATE: Record<string, string> = { succeeded: 'Listo', failed: 'Falló'
   selector: 'mf-odoo-overview',
   imports: [FormsModule, InputTextModule, RouterLink, MessageModule, TableModule, ActionButton, JobLog, PageHeader, StateView, StatusTag],
   styles: [`
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; margin: 10px 0 16px; }
-    .cards article { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 10px 14px; }
-    .cards b { display: block; font-size: 22px; } .card { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 14px 18px; margin: 0 0 16px; }
+    .card { background: #fff; border: 1px solid var(--mf-line); border-radius: 12px; padding: 14px 18px; margin: 0 0 16px; }
     .hops { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 8px; margin: 8px 0; }
     .hop { border: 1px solid var(--mf-line); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
     .hop b { display: block; font-size: 15px; } .hop.succeeded { border-color: #12b76a; } .hop.failed, .hop.timed_out { border-color: #d92d20; }
-    pre { background: #0f1720; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 22rem; overflow: auto; white-space: pre-wrap; }
+    pre { background: #1C2833; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 22rem; overflow: auto; white-space: pre-wrap; }
     .fix { border-top: 1px solid var(--mf-line); padding: 10px 0 0; margin-top: 10px; } .fix h3 { font-size: 15px; margin: 0 0 4px; }
     .decide { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; } .decide input { flex: 1 1 14rem; min-width: 0; }
-    button.link { background: none; border: 0; color: var(--mf-teal); cursor: pointer; padding: 0; }
+    button.link { background: none; border: 0; color: var(--mf-amber-dark); cursor: pointer; padding: 0; }
     .bad { color: #b42318; } .ok { color: #067647; } h2 { font-size: 17px; margin: 0 0 8px; }`],
   template: `
     <mf-page-header title="Resumen" crumb="ODOO 12 → 19" subtitle="Base de datos de Odoo Community migrada con OpenUpgrade, salto por salto, sobre una copia.">
       <mf-action label="Analizar la base" icon="pi pi-search" [outlined]="!!os.analysis()" [busy]="os.busy()" [disabledReason]="analyzeReason()" (run)="os.start('analyze')" />
       <mf-action label="Migrar a Odoo 19" icon="pi pi-play" [busy]="os.busy()" [disabledReason]="migrateReason()" (run)="os.start('migrate')" />
     </mf-page-header>
-    @if (os.error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+    @if (os.error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
     @if (os.codeOnly()) {
       <section class="card">
         <h2>Proyecto de solo código</h2>

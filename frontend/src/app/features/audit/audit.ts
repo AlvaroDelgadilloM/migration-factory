@@ -9,7 +9,7 @@ import { Api } from '../../core/api';
 import { UiError } from '../../core/errors';
 import { AuditEvent, Page, Project } from '../../core/models';
 import { CursorPager, Loader } from '../../shared/state';
-import { PageHeader, StateView } from '../../shared/ui';
+import { humanEntity, PageHeader, StateView } from '../../shared/ui';
 
 @Component({
   selector: 'mf-audit',
@@ -30,9 +30,9 @@ import { PageHeader, StateView } from '../../shared/ui';
       <p-table [value]="list.data()?.items ?? []">
         <ng-template #header><tr><th scope="col">Fecha</th><th scope="col">Actor</th><th scope="col">Acción</th><th scope="col">Entidad</th><th scope="col">Antes → después</th><th scope="col">Detalle</th><th scope="col">requestId</th></tr></ng-template>
         <ng-template #body let-a><tr><td>{{ a.at | date: 'medium' }}</td><td>{{ a.actor }}</td><td><code>{{ a.action }}</code></td>
-          <td>{{ a.entityType }} <small class="mono muted">{{ a.entityId }}</small></td>
+          <td>{{ humanEntity(a.entityType) }} <small class="mono muted">{{ a.entityId }}</small></td>
           <td class="mono small">{{ a.beforeHash?.slice(0, 8) ?? '—' }} → {{ a.afterHash?.slice(0, 8) ?? '—' }}</td>
-          <td class="small">{{ detail(a) }}</td><td class="mono small">{{ a.requestId?.slice(0, 12) }}</td></tr></ng-template>
+          <td class="small" [title]="detailFull(a)">{{ detail(a) }}</td><td class="mono small">{{ a.requestId?.slice(0, 12) }}</td></tr></ng-template>
       </p-table>
       <div class="pager">
         <p-button label="Anterior" [text]="true" icon="pi pi-chevron-left" [disabled]="pager.page() === 0" (onClick)="pager.prev(); load()" />
@@ -49,6 +49,7 @@ export class Audit {
   projectId: string | null = null;
   action = '';
   entityType = '';
+  humanEntity = humanEntity;
   exportError = signal<UiError | null>(null);
 
   constructor() {
@@ -61,7 +62,8 @@ export class Audit {
     this.list.load(() => this.api.audit({ projectId: this.projectId, action: this.action || null, entityType: this.entityType || null,
                                           limit: 50, cursor: this.pager.current() }));
   }
-  detail(a: AuditEvent) { return Object.entries(a.details ?? {}).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ').slice(0, 200); }
+  detail(a: AuditEvent) { const full = this.detailFull(a); return full.length > 200 ? full.slice(0, 200) + '…' : full; }
+  detailFull(a: AuditEvent) { return Object.entries(a.details ?? {}).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · '); }
   async export() {
     this.exportError.set(null);
     try { await this.api.exportAudit(this.projectId ?? undefined); } catch (e) { this.exportError.set(UiError.from(e)); }

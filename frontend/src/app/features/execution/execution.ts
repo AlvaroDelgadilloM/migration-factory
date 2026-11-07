@@ -10,14 +10,14 @@ import { UiError } from '../../core/errors';
 import { Artifact, Execution, ExecutionStep, Page } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
-import { ActionButton, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
+import { ActionButton, humanStatus, JobLog, PageHeader, StateView, StatusTag, short } from '../../shared/ui';
 import { ChangesPanel } from './changes';
 import { ModernizationPanel } from './modernization';
 import { ResultPanel } from './result';
 
 /** Shared execution selector used by Ejecución, Diff and Validación. */
 export function executionLabel(e: Execution) {
-  return `${new Date(e.createdAt).toLocaleString()} · ${e.mode === 'apply' ? 'ejecución' : 'preview'} · ${e.state}`;
+  return `${new Date(e.createdAt).toLocaleString()} · ${e.mode === 'apply' ? 'ejecución' : 'preview'} · ${humanStatus(e.state)}`;
 }
 
 @Component({
@@ -34,7 +34,7 @@ export function executionLabel(e: Execution) {
         <p-select inputId="ex" [options]="list.data()?.items ?? []" optionValue="id" [ngModel]="selected()" (ngModelChange)="selected.set($event)" [style]="{ minWidth: '26rem' }">
           <ng-template #selectedItem let-e>{{ label(e) }}</ng-template><ng-template #item let-e>{{ label(e) }}</ng-template></p-select>
       </div>
-      @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+      @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
       <mf-state [loading]="ex.loading()" [error]="ex.error()" [hasData]="!!ex.data()" (retry)="ex.reload()">
         @if (ex.data(); as e) {
           <div class="plan-head">
@@ -50,9 +50,9 @@ export function executionLabel(e: Execution) {
           </div>
           @if (e.summary['status']) {
             <p-message [severity]="e.summary['status'] === 'SUCCEEDED' ? 'success' : e.summary['status'] === 'PARTIAL_SUCCESS' ? 'warn' : 'error'">
-              <span><strong>Migration status: {{ e.summary['status'] }}</strong>
+              <span>Estado de la migración: <mf-status [value]="$any(e.summary['status'])" />
                 @if (e.summary['primaryReason']) { · motivo principal: <code>{{ e.summary['primaryReason'] }}</code> }
-                @if ($any(e.summary['reasonCodes'])?.length) { · códigos: {{ $any(e.summary['reasonCodes']).join(', ') }} }</span>
+                @if ($any(e.summary['reasonCodes'])?.length) { · códigos técnicos: <small class="mono">{{ $any(e.summary['reasonCodes']).join(', ') }}</small> }</span>
             </p-message>
           }
           @if ($any(e.summary['baselineDependencies'])?.length) {
@@ -71,10 +71,10 @@ export function executionLabel(e: Execution) {
             <p-message [severity]="pl.primaryReason ? 'error' : 'info'">
               <div><strong>Plataforma: {{ pl.platform === 'RED_HAT_FUSE_KARAF' ? 'Red Hat Fuse / Karaf' : pl.platform }}</strong>
                 <ul>@for (b of pl.vendorBoms; track b.artifactId + b.file) {
-                  <li>BOM de proveedor @if (b.status === 'UNRESOLVED') { <strong>⚠ no disponible</strong> } @else { {{ b.status }} }:
+                  <li>BOM de proveedor @if (b.status === 'UNRESOLVED') { <strong>⚠ no disponible</strong> } @else { {{ human(b.status) }} <small class="mono muted">({{ b.status }})</small> }:
                     <code>{{ b.groupId }}:{{ b.artifactId }}:{{ b.version }}</code></li> }</ul>
                 @if (pl.primaryReason) {
-                  Reparación de baseline: <strong>{{ pl.repair?.status === 'PARTIAL' ? 'parcial' : pl.repair?.status }}</strong>
+                  Reparación de baseline: <strong>{{ human(pl.repair?.status) }}</strong>
                   · dependencias Camel recuperadas: {{ pl.repair?.recovered ?? 0 }} · aún sin versión: {{ pl.repair?.stillUnresolved?.length ?? 0 }}
                   <br />Análisis estático: ✓ disponible · Migración automática: <strong>bloqueada</strong> · Compilación: no ejecutable
                   <br /><small>Acción requerida: {{ pl.requiredAction }}</small>
@@ -86,16 +86,16 @@ export function executionLabel(e: Execution) {
             <h2>Estado de validación</h2>
             <dl class="kv">
               <dt>Modelo Maven del candidato</dt><dd><mf-status [value]="vs.candidateModel" /></dd>
-              <dt>Resolución real de dependencias</dt><dd>{{ vs.candidateDependencyResolution }}</dd>
-              <dt>Compilación</dt><dd>{{ vs.candidateCompile }} ({{ vs.candidateCompileValidation === 'VERIFIED' ? 'verificada' : 'no verificada' }})</dd>
-              <dt>Pruebas</dt><dd>{{ vs.candidateTest }}</dd>
-              <dt>Recetas</dt><dd>{{ vs.recipeExecution }}</dd>
+              <dt>Resolución real de dependencias</dt><dd>{{ human(vs.candidateDependencyResolution) }}</dd>
+              <dt>Compilación</dt><dd>{{ human(vs.candidateCompile) }} ({{ vs.candidateCompileValidation === 'VERIFIED' ? 'verificada' : 'no verificada' }})</dd>
+              <dt>Pruebas</dt><dd>{{ human(vs.candidateTest) }}</dd>
+              <dt>Recetas</dt><dd>{{ human(vs.recipeExecution) }}</dd>
               @if (vs.stubMode !== 'NONE') { <dt>Stubs (solo para recetas)</dt><dd>{{ vs.stubbedDependencies.join(', ') }}</dd> }
             </dl>
           }
           @if (e.summary['note']) { <p-message severity="info">{{ e.summary['note'] }}</p-message> }
           @if (e.summary['sourceUnchanged']) { <p class="muted"><i class="pi pi-shield" aria-hidden="true"></i> El origen (carpeta, ZIP o Git) no se modifica: el candidato se entrega como candidate.zip, con candidate.patch y reportes.</p> }
-          @if (e.job?.errorMessage) { <p-message severity="error">{{ e.job?.errorCode }}: {{ e.job?.errorMessage }}</p-message> }
+          @if (e.job?.errorMessage) { <p-message severity="error">{{ e.job?.errorMessage }} <small class="mono muted">(código {{ e.job?.errorCode }})</small></p-message> }
 
           <h2>Pasos</h2>
           <p-table [value]="steps()">
@@ -103,7 +103,7 @@ export function executionLabel(e: Execution) {
             <ng-template #body let-s>
               <tr><td><strong>{{ s.title }}</strong><br /><small class="mono muted">{{ s.key }}</small></td><td><mf-status [value]="s.state" /></td>
                 <td class="mono">{{ s.commit ? s.commit.slice(0, 10) : '—' }}</td><td class="mono small">{{ (s.recipes ?? []).join(', ') }}</td>
-                <td>{{ s.durationMs ? (s.durationMs / 1000).toFixed(1) + ' s' : '—' }}</td>
+                <td>@if (s.durationMs) { {{ (s.durationMs / 1000).toFixed(1) + ' s' }} } @else if (['queued', 'running'].includes(s.state)) { en curso… } @else { — }</td>
                 <td>@if (s.logArtifactId) { <button type="button" class="link" (click)="downloadId(s.logArtifactId, 'rewrite-' + s.key + '.log')"><i class="pi pi-download"></i> log</button> }</td>
                 <td><small>{{ (s.reasons ?? []).join('; ') }}</small></td></tr>
             </ng-template>
@@ -146,6 +146,7 @@ export class ExecutionPage {
   error = signal<UiError | null>(null);
   short = short;
   label = executionLabel;
+  human = humanStatus;
   steps = computed(() => (this.ex.data()?.steps ?? []) as unknown as ExecutionStep[]);
   cancelReason = computed(() => {
     const e = this.ex.data();

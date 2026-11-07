@@ -38,9 +38,9 @@ import { DataStageStore } from './store';
   styles: [`.board{display:flex;gap:14px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
     .wave{flex:0 0 17rem;background:#fff;border:1px solid var(--mf-line);border-radius:12px;padding:10px 12px}
     .wave h3{margin:2px 0 8px;font-size:14px}.job{display:flex;gap:6px;align-items:center;padding:6px 8px;margin:5px 0;border-radius:8px;
-    border-left:4px solid #9aa8b4;background:#f7f9fb;font-size:12px;overflow:hidden}.job .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    border-left:4px solid #9aa8b4;background:#f7f9fb;font-size:13px;overflow:hidden}.job .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .st-AUTO_MIGRATED{border-left-color:#12b76a}.st-SEMIAUTOMATIC{border-left-color:#0a7ea4}.st-MANUAL_REVIEW{border-left-color:#f79009}
-    .st-BLOCKED,.st-FAILED{border-left-color:#d92d20}.seq{font-style:normal;font-weight:700;font-size:10px;background:#10283c;color:#fff;border-radius:4px;padding:0 4px}
+    .st-BLOCKED,.st-FAILED{border-left-color:#d92d20}.seq{font-style:normal;font-weight:700;font-size:10px;background:#1C2833;color:#fff;border-radius:4px;padding:0 4px}
     .legend{display:flex;gap:16px;margin:0 0 10px}.legend span{display:inline-flex;gap:6px;align-items:center}
     .dot{width:10px;height:10px;border-radius:3px;display:inline-block;background:#9aa8b4}
     .dot.st-AUTO_MIGRATED{background:#12b76a}.dot.st-SEMIAUTOMATIC{background:#0a7ea4}.dot.st-MANUAL_REVIEW{background:#f79009}

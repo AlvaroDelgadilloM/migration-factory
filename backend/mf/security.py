@@ -135,6 +135,8 @@ def vault_read(spec: str, env) -> str:
 # --- Redaction ----------------------------------------------------------------------------------
 _PATTERNS = [
     (re.compile(r'(?i)(authorization:\s*(?:bearer|basic|token)\s+)[^\s]+'), r'\1***'),
+    # JSON: "clave": "valor" — la comilla de cierre impedía que casara el patrón genérico (P0, 2026-11-06).
+    (re.compile(r'(?i)("(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret)"[ \t]*:[ \t]*")(?!\$\{|\{\{|RAW\(\{\{|\*\*\*)([^"\\]+(?:\\.[^"\\]*)*)(")'), r'\1***\3'),
     (re.compile(r'(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret)([ \t]*[=:][ \t]*|">[ \t]*|=")(?!\$\{|\{\{|RAW\(\{\{|\*\*\*)([^\s"<&,;]+)'), r'\1\2***'),
     (re.compile(r'(?i)(<(password|passphrase|privateKey)>)[^<]*(</\2>)'), r'\1***\3'),
     (re.compile(r'(\w+://)[^/\s:@?#]+:[^/\s@?#]+@'), r'\1***:***@'),  # userinfo only, not ?from=a@b

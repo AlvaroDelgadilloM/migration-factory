@@ -5,16 +5,16 @@ import { UiError } from '../../core/errors';
 import { Execution, ExecutionResult } from '../../core/models';
 import { ProjectContext } from '../../core/project-context';
 import { Loader } from '../../shared/state';
-import { ActionButton, StateView } from '../../shared/ui';
+import { ActionButton, StateView, StatusTag } from '../../shared/ui';
 
 /** Doc 19 part B: LOCAL -> download the migrated project; GIT_REMOTE -> also a pull request, only through the PR gate. */
 @Component({
   selector: 'mf-result',
-  imports: [MessageModule, ActionButton, StateView],
+  imports: [MessageModule, ActionButton, StateView, StatusTag],
   template: `
     <mf-state [loading]="res.loading()" [error]="res.error()" [hasData]="!!res.data()" (retry)="res.reload()">
       @if (res.data(); as r) {
-        <p class="muted">Origen <strong>{{ r.sourceType === 'LOCAL' ? 'local (carpeta o ZIP)' : 'Git remoto' }}</strong> · estado {{ r.status }}</p>
+        <p class="muted">Origen <strong>{{ r.sourceType === 'LOCAL' ? 'local (carpeta o ZIP)' : 'Git remoto' }}</strong> · estado <mf-status [value]="r.status" /></p>
         @if (r.download.warning) { <p-message [severity]="r.download.kind === 'project' ? 'warn' : 'error'">{{ r.download.warning }}</p-message> }
         <div class="actions">
           @if (r.download.available) {
@@ -32,7 +32,7 @@ import { ActionButton, StateView } from '../../shared/ui';
           <p-message severity="info"><div><strong>PR no disponible todavía:</strong><ul>@for (x of r.pullRequest.reasons; track x) { <li>{{ x }}</li> }</ul></div></p-message>
         }
         @if (msg()) { <p class="muted">{{ msg() }}</p> }
-        @if (error(); as e) { <p-message severity="error">{{ e.code }}: {{ e.message }}</p-message> }
+        @if (error(); as e) { <p-message severity="error">{{ e.message }} <small class="mono muted">(código {{ e.code }})</small></p-message> }
       }
     </mf-state>`,
   styles: [`.actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}`],

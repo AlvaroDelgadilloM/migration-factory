@@ -21,7 +21,7 @@ const RUNTIME: Record<string, string> = { spring: 'Spring Boot (jar)', tomcat: '
     .vars { display: grid; grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr); gap: 10px 16px; align-items: start; margin: 8px 0 14px; }
     .vars .name { font: 600 12.5px ui-monospace, Menlo, monospace; word-break: break-all; } .vars small { display: block; color: var(--mf-muted); font-weight: 400; font-family: inherit; }
     .vars .in { display: flex; gap: 8px; flex-wrap: wrap; } .vars .in input { flex: 1 1 14rem; min-width: 0; }
-    .req { color: #b42318; } .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; } .field label { font-size: 12px; color: var(--mf-muted); }
+    .req { color: #b42318; } .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; } .field label { font-size: 13px; color: var(--mf-muted); }
     textarea { width: 100%; font: 12.5px/1.45 ui-monospace, Menlo, monospace; } .err { color: #b42318; }
     @media (max-width: 860px) { .vars { grid-template-columns: minmax(0, 1fr); } }`],
   template: `
@@ -65,7 +65,7 @@ const RUNTIME: Record<string, string> = { spring: 'Spring Boot (jar)', tomcat: '
           <div class="field"><label for="rtcases">Casos adicionales (POST, PUT…) en JSON, opcional: <code>[{{ '{' }}"name", "method", "path", "contentType", "body"{{ '}' }}]</code></label>
             <textarea pTextarea id="rtcases" rows="3" [(ngModel)]="casesText"></textarea>
             @if (casesError()) { <small class="err">{{ casesError() }}</small> }</div>
-          @if (error(); as e) { <p class="err" role="alert"><strong>{{ e.code }}</strong> — {{ e.message }}</p> }
+          @if (error(); as e) { <p class="err" role="alert"><strong>{{ e.message }}</strong> <small class="mono muted">(código {{ e.code }})</small></p> }
           <mf-action label="Levantar y probar" icon="pi pi-play" [busy]="busy()" [disabledReason]="reason()" (run)="run()" />
         }
       }
