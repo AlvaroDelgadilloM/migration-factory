@@ -5,6 +5,7 @@ import zipfile
 
 from helpers import run_job
 from mf.odoo import modules
+from mf.odoo.extsql import statements
 
 API = '/api/v1'
 
@@ -30,6 +31,19 @@ def test_classifier_reports_third_party_and_oca_availability():
     assert rows['sale']['origin'] == 'CORE' and rows['sale']['outcome'] in ('OK', 'WARN')
     assert rows['partner_firstname']['availability']['19.0'] and rows['partner_firstname']['repository'] == 'partner-contact'
     assert rows['x_acme_custom']['outcome'] == 'BLOCK' and 'terceros' in rows['x_acme_custom']['reason']
+
+
+def test_statements_does_not_split_inside_single_quoted_literals():
+    # ';' inside a literal is data, not a separator (before the fix this split in two)
+    assert [s for _, s in statements("INSERT INTO t (a) VALUES ('x;y');")] == ["INSERT INTO t (a) VALUES ('x;y')"]
+    # '--' inside a literal is not a comment either
+    assert [s for _, s in statements("INSERT INTO t (a) VALUES ('a--b');")] == ["INSERT INTO t (a) VALUES ('a--b')"]
+    # '' is an escaped quote inside the literal, not its end
+    fn = "CREATE FUNCTION f() RETURNS void AS 'BEGIN RAISE NOTICE ''a;b''; END;' LANGUAGE plpgsql; SELECT 1;"
+    assert [s for _, s in statements(fn)] == [
+        "CREATE FUNCTION f() RETURNS void AS 'BEGIN RAISE NOTICE ''a;b''; END;' LANGUAGE plpgsql", 'SELECT 1']
+    # and a literal followed by a real separator still splits
+    assert [s for _, s in statements("SELECT 'a;b'; SELECT 1;")] == ["SELECT 'a;b'", 'SELECT 1']
 
 
 def test_odoo_project_analysis_decisions_and_migration(client, token, monkeypatch, tmp_path):

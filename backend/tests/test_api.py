@@ -52,6 +52,77 @@ def test_project_isolation_and_roles(client, token, pilot_repo):
     assert perms['role'] == 'auditor' and 'scan' not in perms['permissions'] and 'audit' in perms['permissions']
 
 
+def test_project_list_queries_do_not_grow_with_projects(client, token, pilot_repo):
+    """Cartera lists every project with its latest scan/run: the listing must fetch those in bulk (one query per
+    related model), not ~8 queries per project."""
+    from sqlalchemy import event
+
+    from mf import db as dbmod
+
+    ids = [new_project(client, token, pilot_repo, members={}) for _ in range(6)]
+    by_id = {p['id']: p for p in client.get(f'{API}/projects?limit=200', headers=token('ana.arquitecta')).json()['items']}
+    assert all(i in by_id for i in ids)
+    # the batched listing returns exactly what the single-project endpoint returns
+    for i in ids:
+        single = client.get(f'{API}/projects/{i}', headers=token('ana.arquitecta')).json()
+        assert by_id[i] == single
+    seen = []
+
+    def count(conn, cursor, statement, parameters, context, executemany):
+        seen.append(statement)
+
+    eng = dbmod.engine()
+    event.listen(eng, 'before_cursor_execute', count)
+    try:
+        r = client.get(f'{API}/projects?limit=200', headers=token('ana.arquitecta'))
+    finally:
+        event.remove(eng, 'before_cursor_execute', count)
+    assert r.status_code == 200 and len(r.json()['items']) == len(by_id)
+    # 1 auth + 1 count + 1 page + repos + memberships + 2 per related model (latest ids, then the rows):
+    # constant whatever the page holds, not ~8 queries per project
+    assert len(seen) <= 25, [s[:100] for s in seen]
+
+
+def test_latest_map_returns_the_newest_run_per_project():
+    """_latest_map must return the newest row per project (and honour its filter): a cartesian join in the batched
+    query once returned every row instead of the latest one."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select
+
+    from mf import db as dbmod
+    from mf.api.projects import _latest_map
+    from mf.models import Organization, Project, Repository, RuleCatalog, Scan
+
+    suffix = uuid.uuid4().hex[:6]
+    with dbmod.session() as s:
+        cat = s.scalar(select(RuleCatalog).where(RuleCatalog.status == 'active').order_by(RuleCatalog.created_at.desc()))
+        org = Organization(name=f'latest-map-{suffix}')
+        s.add(org)
+        s.flush()
+        repo = Repository(source_type='local', provider='local', local_path='/tmp/nope')
+        s.add(repo)
+        s.flush()
+        p1 = Project(organization_id=org.id, name=f'LM p1 {suffix}', repository_id=repo.id, created_by='t')
+        p2 = Project(organization_id=org.id, name=f'LM p2 {suffix}', repository_id=repo.id, created_by='t')
+        s.add_all([p1, p2])
+        s.flush()
+        t0 = datetime.now(timezone.utc)
+        old = Scan(project_id=p1.id, ref='main', catalog_id=cat.id, created_by='t', status='failed',
+                   created_at=t0 - timedelta(days=2))
+        new = Scan(project_id=p1.id, ref='main', catalog_id=cat.id, created_by='t', status='succeeded', created_at=t0)
+        only = Scan(project_id=p2.id, ref='main', catalog_id=cat.id, created_by='t', status='queued',
+                    created_at=t0 - timedelta(days=1))
+        s.add_all([old, new, only])
+        s.commit()
+        ids = [p1.id, p2.id]
+        m = _latest_map(s, Scan, ids)
+        assert m[p1.id].id == new.id and m[p2.id].id == only.id
+        m_ok = _latest_map(s, Scan, ids, Scan.status == 'succeeded')
+        assert m_ok[p1.id].id == new.id and p2.id not in m_ok
+        assert _latest_map(s, Scan, []) == {}
+
+
 def test_project_update_requires_if_match(client, token, pilot_repo):
     pid = new_project(client, token, pilot_repo)
     r = client.patch(f'{API}/projects/{pid}', headers=token('ana.arquitecta') | {'If-Match': '99'}, json={'requiredGates': ['G2']})

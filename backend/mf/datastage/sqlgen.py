@@ -18,6 +18,16 @@ def ident(name: str) -> str:
     return re.sub(r'[^0-9a-zA-Z_]+', '_', name).strip('_').lower() or 'x'
 
 
+IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_$]*$')
+
+
+def _check_ident(name, what, stage):
+    """A column (or key) that is not a bare SQL identifier makes the stage MANUAL: renaming it silently (ident())
+    would reference a column that does not exist in the source, and the project rejects what it does not recognize."""
+    if not IDENT.match(name or ''):
+        raise Untranslatable(f'{stage}: {what} {name!r} no es un identificador SQL válido (solo letras, dígitos, _ y $)')
+
+
 def osh(raw: str | None) -> list[tuple[str, str]]:
     """OSH option strings `(2)(2)0(1)(3)key(2)LOG_ID(2)0...` -> [('key','LOG_ID'), ('asc\\desc','asc'), ...]."""
     return OSH_PAIR.findall(raw or '')
@@ -105,6 +115,8 @@ class Composer:
         t = src.stage_type
         ins = [self.link(n) for n in src.input_links]  # pin order
         pad = '  '
+        for c in l.columns:   # every column this SELECT emits, before any branch interpolates it
+            _check_ident(c['name'], 'columna', src.name)
         if t == 'OracleConnectorPX':
             sel = src.properties.get('Usage/SQL/SelectStatement')
             if sel:
@@ -153,6 +165,8 @@ class Composer:
             keys = [v for k, v in osh(src.properties.get('key')) if k == 'key']
             if not keys:
                 raise Untranslatable(f'{src.name}: Merge sin claves')
+            for k in keys:
+                _check_ident(k, 'clave', src.name)
             master, updates = ins[0], ins[1:]
             outs = [self.link(n) for n in src.output_links]
             on = lambda a, b: ' AND '.join(f'{a}.{k} = {b}.{k}' for k in keys)
@@ -175,6 +189,8 @@ class Composer:
             keys = [v for k, v in osh(src.properties.get('key')) if k == 'key']
             if not keys:
                 raise Untranslatable(f'{src.name}: RemDup sin claves')
+            for k in keys:
+                _check_ident(k, 'clave', src.name)
             up = self.job.stage(ins[0].source_stage)
             order = ', '.join(f'{k} {d}' for k, d in sort_keys(up)) if up and up.stage_type == 'PxSort' else ', '.join(keys)
             if not (up and up.stage_type == 'PxSort'):
@@ -196,6 +212,8 @@ class Composer:
             return f"SELECT {self.cols(l)}\nFROM (\n{indent(inner, pad)}\n) src\nWHERE {'NOT ' if neg else ''}({self.jinja(cond)})"
         if t == 'PxJoin' and len(ins) == 2:
             keys = [v for k, v in osh(src.properties.get('key')) if k == 'key']
+            for k in keys:
+                _check_ident(k, 'clave', src.name)
             kind = {'innerjoin': 'JOIN', 'leftouterjoin': 'LEFT JOIN', 'rightouterjoin': 'RIGHT JOIN', 'fullouterjoin': 'FULL JOIN'}.get(src.properties.get('operator'))
             if not keys or not kind:
                 raise Untranslatable(f'{src.name}: Join sin claves o con operador {src.properties.get("operator")}')
@@ -240,6 +258,8 @@ class Composer:
 
     def writer(self, s, l, body, st) -> str:
         cols = [c['name'] for c in l.columns]
+        for c in cols:   # select() already checked them; a future caller of writer() gets the same guard
+            _check_ident(c, 'columna', s.name)
         if s.stage_type == 'PxDataSet':
             table = self.stg(l.properties.get('in.dataset', s.name), l.columns)
             st.target = table
@@ -264,6 +284,8 @@ class Composer:
         if WRITE_MODES[mode] == 'INSERT':
             return f"INSERT INTO {table} ({', '.join(cols)})\n{body};\n"
         keys = [c['name'] for c in l.columns if c.get('key')]
+        for k in keys:
+            _check_ident(k, 'clave', s.name)
         if not keys:
             raise Untranslatable(f'{s.name}: {WRITE_MODES[mode]} sin columnas clave en el enlace')
         on = ' AND '.join(f't.{k} = s.{k}' for k in keys)
@@ -298,6 +320,7 @@ def sort_keys(stage):
     pairs, out = osh(stage.properties.get('key')), []
     for i, (k, v) in enumerate(pairs):
         if k == 'key':
+            _check_ident(v, 'clave', stage.name)   # the ORDER BY of a LAG / dedup reads the same keys
             nxt = pairs[i + 1] if i + 1 < len(pairs) else ('', '')
             out.append((v, 'DESC' if nxt[0] == 'asc\\desc' and nxt[1] == 'desc' else 'ASC'))
     return out
@@ -321,6 +344,7 @@ def ddl(table, columns) -> str:
     """Staging DDL from the link metadata. Precision/scale are not in the IR columns: VARCHAR2 gets a review marker."""
     lines = []
     for c in columns:
+        _check_ident(c['name'], 'columna', table)   # staging DDL is generated from the same link metadata
         t = SQL_TYPES.get(str(c.get('sqlType')), 'VARCHAR2(4000) /* tipo DataStage ' + str(c.get('sqlType')) + ': revisar */')
         if t in ('VARCHAR2', 'NVARCHAR2', 'CHAR'):
             t += '(4000 CHAR)'

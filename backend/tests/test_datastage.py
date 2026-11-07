@@ -13,8 +13,10 @@ from mf import cli_tool
 from mf.datastage import adapter
 from mf.datastage.analysis import analyze, waves
 from mf.datastage.expressions import Untranslatable, stage_vars_sql, translate
+from mf.datastage.model import DataStageJob, DataStageLink, DataStageStage
 from mf.datastage.parser import parse_files, parse_text
 from mf.datastage.registry import decide
+from mf.datastage.sqlgen import Composer
 
 FIX = Path(__file__).parent / 'fixtures' / 'datastage'
 
@@ -69,6 +71,32 @@ def test_expressions_translate_or_refuse():
         stage_vars_sql(svs, {}, 'ID')
     with pytest.raises(Untranslatable, match='orden de filas'):  # previous row without a known order
         stage_vars_sql(svs[:2], {}, None)
+
+
+def test_invalid_column_name_is_manual_not_interpolated():
+    def job_with(columns):
+        src = DataStageStage(name='SRC', stage_type='PxSequentialFile', record_type='CCustomStage')
+        dst = DataStageStage(name='DST', stage_type='OracleConnectorPX', record_type='CCustomStage',
+                             properties={'Usage/WriteMode': '0', 'Usage/TableName': 'TGT', 'Usage/GenerateSQL': '1'})
+        link = DataStageLink(name='L1', source_stage='SRC', target_stage='DST',
+                             columns=[{'name': n, 'derivation': None, 'key': False, 'nullable': True, 'sqlType': '12'}
+                                      for n in columns])
+        src.output_links, dst.input_links = ['L1'], ['L1']
+        return DataStageJob(name='J', job_type='PARALLEL', stages=[src, dst], links=[link])
+
+    # a name with a space used to be interpolated raw into the SELECT
+    steps = Composer(job_with(['ID', 'order amount'])).steps()
+    sql = next(s for s in steps if s.stage == 'DST')
+    assert sql.status == 'MANUAL' and 'order amount' in sql.issues[0]
+    assert not any(s.status == 'OK' and 'order amount' in s.sql for s in steps)
+    # a name with a quote must not break out of the SQL either
+    steps = Composer(job_with(['ID', 'x"; DROP TABLE t; --'])).steps()
+    assert next(s for s in steps if s.stage == 'DST').status == 'MANUAL'
+    assert not any(s.status == 'OK' and 'DROP TABLE' in s.sql for s in steps)
+    # and valid names still compose (REVIEW: the file source needs its load step checked)
+    steps = Composer(job_with(['ID', 'ORDER_AMOUNT'])).steps()
+    sql = next(s for s in steps if s.stage == 'DST')
+    assert sql.status == 'REVIEW' and 'ORDER_AMOUNT' in sql.sql and 'INSERT INTO TGT' in sql.sql
 
 
 def test_registry_decides_from_evidence_not_type(project):

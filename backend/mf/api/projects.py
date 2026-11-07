@@ -1,12 +1,13 @@
 import uuid
+from dataclasses import dataclass, field
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import audit, jobs
-from ..auth import Principal, authorize, current_principal, role_in, visible_project_ids
+from ..auth import Principal, authorize, current_principal, visible_project_ids
 from ..db import get_db
 from ..errors import ApiError
 from ..models import AppUser, Membership, Organization, Project, Repository, RuleCatalog, Scan, Upload
@@ -21,22 +22,81 @@ router = APIRouter(tags=['projects'])
 _BUSY, _FAILED = ('queued', 'running'), ('failed', 'timed_out', 'cancelled')
 
 
-def progress(db, p: Project, last_scan) -> dict:
+def _latest_map(db, model, ids, *filters):
+    """Latest row per project for one model, in (at most) two queries: the ids of the ROW_NUMBER() = 1 rows, then
+    the rows themselves. The same 'latest' the old per-project queries returned, batched for a whole page.
+    (Selecting the entity straight from the ranked subquery makes SQLAlchemy join the model's table again —
+    a cartesian product that returns every row, not the latest one.)"""
+    if not ids:
+        return {}
+    ranked = (select(model.id,
+                     func.row_number().over(partition_by=model.project_id, order_by=model.created_at.desc()).label('rn'))
+              .where(model.project_id.in_(ids), *filters).subquery())
+    latest_ids = list(db.scalars(select(ranked.c.id).where(ranked.c.rn == 1)))
+    if not latest_ids:
+        return {}
+    return {r.project_id: r for r in db.scalars(select(model).where(model.id.in_(latest_ids)))}
+
+
+@dataclass
+class _ListContext:
+    """Everything a project listing needs for a page, fetched once: latest row per project per run model, the
+    projects' repositories and uploads, and the caller's role per project. project_out reads from it instead of
+    querying once per project (~8 queries each: ~400 for a 50-project Cartera)."""
+    repos: dict = field(default_factory=dict)
+    uploads: dict = field(default_factory=dict)
+    roles: dict = field(default_factory=dict)
+    scans: dict = field(default_factory=dict)
+    scans_ok: dict = field(default_factory=dict)
+    datastage: dict = field(default_factory=dict)
+    apex: dict = field(default_factory=dict)
+    odoo: dict = field(default_factory=dict)
+    workspaces: dict = field(default_factory=dict)
+    executions: dict = field(default_factory=dict)
+    test_runs: dict = field(default_factory=dict)
+
+
+def build_list_context(db, projects, principal) -> _ListContext:
+    """One batched query per related model for the given projects (~11 queries per page, whatever its size)."""
+    from ..models import ApexMigration, DataStageMigration, Execution, HttpTestRun, OdooMigration, WorkspaceMigration
+
+    ids = [p.id for p in projects]
+    repo_ids = [p.repository_id for p in projects]
+    repos = {r.id: r for r in db.scalars(select(Repository).where(Repository.id.in_(repo_ids)))} if repo_ids else {}
+    upload_ids = [r.upload_id for r in repos.values() if r.upload_id]
+    uploads = {u.id: u for u in db.scalars(select(Upload).where(Upload.id.in_(upload_ids)))} if upload_ids else {}
+    roles = {m.project_id: m.role for m in db.scalars(
+        select(Membership).where(Membership.project_id.in_(ids), Membership.subject_id == principal.subject))} if ids else {}
+    return _ListContext(repos=repos, uploads=uploads, roles=roles, scans=_latest_map(db, Scan, ids),
+                        scans_ok=_latest_map(db, Scan, ids, Scan.status == 'succeeded'),
+                        datastage=_latest_map(db, DataStageMigration, ids), apex=_latest_map(db, ApexMigration, ids),
+                        odoo=_latest_map(db, OdooMigration, ids, OdooMigration.mode != 'preview'),
+                        workspaces=_latest_map(db, WorkspaceMigration, ids), executions=_latest_map(db, Execution, ids),
+                        test_runs=_latest_map(db, HttpTestRun, ids))
+
+
+def progress(db, p: Project, last_scan, ctx=None) -> dict:
     """Where the project is, for Cartera, from its latest run of any kind: phase (pending | running | analyzed | migrated |
     tested | failed), the step it is in and that run's state. A Java project's latest scan, migration (by waves or Tomcat
     WAR, or a plan's execution) or automatic test; an Odoo project's analysis, code port or migration; a DataStage run."""
     from ..models import ApexMigration, DataStageMigration, Execution, HttpTestRun, OdooMigration, WorkspaceMigration
 
-    def latest(model):
-        return db.scalar(select(model).where(model.project_id == p.id).order_by(model.created_at.desc()).limit(1))
+    if ctx is None:   # single project: one query per model, as before
+        def latest(model, *filters):
+            return db.scalar(select(model).where(model.project_id == p.id, *filters).order_by(model.created_at.desc()).limit(1))
+    else:   # listing: the maps were built with the same filters, so the filter arguments are already applied
+        _maps = {ApexMigration: ctx.apex, OdooMigration: ctx.odoo, DataStageMigration: ctx.datastage,
+                 WorkspaceMigration: ctx.workspaces, Execution: ctx.executions, HttpTestRun: ctx.test_runs}
+
+        def latest(model, *filters):
+            return _maps[model].get(p.id)
     runs = []  # (created_at, step, state, phase when it ends well)
     if p.migration_type == 'APEX':
         am = latest(ApexMigration)
         if am:
             runs.append((am.created_at, 'Análisis de aplicaciones', am.state, 'analyzed'))
     elif p.migration_type == 'ODOO':
-        om = db.scalar(select(OdooMigration).where(OdooMigration.project_id == p.id, OdooMigration.mode != 'preview')  # a preview
-                       .order_by(OdooMigration.created_at.desc()).limit(1))                                     # is not a stage
+        om = latest(OdooMigration, OdooMigration.mode != 'preview')  # a preview is not a stage
         if om:
             step, done = {'analyze': ('Análisis de la base', 'analyzed'), 'code': ('Port de código a 19', 'migrated'),
                           'migrate': ('Migración a Odoo 19', 'migrated'),
@@ -68,22 +128,24 @@ def progress(db, p: Project, last_scan) -> dict:
     return {'phase': phase, 'step': step, 'state': state, 'at': at.isoformat()}
 
 
-def project_out(db, p: Project, principal: Principal) -> dict:
-    repo = db.get(Repository, p.repository_id)
-    last = db.scalar(select(Scan).where(Scan.project_id == p.id).order_by(Scan.created_at.desc()).limit(1))
-    last_ok = db.scalar(select(Scan).where(Scan.project_id == p.id, Scan.status == 'succeeded').order_by(Scan.created_at.desc()).limit(1))
-    up = db.get(Upload, repo.upload_id) if repo.upload_id else None
+def project_out(db, p: Project, principal: Principal, ctx=None) -> dict:
+    if ctx is None:   # single project: build the same context for one project (~11 queries, as ~8 before)
+        ctx = build_list_context(db, [p], principal)
+    repo = ctx.repos.get(p.repository_id)
+    last = ctx.scans.get(p.id)
+    last_ok = ctx.scans_ok.get(p.id)
+    up = ctx.uploads.get(repo.upload_id) if repo and repo.upload_id else None
+    role = ctx.roles.get(p.id)
     d = ProjectOut(id=p.id, name=p.name, description=p.description, source_type=repo.source_type, repository_url=repo.url,
                    repository_provider=repo.provider, credential_ref=repo.credential_ref, local_path=repo.local_path,
                    upload={'id': str(up.id), 'filename': up.filename, 'sha256': up.sha256, 'sizeBytes': up.size_bytes,
                            'structure': up.structure} if up else None,
                    default_branch=p.default_branch, target_runtime=p.target_runtime, migration_type=p.migration_type,
                    required_gates=p.required_gates, independent_review=p.independent_review, pr_config=p.pr_config,
-                   my_role='admin' if principal.is_admin and not role_in(db, principal, p.id) else role_in(db, principal, p.id),
+                   my_role='admin' if principal.is_admin and role is None else role,
                    version=p.version, created_at=p.created_at).model_dump()
     if p.migration_type == 'DATASTAGE_AIRFLOW':
-        from ..models import DataStageMigration
-        dm = db.scalar(select(DataStageMigration).where(DataStageMigration.project_id == p.id).order_by(DataStageMigration.created_at.desc()).limit(1))
+        dm = ctx.datastage.get(p.id)
         if dm:  # Cartera shows the latest DataStage run like the latest scan of a Java project
             s = dm.summary or {}
             d['lastDataStage'] = {'id': str(dm.id), 'state': dm.state, 'status': s.get('status'), 'createdAt': dm.created_at.isoformat(),
@@ -93,7 +155,7 @@ def project_out(db, p: Project, principal: Principal) -> dict:
                          'createdAt': last.created_at.isoformat(),
                          'findings': (last.summary or {}).get('findings'),
                          'lastSucceededId': str(last_ok.id) if last_ok else None}
-    d['progress'] = progress(db, p, last)
+    d['progress'] = progress(db, p, last, ctx)
     return d
 
 
@@ -173,7 +235,12 @@ def list_projects(q: str | None = None, limit: int = limit_param(), cursor: str 
         stmt = stmt.where(Project.name.ilike(f'%{q[:100]}%'))
     if migration_type:
         stmt = stmt.where(Project.migration_type == migration_type)
-    return paginate(db, stmt, limit, cursor, lambda p: project_out(db, p, me))
+    holder: dict = {}
+
+    def preload(rows):
+        holder['ctx'] = build_list_context(db, rows, me)
+
+    return paginate(db, stmt, limit, cursor, lambda p: project_out(db, p, me, holder['ctx']), preload=preload)
 
 
 @router.get('/projects/{project_id}', response_model=ProjectOut)

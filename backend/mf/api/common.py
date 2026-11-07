@@ -20,11 +20,15 @@ def decode_cursor(cursor: str | None) -> int:
         raise ApiError(422, 'VALIDATION_ERROR', 'Cursor inválido') from None
 
 
-def paginate(db, stmt, limit: int, cursor: str | None, mapper):
-    """Opaque cursor over a stable ORDER BY. ponytail: offset-based; switch to keyset if tables grow to millions."""
+def paginate(db, stmt, limit: int, cursor: str | None, mapper, preload=None):
+    """Opaque cursor over a stable ORDER BY. ponytail: offset-based; switch to keyset if tables grow to millions.
+    preload(rows) runs once per page, after fetching the rows and before mapping them, so a mapper that needs related
+    rows (latest scan/run per project) can fetch them in bulk instead of one query per row."""
     offset = decode_cursor(cursor)
     total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
     rows = list(db.scalars(stmt.offset(offset).limit(limit)))
+    if preload is not None:
+        preload(rows)
     nxt = offset + len(rows)
     return {'items': [mapper(r) for r in rows], 'total': total,
             'nextCursor': base64.urlsafe_b64encode(str(nxt).encode()).decode() if nxt < total else None}

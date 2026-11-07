@@ -30,15 +30,29 @@ SKIP = re.compile(r'^\s*(create|drop)\s+database\b', re.I)   # another database:
 
 
 def statements(sql: str) -> list[tuple[int, str]]:
-    """(first line, text) of each statement, splitting on ; outside dollar-quoted bodies and comments. psql meta-commands
-    (\\connect, \\set…) are not SQL: their lines are left out (line numbers kept)."""
+    """(first line, text) of each statement, splitting on ; outside dollar-quoted bodies, single-quoted literals and
+    comments. psql meta-commands (\\connect, \\set…) are not SQL: their lines are left out (line numbers kept)."""
     sql = re.sub(r'(?m)^[ \t]*\\.*$', '', sql)
-    out, buf, line, start, dollar = [], [], 1, 1, None
+    out, buf, line, start, dollar, in_str = [], [], 1, 1, None, False
     i = 0
     while i < len(sql):
-        if dollar is None and sql.startswith('--', i):
+        if dollar is None and not in_str and sql.startswith('--', i):
             j = sql.find('\n', i)
             i = len(sql) if j == -1 else j
+            continue
+        if dollar is None and sql[i] == "'":
+            if in_str and sql.startswith("''", i):   # '' is an escaped quote, not the end of the literal
+                buf.append("''")
+                i += 2
+                continue
+            in_str = not in_str
+            buf.append("'")
+            i += 1
+            continue
+        if in_str:   # ';' and '--' inside a literal are data, not separators
+            buf.append(sql[i])
+            line += sql[i] == '\n'
+            i += 1
             continue
         m = re.match(r'\$\w*\$', sql[i:])
         if m:
@@ -236,4 +250,9 @@ INSERT INTO legacy_ext.msg (id, status) VALUES (1,'a'), (2,'b');
     assert objs['unused']['category'] == 'DEPRECATE' and objs['v']['category'] == 'MIGRATE' and objs['v']['odooTables'] == ['res_partner']
     assert objs['t']['category'] == 'KEEP' and 'EXECUTE PROCEDURE' in objs['t']['reason'] and objs['f']['category'] == 'KEEP'
     assert is_odoo_dump(b'PGDMP...') and not is_odoo_dump(b'CREATE SCHEMA legacy_ext;')
+    assert [s for _, s in statements("INSERT INTO t (a) VALUES ('x;y');")] == ["INSERT INTO t (a) VALUES ('x;y')"]
+    assert [s for _, s in statements("INSERT INTO t (a) VALUES ('a--b');")] == ["INSERT INTO t (a) VALUES ('a--b')"]
+    assert [s for _, s in statements("CREATE FUNCTION f() RETURNS void AS 'BEGIN RAISE NOTICE ''a;b''; END;' LANGUAGE plpgsql; SELECT 1;")] == [
+        "CREATE FUNCTION f() RETURNS void AS 'BEGIN RAISE NOTICE ''a;b''; END;' LANGUAGE plpgsql", 'SELECT 1']
+    assert [s for _, s in statements("SELECT 'a;b'; SELECT 1;")] == ["SELECT 'a;b'", 'SELECT 1']
     print('ok')
